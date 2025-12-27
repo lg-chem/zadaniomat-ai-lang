@@ -11,11 +11,20 @@ interface Task {
   actualMinutes: number
   scheduledDate?: string
   scheduledTime?: string
+  orderInDay: number
+  categoryId?: string | null
+  goalId?: string | null
+  isRecurring?: boolean
+  recurrenceRule?: string | null
   category?: {
     id: string
     name: string
     color: string
   }
+  goal?: {
+    id: string
+    title: string
+  } | null
 }
 
 interface UseTasksOptions {
