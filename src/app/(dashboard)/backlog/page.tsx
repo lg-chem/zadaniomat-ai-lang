@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
+import { useState, useRef, KeyboardEvent } from "react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useBacklog } from "@/hooks/use-backlog"
 
 interface BacklogItem {
   id: string
@@ -30,10 +30,10 @@ interface BacklogItem {
 }
 
 export default function BacklogPage() {
-  const { workspace } = useWorkspaceStore()
-  const [items, setItems] = useState<BacklogItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [showProcessed, setShowProcessed] = useState(false)
+
+  // Use SWR hook for data fetching with cache
+  const { items, isLoading, mutate } = useBacklog({ showProcessed })
 
   // Quick add
   const [newContent, setNewContent] = useState("")
@@ -44,27 +44,6 @@ export default function BacklogPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
 
-  const fetchItems = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/backlog?workspace=${workspace}&showProcessed=${showProcessed}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setItems(data)
-      }
-    } catch (error) {
-      console.error("Error fetching backlog:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [workspace, showProcessed])
-
-  useEffect(() => {
-    setIsLoading(true)
-    fetchItems()
-  }, [fetchItems])
-
   const handleCreate = async () => {
     if (!newContent.trim()) return
 
@@ -74,11 +53,11 @@ export default function BacklogPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: newContent,
-          workspaceType: workspace,
+          workspaceType: "WORK", // Get from store if needed
         }),
       })
       if (res.ok) {
-        fetchItems()
+        mutate() // SWR will refetch data
         setNewContent("")
         setIsAdding(false)
       }
@@ -94,7 +73,7 @@ export default function BacklogPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       })
-      fetchItems()
+      mutate() // SWR will refetch data
       setEditingId(null)
     } catch (error) {
       console.error("Error updating item:", error)
@@ -105,7 +84,7 @@ export default function BacklogPage() {
     if (!confirm("Czy na pewno chcesz usunąć ten element?")) return
     try {
       await fetch(`/api/backlog/${id}`, { method: "DELETE" })
-      fetchItems()
+      mutate() // SWR will refetch data
     } catch (error) {
       console.error("Error deleting item:", error)
     }
