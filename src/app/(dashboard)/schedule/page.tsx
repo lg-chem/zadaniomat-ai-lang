@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
 import { format, addDays, subDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -16,21 +16,13 @@ import {
   Clock,
   Trash2,
   GripVertical,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -39,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { useTimerStore, formatTime, formatMinutes } from "@/stores/timer-store"
+import { useTimerStore, formatMinutes } from "@/stores/timer-store"
 
 type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 
@@ -90,18 +82,18 @@ export default function SchedulePage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Dialog states
-  const [showAddTask, setShowAddTask] = useState(false)
-  const [showGenerateTemplates, setShowGenerateTemplates] = useState(false)
-  const [editingTask, setEditingTask] = useState<Task | null>(null)
-
-  // New task form
+  // Inline add task state
   const [newTask, setNewTask] = useState({
     title: "",
     categoryId: "",
-    goalId: "",
     plannedMinutes: "25",
   })
+  const [isAddingTask, setIsAddingTask] = useState(false)
+  const newTaskRef = useRef<HTMLInputElement>(null)
+
+  // Inline edit task state
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState("")
 
   const dateString = format(selectedDate, "yyyy-MM-dd")
 
@@ -143,8 +135,9 @@ export default function SchedulePage() {
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))
   const handleToday = () => setSelectedDate(new Date())
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim()) return
+
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -152,7 +145,6 @@ export default function SchedulePage() {
         body: JSON.stringify({
           title: newTask.title,
           categoryId: newTask.categoryId || undefined,
-          goalId: newTask.goalId || undefined,
           plannedMinutes: parseInt(newTask.plannedMinutes) || 25,
           scheduledDate: dateString,
           orderInDay: tasks.length,
@@ -162,8 +154,8 @@ export default function SchedulePage() {
       })
       if (res.ok) {
         fetchTasks()
-        setShowAddTask(false)
-        setNewTask({ title: "", categoryId: "", goalId: "", plannedMinutes: "25" })
+        setNewTask({ title: "", categoryId: "", plannedMinutes: "25" })
+        setIsAddingTask(false)
       }
     } catch (error) {
       console.error("Error creating task:", error)
@@ -174,7 +166,6 @@ export default function SchedulePage() {
     const strategicCategories = categories.filter((c) => c.isStrategic)
 
     for (const category of strategicCategories) {
-      // Sprawdź czy już jest zadanie z tej kategorii na ten dzień
       const existingTask = tasks.find((t) => t.categoryId === category.id)
       if (!existingTask) {
         await fetch("/api/tasks", {
@@ -194,7 +185,6 @@ export default function SchedulePage() {
     }
 
     fetchTasks()
-    setShowGenerateTemplates(false)
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
@@ -206,7 +196,6 @@ export default function SchedulePage() {
       }
 
       if (status === "IN_PROGRESS" && !timerStore.isRunning) {
-        // Start timer for this task
         const task = tasks.find((t) => t.id === taskId)
         if (task) {
           timerStore.startTimer(taskId, task.title, task.plannedMinutes || undefined)
@@ -217,6 +206,51 @@ export default function SchedulePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),
+      })
+      fetchTasks()
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
+  const handleUpdateTaskTitle = async (taskId: string) => {
+    if (!editingTitle.trim()) {
+      setEditingTaskId(null)
+      return
+    }
+
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editingTitle }),
+      })
+      fetchTasks()
+      setEditingTaskId(null)
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
+  const handleUpdateTaskCategory = async (taskId: string, categoryId: string) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId: categoryId || null }),
+      })
+      fetchTasks()
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
+  const handleUpdateTaskTime = async (taskId: string, minutes: string) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plannedMinutes: parseInt(minutes) || 25 }),
       })
       fetchTasks()
     } catch (error) {
@@ -235,7 +269,6 @@ export default function SchedulePage() {
   }
 
   const handleTransferTask = async (taskId: string) => {
-    // Przenieś zadanie na następny dzień
     const nextDay = format(addDays(selectedDate, 1), "yyyy-MM-dd")
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -257,20 +290,39 @@ export default function SchedulePage() {
     handleUpdateTaskStatus(task.id, "IN_PROGRESS")
   }
 
-  const strategicCategories = categories.filter((c) => c.isStrategic)
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      action()
+    }
+    if (e.key === "Escape") {
+      setIsAddingTask(false)
+      setEditingTaskId(null)
+      setNewTask({ title: "", categoryId: "", plannedMinutes: "25" })
+    }
+  }
 
-  // Group tasks by category
-  const tasksByCategory = tasks.reduce((acc, task) => {
-    const categoryId = task.categoryId || "uncategorized"
-    if (!acc[categoryId]) acc[categoryId] = []
-    acc[categoryId].push(task)
-    return acc
-  }, {} as Record<string, Task[]>)
+  const handleAddRowClick = () => {
+    setIsAddingTask(true)
+    setTimeout(() => newTaskRef.current?.focus(), 0)
+  }
+
+  const handleStartEdit = (task: Task) => {
+    setEditingTaskId(task.id)
+    setEditingTitle(task.title)
+  }
+
+  const strategicCategories = categories.filter((c) => c.isStrategic)
 
   // Calculate stats
   const totalPlanned = tasks.reduce((sum, t) => sum + (t.plannedMinutes || 0), 0)
   const totalActual = tasks.reduce((sum, t) => sum + t.actualMinutes, 0)
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
+
+  // Count how many strategic categories don't have tasks yet
+  const missingStrategicCount = strategicCategories.filter(
+    (c) => !tasks.find((t) => t.categoryId === c.id)
+  ).length
 
   if (isLoading) {
     return (
@@ -327,423 +379,294 @@ export default function SchedulePage() {
               <div className="text-2xl font-bold">{formatMinutes(totalActual)}</div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setShowGenerateTemplates(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Generuj szablony
+          {missingStrategicCount > 0 && (
+            <Button variant="outline" onClick={handleGenerateTemplates}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Generuj szablony ({missingStrategicCount})
             </Button>
-            <Button onClick={() => setShowAddTask(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Dodaj zadanie
-            </Button>
-          </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Tasks grouped by category */}
-      {tasks.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Brak zadań na ten dzień</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Dodaj zadania lub wygeneruj szablony z kategorii strategicznych
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowGenerateTemplates(true)}>
-                Generuj szablony
-              </Button>
-              <Button onClick={() => setShowAddTask(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Dodaj zadanie
-              </Button>
+      {/* Task Table - Spreadsheet style */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Zadania na dziś</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-[180px_1fr_80px_200px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+              <div>Kategoria</div>
+              <div>Nazwa zadania</div>
+              <div>Czas</div>
+              <div>Akcje</div>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {/* Strategic categories first */}
-          {strategicCategories.map((category) => {
-            const categoryTasks = tasksByCategory[category.id] || []
-            if (categoryTasks.length === 0) return null
 
-            return (
-              <Card key={category.id}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <div
-                      className="h-4 w-4 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    {category.name}
-                    <Badge variant="secondary" className="ml-2">
-                      {categoryTasks.length}
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {categoryTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      isTimerRunning={timerStore.taskId === task.id}
-                      onStartTimer={() => handleStartTimer(task)}
-                      onStatusChange={(status) => handleUpdateTaskStatus(task.id, status)}
-                      onDelete={() => handleDeleteTask(task.id)}
-                      onTransfer={() => handleTransferTask(task.id)}
-                    />
-                  ))}
-                </CardContent>
-              </Card>
-            )
-          })}
-
-          {/* Uncategorized tasks */}
-          {tasksByCategory["uncategorized"]?.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="h-4 w-4 rounded-full bg-gray-400" />
-                  Bez kategorii
-                  <Badge variant="secondary" className="ml-2">
-                    {tasksByCategory["uncategorized"].length}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {tasksByCategory["uncategorized"].map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    isTimerRunning={timerStore.taskId === task.id}
-                    onStartTimer={() => handleStartTimer(task)}
-                    onStatusChange={(status) => handleUpdateTaskStatus(task.id, status)}
-                    onDelete={() => handleDeleteTask(task.id)}
-                    onTransfer={() => handleTransferTask(task.id)}
-                  />
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Other categories */}
-          {categories
-            .filter((c) => !c.isStrategic && tasksByCategory[c.id]?.length > 0)
-            .map((category) => (
-              <Card key={category.id}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <div
-                      className="h-4 w-4 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    {category.name}
-                    <Badge variant="secondary" className="ml-2">
-                      {tasksByCategory[category.id].length}
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {tasksByCategory[category.id].map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      isTimerRunning={timerStore.taskId === task.id}
-                      onStartTimer={() => handleStartTimer(task)}
-                      onStatusChange={(status) => handleUpdateTaskStatus(task.id, status)}
-                      onDelete={() => handleDeleteTask(task.id)}
-                      onTransfer={() => handleTransferTask(task.id)}
-                    />
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
-        </div>
-      )}
-
-      {/* Add Task Dialog */}
-      <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nowe zadanie</DialogTitle>
-            <DialogDescription>
-              Dodaj zadanie na {format(selectedDate, "d MMMM yyyy", { locale: pl })}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreateTask}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Kategoria</Label>
-                <Select
-                  value={newTask.categoryId}
-                  onValueChange={(value) =>
-                    setNewTask({ ...newTask, categoryId: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Wybierz kategorię..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: category.color }}
-                          />
-                          {category.name}
-                          {category.isStrategic && (
-                            <Badge variant="secondary" className="text-xs">
-                              strategiczna
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="taskTitle">Nazwa zadania (TODO)</Label>
-                <Input
-                  id="taskTitle"
-                  placeholder="Co chcesz zrobić?"
-                  value={newTask.title}
-                  onChange={(e) =>
-                    setNewTask({ ...newTask, title: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="plannedTime">Planowany czas (minuty)</Label>
-                <Input
-                  id="plannedTime"
-                  type="number"
-                  min="5"
-                  step="5"
-                  placeholder="25"
-                  value={newTask.plannedMinutes}
-                  onChange={(e) =>
-                    setNewTask({ ...newTask, plannedMinutes: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAddTask(false)}
+            {/* Existing Tasks */}
+            {tasks.map((task) => (
+              <div
+                key={task.id}
+                className={`grid grid-cols-[180px_1fr_80px_200px] gap-2 p-3 border-b last:border-b-0 items-center transition-colors ${
+                  task.status === "COMPLETED"
+                    ? "bg-muted/30 opacity-60"
+                    : task.status === "IN_PROGRESS"
+                    ? "bg-primary/5 border-l-2 border-l-primary"
+                    : "hover:bg-muted/20"
+                }`}
               >
-                Anuluj
-              </Button>
-              <Button type="submit">Dodaj zadanie</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Generate Templates Dialog */}
-      <Dialog open={showGenerateTemplates} onOpenChange={setShowGenerateTemplates}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generuj szablony zadań</DialogTitle>
-            <DialogDescription>
-              Zostanie utworzone jedno zadanie dla każdej kategorii strategicznej,
-              której jeszcze nie ma na ten dzień.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground mb-4">
-              Kategorie strategiczne ({strategicCategories.length}):
-            </p>
-            <div className="space-y-2">
-              {strategicCategories.map((category) => {
-                const existingTask = tasks.find(
-                  (t) => t.categoryId === category.id
-                )
-                return (
-                  <div
-                    key={category.id}
-                    className="flex items-center gap-2 p-2 rounded-md bg-muted/50"
+                {/* Category Select */}
+                <div>
+                  <Select
+                    value={task.categoryId || "none"}
+                    onValueChange={(value) =>
+                      handleUpdateTaskCategory(task.id, value === "none" ? "" : value)
+                    }
                   >
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: category.color }}
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue>
+                        {task.category ? (
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: task.category.color }}
+                            />
+                            <span className="truncate">{task.category.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">Brak</span>
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="text-muted-foreground">Brak kategorii</span>
+                      </SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: category.color }}
+                            />
+                            {category.name}
+                            {category.isStrategic && (
+                              <Badge variant="secondary" className="text-[10px] px-1">
+                                S
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Title */}
+                <div>
+                  {editingTaskId === task.id ? (
+                    <Input
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))}
+                      onBlur={() => handleUpdateTaskTitle(task.id)}
+                      className="h-8"
+                      autoFocus
                     />
-                    <span>{category.name}</span>
-                    {existingTask ? (
-                      <Badge variant="secondary" className="ml-auto">
-                        już dodane
+                  ) : (
+                    <div
+                      className={`cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 ${
+                        task.status === "COMPLETED" ? "line-through" : ""
+                      }`}
+                      onClick={() => handleStartEdit(task)}
+                    >
+                      {task.title}
+                      <Badge className={`${STATUS_COLORS[task.status]} text-[10px]`}>
+                        {STATUS_LABELS[task.status]}
                       </Badge>
-                    ) : (
-                      <Badge className="ml-auto">do dodania</Badge>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            {strategicCategories.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Brak kategorii strategicznych. Dodaj je w Ustawieniach.
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowGenerateTemplates(false)}
-            >
-              Anuluj
-            </Button>
-            <Button
-              onClick={handleGenerateTemplates}
-              disabled={strategicCategories.length === 0}
-            >
-              Generuj szablony
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
+                    </div>
+                  )}
+                </div>
 
-// Task Card Component
-function TaskCard({
-  task,
-  isTimerRunning,
-  onStartTimer,
-  onStatusChange,
-  onDelete,
-  onTransfer,
-}: {
-  task: Task
-  isTimerRunning: boolean
-  onStartTimer: () => void
-  onStatusChange: (status: TaskStatus) => void
-  onDelete: () => void
-  onTransfer: () => void
-}) {
-  const progress = task.plannedMinutes
-    ? Math.min(100, (task.actualMinutes / task.plannedMinutes) * 100)
-    : 0
+                {/* Time */}
+                <div>
+                  <Input
+                    type="number"
+                    min="5"
+                    step="5"
+                    value={task.plannedMinutes || 25}
+                    onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)}
+                    className="h-8 text-center text-xs"
+                  />
+                </div>
 
-  return (
-    <div
-      className={`flex items-center gap-4 p-4 rounded-lg border ${
-        task.status === "COMPLETED"
-          ? "bg-muted/50 opacity-70"
-          : task.status === "IN_PROGRESS"
-          ? "border-primary bg-primary/5"
-          : "bg-background"
-      }`}
-    >
-      <div className="cursor-grab text-muted-foreground">
-        <GripVertical className="h-5 w-5" />
-      </div>
+                {/* Actions */}
+                <div className="flex items-center gap-1">
+                  {task.status !== "COMPLETED" && task.status !== "CANCELLED" && (
+                    <>
+                      <Button
+                        size="icon"
+                        variant={timerStore.taskId === task.id ? "default" : "ghost"}
+                        className="h-7 w-7"
+                        onClick={() => handleStartTimer(task)}
+                        disabled={timerStore.taskId === task.id}
+                        title="Start timer"
+                      >
+                        {timerStore.taskId === task.id ? (
+                          <Pause className="h-3.5 w-3.5" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span
-            className={`font-medium ${
-              task.status === "COMPLETED" ? "line-through" : ""
-            }`}
-          >
-            {task.title}
-          </span>
-          <Badge className={STATUS_COLORS[task.status]}>
-            {STATUS_LABELS[task.status]}
-          </Badge>
-        </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}
+                        title="Zakończ"
+                      >
+                        <Check className="h-3.5 w-3.5 text-green-500" />
+                      </Button>
 
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            <span>
-              {task.actualMinutes || 0}/{task.plannedMinutes || 0} min
-            </span>
-          </div>
-          {task.goal && (
-            <span className="text-xs">
-              Cel: {task.goal.title}
-            </span>
-          )}
-        </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => handleTransferTask(task.id)}
+                        title="Przenieś na jutro"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
 
-        {task.plannedMinutes && task.plannedMinutes > 0 && (
-          <Progress value={progress} className="h-1 mt-2" />
-        )}
-      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")}
+                        title="Anuluj"
+                      >
+                        <X className="h-3.5 w-3.5 text-red-500" />
+                      </Button>
+                    </>
+                  )}
 
-      <div className="flex items-center gap-1">
-        {/* Timer button */}
-        {task.status !== "COMPLETED" && task.status !== "CANCELLED" && (
-          <Button
-            size="icon"
-            variant={isTimerRunning ? "default" : "ghost"}
-            onClick={onStartTimer}
-            disabled={isTimerRunning}
-          >
-            {isTimerRunning ? (
-              <Pause className="h-4 w-4" />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => handleDeleteTask(task.id)}
+                    title="Usuń"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            {/* Add New Task Row */}
+            {isAddingTask ? (
+              <div className="grid grid-cols-[180px_1fr_80px_200px] gap-2 p-3 items-center bg-primary/5">
+                {/* Category Select */}
+                <div>
+                  <Select
+                    value={newTask.categoryId || "none"}
+                    onValueChange={(value) =>
+                      setNewTask({ ...newTask, categoryId: value === "none" ? "" : value })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Kategoria..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="text-muted-foreground">Brak kategorii</span>
+                      </SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: category.color }}
+                            />
+                            {category.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Title Input */}
+                <div>
+                  <Input
+                    ref={newTaskRef}
+                    placeholder="Wpisz nazwę zadania..."
+                    value={newTask.title}
+                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                    onKeyDown={(e) => handleKeyDown(e, handleCreateTask)}
+                    className="h-8"
+                  />
+                </div>
+
+                {/* Time Input */}
+                <div>
+                  <Input
+                    type="number"
+                    min="5"
+                    step="5"
+                    value={newTask.plannedMinutes}
+                    onChange={(e) => setNewTask({ ...newTask, plannedMinutes: e.target.value })}
+                    onKeyDown={(e) => handleKeyDown(e, handleCreateTask)}
+                    className="h-8 text-center text-xs"
+                  />
+                </div>
+
+                {/* Save Button */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={handleCreateTask}
+                    disabled={!newTask.title.trim()}
+                  >
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      setIsAddingTask(false)
+                      setNewTask({ title: "", categoryId: "", plannedMinutes: "25" })
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <Play className="h-4 w-4" />
+              <button
+                onClick={handleAddRowClick}
+                className="w-full p-3 text-left text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Dodaj zadanie...
+              </button>
             )}
-          </Button>
-        )}
+          </div>
 
-        {/* Status actions */}
-        {task.status === "NEW" && (
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onStatusChange("IN_PROGRESS")}
-            title="Rozpocznij"
-          >
-            <Play className="h-4 w-4" />
-          </Button>
-        )}
-
-        {task.status === "IN_PROGRESS" && (
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onStatusChange("COMPLETED")}
-            title="Zakończ"
-          >
-            <Check className="h-4 w-4 text-green-500" />
-          </Button>
-        )}
-
-        {task.status !== "COMPLETED" && task.status !== "CANCELLED" && (
-          <>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={onTransfer}
-              title="Przenieś na jutro"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => onStatusChange("CANCELLED")}
-              title="Anuluj"
-            >
-              <X className="h-4 w-4 text-red-500" />
-            </Button>
-          </>
-        )}
-
-        <Button size="icon" variant="ghost" onClick={onDelete} title="Usuń">
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      </div>
+          {/* Empty state */}
+          {tasks.length === 0 && !isAddingTask && (
+            <div className="text-center py-8 text-muted-foreground">
+              <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Brak zadań na ten dzień</p>
+              <p className="text-sm">Kliknij "Dodaj zadanie" lub wygeneruj szablony</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

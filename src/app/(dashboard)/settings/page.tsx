@@ -1,22 +1,11 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import { Plus, Trash2, Star } from "lucide-react"
+import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
+import { Plus, Trash2, Star, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
 interface Category {
@@ -37,12 +26,19 @@ export default function SettingsPage() {
   const { workspace } = useWorkspaceStore()
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
-  const [newCategory, setNewCategory] = useState({
+
+  // Inline editing state for new row
+  const [newRow, setNewRow] = useState({
     name: "",
     color: COLORS[0],
     isStrategic: false,
   })
+  const [isAddingNew, setIsAddingNew] = useState(false)
+  const newRowRef = useRef<HTMLInputElement>(null)
+
+  // Editing existing row
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState("")
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -62,21 +58,22 @@ export default function SettingsPage() {
     fetchCategories()
   }, [fetchCategories])
 
-  const handleCreateCategory = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleCreateCategory = async () => {
+    if (!newRow.name.trim()) return
+
     try {
       const res = await fetch("/api/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...newCategory,
+          ...newRow,
           workspaceType: workspace,
         }),
       })
       if (res.ok) {
         fetchCategories()
-        setShowCreate(false)
-        setNewCategory({ name: "", color: COLORS[0], isStrategic: false })
+        setNewRow({ name: "", color: COLORS[0], isStrategic: false })
+        setIsAddingNew(false)
       }
     } catch (error) {
       console.error("Error creating category:", error)
@@ -108,8 +105,65 @@ export default function SettingsPage() {
     }
   }
 
-  const strategicCategories = categories.filter((c) => c.isStrategic)
-  const regularCategories = categories.filter((c) => !c.isStrategic)
+  const handleUpdateColor = async (category: Category, color: string) => {
+    try {
+      await fetch(`/api/categories/${category.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ color }),
+      })
+      fetchCategories()
+    } catch (error) {
+      console.error("Error updating category:", error)
+    }
+  }
+
+  const handleStartEdit = (category: Category) => {
+    setEditingId(category.id)
+    setEditingName(category.name)
+  }
+
+  const handleSaveEdit = async (categoryId: string) => {
+    if (!editingName.trim()) {
+      setEditingId(null)
+      return
+    }
+
+    try {
+      await fetch(`/api/categories/${categoryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editingName }),
+      })
+      fetchCategories()
+      setEditingId(null)
+    } catch (error) {
+      console.error("Error updating category:", error)
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      action()
+    }
+    if (e.key === "Escape") {
+      setEditingId(null)
+      setIsAddingNew(false)
+      setNewRow({ name: "", color: COLORS[0], isStrategic: false })
+    }
+  }
+
+  const handleAddRowClick = () => {
+    setIsAddingNew(true)
+    setTimeout(() => newRowRef.current?.focus(), 0)
+  }
+
+  // Sort: strategic first, then by name
+  const sortedCategories = [...categories].sort((a, b) => {
+    if (a.isStrategic !== b.isStrategic) return b.isStrategic ? 1 : -1
+    return a.name.localeCompare(b.name)
+  })
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -120,193 +174,179 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Categories Section */}
+      {/* Categories Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Kategorie</CardTitle>
-              <CardDescription>
-                Kategorie strategiczne mogą mieć przypisane cele okresowe
-              </CardDescription>
-            </div>
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nowa kategoria
-            </Button>
-          </div>
+          <CardTitle>Kategorie</CardTitle>
+          <CardDescription>
+            Kategorie strategiczne mogą mieć przypisane cele okresowe. Kliknij w nazwę aby edytować.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground">Ładowanie...</p>
-          ) : categories.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              Brak kategorii. Dodaj pierwszą!
-            </p>
           ) : (
-            <>
-              {/* Strategic Categories */}
-              {strategicCategories.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                    <Star className="h-4 w-4" />
-                    Kategorie strategiczne
-                  </h3>
-                  <div className="space-y-2">
-                    {strategicCategories.map((category) => (
-                      <div
-                        key={category.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-4 w-4 rounded-full"
-                            style={{ backgroundColor: category.color }}
-                          />
-                          <span className="font-medium">{category.name}</span>
-                          <Badge variant="secondary" className="text-xs">
-                            <Star className="h-3 w-3 mr-1" />
-                            Strategiczna
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={category.isStrategic}
-                            onCheckedChange={() => handleToggleStrategic(category)}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteCategory(category.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+            <div className="border rounded-lg overflow-hidden">
+              {/* Table Header */}
+              <div className="grid grid-cols-[60px_1fr_120px_60px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+                <div>Kolor</div>
+                <div>Nazwa kategorii</div>
+                <div className="flex items-center gap-1">
+                  <Star className="h-3 w-3" />
+                  Strategiczna
+                </div>
+                <div></div>
+              </div>
+
+              {/* Existing Categories */}
+              {sortedCategories.map((category) => (
+                <div
+                  key={category.id}
+                  className="grid grid-cols-[60px_1fr_120px_60px] gap-2 p-3 border-b last:border-b-0 items-center hover:bg-muted/30 transition-colors"
+                >
+                  {/* Color picker */}
+                  <div className="relative group">
+                    <div
+                      className="h-6 w-6 rounded-full cursor-pointer border-2 border-transparent hover:border-foreground/20 transition-all"
+                      style={{ backgroundColor: category.color }}
+                    />
+                    <div className="absolute left-0 top-8 z-10 hidden group-hover:flex flex-wrap gap-1 p-2 bg-popover border rounded-lg shadow-lg w-[140px]">
+                      {COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`h-5 w-5 rounded-full border transition-all ${
+                            category.color === color
+                              ? "border-foreground scale-110"
+                              : "border-transparent hover:scale-105"
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => handleUpdateColor(category, color)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Name */}
+                  <div>
+                    {editingId === category.id ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, () => handleSaveEdit(category.id))}
+                          onBlur={() => handleSaveEdit(category.id)}
+                          className="h-8"
+                          autoFocus
+                        />
                       </div>
-                    ))}
+                    ) : (
+                      <div
+                        className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2"
+                        onClick={() => handleStartEdit(category)}
+                      >
+                        {category.name}
+                        {category.isStrategic && (
+                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Strategic switch */}
+                  <div className="flex justify-center">
+                    <Switch
+                      checked={category.isStrategic}
+                      onCheckedChange={() => handleToggleStrategic(category)}
+                    />
+                  </div>
+
+                  {/* Delete */}
+                  <div className="flex justify-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleDeleteCategory(category.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
                 </div>
-              )}
+              ))}
 
-              {strategicCategories.length > 0 && regularCategories.length > 0 && (
-                <Separator />
-              )}
+              {/* New Row */}
+              {isAddingNew ? (
+                <div className="grid grid-cols-[60px_1fr_120px_60px] gap-2 p-3 items-center bg-primary/5">
+                  {/* Color picker for new */}
+                  <div className="relative group">
+                    <div
+                      className="h-6 w-6 rounded-full cursor-pointer border-2 border-transparent hover:border-foreground/20 transition-all"
+                      style={{ backgroundColor: newRow.color }}
+                    />
+                    <div className="absolute left-0 top-8 z-10 hidden group-hover:flex flex-wrap gap-1 p-2 bg-popover border rounded-lg shadow-lg w-[140px]">
+                      {COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`h-5 w-5 rounded-full border transition-all ${
+                            newRow.color === color
+                              ? "border-foreground scale-110"
+                              : "border-transparent hover:scale-105"
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setNewRow({ ...newRow, color })}
+                        />
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Regular Categories */}
-              {regularCategories.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                    Pozostałe kategorie
-                  </h3>
-                  <div className="space-y-2">
-                    {regularCategories.map((category) => (
-                      <div
-                        key={category.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-4 w-4 rounded-full"
-                            style={{ backgroundColor: category.color }}
-                          />
-                          <span className="font-medium">{category.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={category.isStrategic}
-                            onCheckedChange={() => handleToggleStrategic(category)}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteCategory(category.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                  {/* Name input */}
+                  <Input
+                    ref={newRowRef}
+                    placeholder="Wpisz nazwę kategorii..."
+                    value={newRow.name}
+                    onChange={(e) => setNewRow({ ...newRow, name: e.target.value })}
+                    onKeyDown={(e) => handleKeyDown(e, handleCreateCategory)}
+                    className="h-8"
+                  />
+
+                  {/* Strategic switch */}
+                  <div className="flex justify-center">
+                    <Switch
+                      checked={newRow.isStrategic}
+                      onCheckedChange={(checked: boolean) =>
+                        setNewRow({ ...newRow, isStrategic: checked })
+                      }
+                    />
+                  </div>
+
+                  {/* Save button */}
+                  <div className="flex justify-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={handleCreateCategory}
+                      disabled={!newRow.name.trim()}
+                    >
+                      <Check className="h-4 w-4 text-green-500" />
+                    </Button>
                   </div>
                 </div>
+              ) : (
+                <button
+                  onClick={handleAddRowClick}
+                  className="w-full p-3 text-left text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj kategorię...
+                </button>
               )}
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Create Category Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nowa kategoria</DialogTitle>
-            <DialogDescription>
-              Dodaj kategorię dla zadań i celów
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreateCategory}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="categoryName">Nazwa kategorii</Label>
-                <Input
-                  id="categoryName"
-                  placeholder="np. Firma X, Rozwój osobisty, Zdrowie"
-                  value={newCategory.name}
-                  onChange={(e) =>
-                    setNewCategory({ ...newCategory, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Kolor</Label>
-                <div className="flex flex-wrap gap-2">
-                  {COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={`h-8 w-8 rounded-full border-2 transition-all ${
-                        newCategory.color === color
-                          ? "border-foreground scale-110"
-                          : "border-transparent"
-                      }`}
-                      style={{ backgroundColor: color }}
-                      onClick={() =>
-                        setNewCategory({ ...newCategory, color })
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Kategoria strategiczna</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Umożliwia przypisywanie celów okresowych
-                  </p>
-                </div>
-                <Switch
-                  checked={newCategory.isStrategic}
-                  onCheckedChange={(checked) =>
-                    setNewCategory({ ...newCategory, isStrategic: checked })
-                  }
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowCreate(false)}
-              >
-                Anuluj
-              </Button>
-              <Button type="submit">Dodaj kategorię</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
