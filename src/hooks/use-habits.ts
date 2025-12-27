@@ -1,6 +1,13 @@
 import useSWR from 'swr'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
+interface HabitCompletion {
+  id: string
+  date: string
+  count: number
+  minutes?: number | null
+}
+
 interface Habit {
   id: string
   name: string
@@ -13,6 +20,7 @@ interface Habit {
   currentStreak: number
   longestStreak: number
   isActive: boolean
+  completions: HabitCompletion[]
   category?: {
     id: string
     name: string
