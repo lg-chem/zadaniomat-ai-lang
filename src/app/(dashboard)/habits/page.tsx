@@ -19,6 +19,7 @@ import {
   Flame,
   Trash2,
   X,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +39,7 @@ interface HabitCompletion {
   id: string
   date: string
   count: number
+  minutes?: number | null
 }
 
 interface Habit {
@@ -46,6 +48,7 @@ interface Habit {
   description?: string | null
   frequency: HabitFrequency
   targetCount: number
+  defaultMinutes?: number | null
   color: string
   currentStreak: number
   longestStreak: number
@@ -76,8 +79,13 @@ export default function HabitsPage() {
     name: "",
     color: COLORS[0],
     frequency: "DAILY" as HabitFrequency,
+    defaultMinutes: "",
   })
   const newHabitRef = useRef<HTMLInputElement>(null)
+
+  // Time editing state
+  const [editingTime, setEditingTime] = useState<{ habitId: string; date: string } | null>(null)
+  const [timeValue, setTimeValue] = useState("")
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
@@ -120,7 +128,7 @@ export default function HabitsPage() {
       })
       if (res.ok) {
         fetchHabits()
-        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY" })
+        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
         setIsAddingHabit(false)
       }
     } catch (error) {
@@ -128,16 +136,38 @@ export default function HabitsPage() {
     }
   }
 
-  const handleToggleCompletion = async (habitId: string, date: Date) => {
+  const handleToggleCompletion = async (habitId: string, date: Date, minutes?: string) => {
     try {
       await fetch(`/api/habits/${habitId}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: format(date, "yyyy-MM-dd") }),
+        body: JSON.stringify({
+          date: format(date, "yyyy-MM-dd"),
+          ...(minutes !== undefined && { minutes }),
+        }),
       })
       fetchHabits()
     } catch (error) {
       console.error("Error toggling habit:", error)
+    }
+  }
+
+  const handleUpdateTime = async (habitId: string, date: string) => {
+    if (!timeValue) {
+      setEditingTime(null)
+      return
+    }
+    try {
+      await fetch(`/api/habits/${habitId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, minutes: timeValue }),
+      })
+      fetchHabits()
+      setEditingTime(null)
+      setTimeValue("")
+    } catch (error) {
+      console.error("Error updating time:", error)
     }
   }
 
@@ -151,9 +181,9 @@ export default function HabitsPage() {
     }
   }
 
-  const isCompletedOnDate = (habit: Habit, date: Date): boolean => {
+  const getCompletionOnDate = (habit: Habit, date: Date): HabitCompletion | undefined => {
     const dateStr = format(date, "yyyy-MM-dd")
-    return habit.completions.some((c) => {
+    return habit.completions.find((c) => {
       const completionDate = format(new Date(c.date), "yyyy-MM-dd")
       return completionDate === dateStr
     })
@@ -166,7 +196,9 @@ export default function HabitsPage() {
     }
     if (e.key === "Escape") {
       setIsAddingHabit(false)
-      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY" })
+      setEditingTime(null)
+      setTimeValue("")
+      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
     }
   }
 
@@ -181,6 +213,9 @@ export default function HabitsPage() {
     0
   )
   const maxStreak = habits.reduce((max, h) => Math.max(max, h.currentStreak), 0)
+  const totalMinutesThisWeek = habits.reduce((sum, h) => {
+    return sum + h.completions.reduce((cSum, c) => cSum + (c.minutes || h.defaultMinutes || 0), 0)
+  }, 0)
 
   if (isLoading) {
     return (
@@ -236,6 +271,19 @@ export default function HabitsPage() {
               <div className="text-2xl font-bold">{maxStreak} dni</div>
             </div>
           </div>
+          {totalMinutesThisWeek > 0 && (
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-blue-500" />
+              <div>
+                <div className="text-sm text-muted-foreground">Czas w tym tygodniu</div>
+                <div className="text-2xl font-bold">
+                  {totalMinutesThisWeek >= 60
+                    ? `${Math.floor(totalMinutesThisWeek / 60)}h ${totalMinutesThisWeek % 60}m`
+                    : `${totalMinutesThisWeek}m`}
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -280,15 +328,24 @@ export default function HabitsPage() {
                   <Badge variant="secondary" className="text-[10px]">
                     {FREQUENCY_LABELS[habit.frequency]}
                   </Badge>
+                  {habit.defaultMinutes && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                      <Clock className="h-3 w-3" />
+                      {habit.defaultMinutes}m
+                    </span>
+                  )}
                 </div>
 
                 {/* Day checkboxes */}
                 {weekDays.map((day) => {
-                  const completed = isCompletedOnDate(habit, day)
+                  const completion = getCompletionOnDate(habit, day)
+                  const completed = !!completion
                   const isFuture = day > new Date()
+                  const dateStr = format(day, "yyyy-MM-dd")
+                  const isEditing = editingTime?.habitId === habit.id && editingTime?.date === dateStr
 
                   return (
-                    <div key={day.toISOString()} className="flex justify-center">
+                    <div key={day.toISOString()} className="flex flex-col items-center gap-0.5">
                       <button
                         onClick={() => !isFuture && handleToggleCompletion(habit.id, day)}
                         disabled={isFuture}
@@ -306,6 +363,31 @@ export default function HabitsPage() {
                       >
                         {completed && <Check className="h-4 w-4" />}
                       </button>
+                      {/* Time display/edit */}
+                      {completed && (habit.defaultMinutes || completion.minutes) && (
+                        isEditing ? (
+                          <Input
+                            type="number"
+                            value={timeValue}
+                            onChange={(e) => setTimeValue(e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTime(habit.id, dateStr))}
+                            onBlur={() => handleUpdateTime(habit.id, dateStr)}
+                            className="h-5 w-12 text-[10px] text-center p-0"
+                            autoFocus
+                          />
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditingTime({ habitId: habit.id, date: dateStr })
+                              setTimeValue(completion.minutes?.toString() || habit.defaultMinutes?.toString() || "")
+                            }}
+                            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                          >
+                            <Clock className="h-2.5 w-2.5" />
+                            {completion.minutes || habit.defaultMinutes}m
+                          </button>
+                        )
+                      )}
                     </div>
                   )
                 })}
@@ -382,6 +464,17 @@ export default function HabitsPage() {
                       <SelectItem value="MONTHLY">Co miesiąc</SelectItem>
                     </SelectContent>
                   </Select>
+
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      placeholder="min"
+                      value={newHabit.defaultMinutes}
+                      onChange={(e) => setNewHabit({ ...newHabit, defaultMinutes: e.target.value })}
+                      className="h-8 w-16 text-xs"
+                    />
+                  </div>
                 </div>
 
                 {/* Empty cells for days */}
@@ -408,7 +501,7 @@ export default function HabitsPage() {
                     className="h-7 w-7"
                     onClick={() => {
                       setIsAddingHabit(false)
-                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY" })
+                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
                     }}
                   >
                     <X className="h-3.5 w-3.5" />

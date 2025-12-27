@@ -282,6 +282,7 @@ model Habit {
   description   String?
   frequency     HabitFrequency @default(DAILY)
   targetCount   Int           @default(1) // Times per frequency
+  defaultMinutes Int?          // Default time for this habit
   color         String        @default("#10b981")
   icon          String?
   currentStreak Int           @default(0)
@@ -310,6 +311,7 @@ model HabitCompletion {
   id          String   @id @default(cuid())
   date        DateTime @db.Date
   count       Int      @default(1)
+  minutes     Int?     // Time spent on habit
   notes       String?
   createdAt   DateTime @default(now())
 

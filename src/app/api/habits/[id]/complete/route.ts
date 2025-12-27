@@ -15,7 +15,7 @@ export async function POST(
 
     const { id } = params
     const body = await req.json()
-    const { date, notes } = body
+    const { date, notes, minutes } = body
 
     const habit = await prisma.habit.findFirst({
       where: { id, userId: session.user.id },
@@ -39,6 +39,15 @@ export async function POST(
     })
 
     if (existing) {
+      // If minutes provided, update existing completion's time instead of toggling off
+      if (minutes !== undefined) {
+        const updated = await prisma.habitCompletion.update({
+          where: { id: existing.id },
+          data: { minutes: minutes ? parseInt(minutes) : null },
+        })
+        return NextResponse.json({ completed: true, minutes: updated.minutes })
+      }
+
       // Toggle off - delete completion
       await prisma.habitCompletion.delete({
         where: { id: existing.id },
@@ -55,11 +64,17 @@ export async function POST(
       return NextResponse.json({ completed: false })
     }
 
+    // Determine minutes to save (provided or default from habit)
+    const minutesToSave = minutes !== undefined
+      ? (minutes ? parseInt(minutes) : null)
+      : habit.defaultMinutes
+
     // Create completion
     await prisma.habitCompletion.create({
       data: {
         habitId: id,
         date: completionDate,
+        minutes: minutesToSave,
         notes,
       },
     })

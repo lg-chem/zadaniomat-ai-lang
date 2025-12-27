@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, frequency, targetCount, color, icon, categoryId } = body
+    const { name, description, frequency, targetCount, defaultMinutes, color, icon, categoryId } = body
 
     if (!name) {
       return NextResponse.json({ error: "Nazwa jest wymagana" }, { status: 400 })
@@ -66,6 +66,7 @@ export async function POST(req: Request) {
         description,
         frequency: frequency || "DAILY",
         targetCount: targetCount || 1,
+        defaultMinutes: defaultMinutes ? parseInt(defaultMinutes) : null,
         color: color || "#10b981",
         icon,
         categoryId,
