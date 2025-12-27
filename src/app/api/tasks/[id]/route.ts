@@ -73,6 +73,8 @@ export async function PATCH(
       orderInDay,
       goalId,
       sprintId,
+      isRecurring,
+      recurrenceRule,
     } = body
 
     const updateData: Record<string, unknown> = {}
@@ -95,6 +97,8 @@ export async function PATCH(
     if (orderInDay !== undefined) updateData.orderInDay = orderInDay
     if (goalId !== undefined) updateData.goalId = goalId
     if (sprintId !== undefined) updateData.sprintId = sprintId
+    if (isRecurring !== undefined) updateData.isRecurring = isRecurring
+    if (recurrenceRule !== undefined) updateData.recurrenceRule = recurrenceRule
 
     const task = await prisma.task.update({
       where: { id },

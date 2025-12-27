@@ -13,15 +13,13 @@ import {
   Check,
   X,
   ArrowRight,
-  Clock,
   Trash2,
-  GripVertical,
   Sparkles,
+  Repeat,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -34,6 +32,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimerStore, formatMinutes } from "@/stores/timer-store"
 
 type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
+type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
 
 interface Category {
   id: string
@@ -55,6 +54,8 @@ interface Task {
   categoryId?: string | null
   goalId?: string | null
   goal?: { id: string; title: string } | null
+  isRecurring?: boolean
+  recurrenceRule?: RecurrenceRule
 }
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -73,6 +74,14 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   TO_TRANSFER: "bg-orange-100 text-orange-800",
 }
 
+const RECURRENCE_OPTIONS = [
+  { value: "none", label: "Brak" },
+  { value: "DAILY", label: "Codziennie" },
+  { value: "WEEKDAYS", label: "Dni robocze" },
+  { value: "WEEKLY", label: "Co tydzień" },
+  { value: "MONTHLY", label: "Co miesiąc" },
+]
+
 export default function SchedulePage() {
   const { workspace } = useWorkspaceStore()
   const timerStore = useTimerStore()
@@ -87,6 +96,7 @@ export default function SchedulePage() {
     title: "",
     categoryId: "",
     plannedMinutes: "25",
+    recurrenceRule: "none",
   })
   const [isAddingTask, setIsAddingTask] = useState(false)
   const newTaskRef = useRef<HTMLInputElement>(null)
@@ -96,6 +106,19 @@ export default function SchedulePage() {
   const [editingTitle, setEditingTitle] = useState("")
 
   const dateString = format(selectedDate, "yyyy-MM-dd")
+
+  // Generate recurring tasks for the selected date
+  const generateRecurringTasks = useCallback(async () => {
+    try {
+      await fetch("/api/tasks/generate-recurring", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dateString, workspace }),
+      })
+    } catch (error) {
+      console.error("Error generating recurring tasks:", error)
+    }
+  }, [dateString, workspace])
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -126,10 +149,14 @@ export default function SchedulePage() {
   }, [workspace])
 
   useEffect(() => {
-    setIsLoading(true)
-    fetchTasks()
-    fetchCategories()
-  }, [fetchTasks, fetchCategories])
+    const loadData = async () => {
+      setIsLoading(true)
+      await generateRecurringTasks()
+      await fetchTasks()
+      await fetchCategories()
+    }
+    loadData()
+  }, [generateRecurringTasks, fetchTasks, fetchCategories])
 
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1))
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))
@@ -137,6 +164,8 @@ export default function SchedulePage() {
 
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) return
+
+    const isRecurring = newTask.recurrenceRule !== "none"
 
     try {
       const res = await fetch("/api/tasks", {
@@ -150,11 +179,13 @@ export default function SchedulePage() {
           orderInDay: tasks.length,
           workspaceType: workspace,
           status: "NEW",
+          isRecurring,
+          recurrenceRule: isRecurring ? newTask.recurrenceRule : null,
         }),
       })
       if (res.ok) {
         fetchTasks()
-        setNewTask({ title: "", categoryId: "", plannedMinutes: "25" })
+        setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
         setIsAddingTask(false)
       }
     } catch (error) {
@@ -258,6 +289,23 @@ export default function SchedulePage() {
     }
   }
 
+  const handleUpdateTaskRecurrence = async (taskId: string, recurrence: string) => {
+    const isRecurring = recurrence !== "none"
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isRecurring,
+          recurrenceRule: isRecurring ? recurrence : null,
+        }),
+      })
+      fetchTasks()
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to zadanie?")) return
     try {
@@ -298,7 +346,7 @@ export default function SchedulePage() {
     if (e.key === "Escape") {
       setIsAddingTask(false)
       setEditingTaskId(null)
-      setNewTask({ title: "", categoryId: "", plannedMinutes: "25" })
+      setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
     }
   }
 
@@ -396,10 +444,14 @@ export default function SchedulePage() {
         <CardContent>
           <div className="border rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[180px_1fr_80px_200px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+            <div className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Kategoria</div>
               <div>Nazwa zadania</div>
               <div>Czas</div>
+              <div className="flex items-center gap-1">
+                <Repeat className="h-3 w-3" />
+                Powtarzaj
+              </div>
               <div>Akcje</div>
             </div>
 
@@ -407,7 +459,7 @@ export default function SchedulePage() {
             {tasks.map((task) => (
               <div
                 key={task.id}
-                className={`grid grid-cols-[180px_1fr_80px_200px] gap-2 p-3 border-b last:border-b-0 items-center transition-colors ${
+                className={`grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b last:border-b-0 items-center transition-colors ${
                   task.status === "COMPLETED"
                     ? "bg-muted/30 opacity-60"
                     : task.status === "IN_PROGRESS"
@@ -480,8 +532,11 @@ export default function SchedulePage() {
                       }`}
                       onClick={() => handleStartEdit(task)}
                     >
-                      {task.title}
-                      <Badge className={`${STATUS_COLORS[task.status]} text-[10px]`}>
+                      {task.isRecurring && (
+                        <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                      )}
+                      <span className="truncate">{task.title}</span>
+                      <Badge className={`${STATUS_COLORS[task.status]} text-[10px] flex-shrink-0`}>
                         {STATUS_LABELS[task.status]}
                       </Badge>
                     </div>
@@ -498,6 +553,25 @@ export default function SchedulePage() {
                     onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)}
                     className="h-8 text-center text-xs"
                   />
+                </div>
+
+                {/* Recurrence */}
+                <div>
+                  <Select
+                    value={task.recurrenceRule || "none"}
+                    onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECURRENCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Actions */}
@@ -566,7 +640,7 @@ export default function SchedulePage() {
 
             {/* Add New Task Row */}
             {isAddingTask ? (
-              <div className="grid grid-cols-[180px_1fr_80px_200px] gap-2 p-3 items-center bg-primary/5">
+              <div className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 items-center bg-primary/5">
                 {/* Category Select */}
                 <div>
                   <Select
@@ -622,6 +696,25 @@ export default function SchedulePage() {
                   />
                 </div>
 
+                {/* Recurrence Select */}
+                <div>
+                  <Select
+                    value={newTask.recurrenceRule}
+                    onValueChange={(value) => setNewTask({ ...newTask, recurrenceRule: value })}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECURRENCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Save Button */}
                 <div className="flex items-center gap-1">
                   <Button
@@ -639,7 +732,7 @@ export default function SchedulePage() {
                     className="h-7 w-7"
                     onClick={() => {
                       setIsAddingTask(false)
-                      setNewTask({ title: "", categoryId: "", plannedMinutes: "25" })
+                      setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
                     }}
                   >
                     <X className="h-3.5 w-3.5" />

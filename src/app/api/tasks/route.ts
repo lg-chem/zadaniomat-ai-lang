@@ -13,6 +13,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
     const date = searchParams.get("date")
+    const startDate = searchParams.get("startDate")
+    const endDate = searchParams.get("endDate")
     const status = searchParams.get("status")
     const categoryId = searchParams.get("categoryId")
 
@@ -23,6 +25,11 @@ export async function GET(req: Request) {
 
     if (date) {
       where.scheduledDate = new Date(date)
+    } else if (startDate && endDate) {
+      where.scheduledDate = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      }
     }
 
     if (status) {
@@ -80,6 +87,8 @@ export async function POST(req: Request) {
       sprintId,
       orderInDay,
       status,
+      isRecurring,
+      recurrenceRule,
     } = body
 
     if (!title) {
@@ -100,6 +109,8 @@ export async function POST(req: Request) {
         sprintId,
         orderInDay: orderInDay || 0,
         status: status || "NEW",
+        isRecurring: isRecurring || false,
+        recurrenceRule: recurrenceRule || null,
         userId: session.user.id,
       },
       include: {
