@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     })
 
     // Check which recurring tasks should occur on target date
-    const tasksToGenerate = recurringTasks.filter((task) =>
+    const tasksToGenerate = recurringTasks.filter((task: typeof recurringTasks[number]) =>
       shouldTaskOccurOnDate(task, targetDate)
     )
 
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     for (const task of tasksToGenerate) {
       // Check if a similar task already exists (same title, same category, or it's the original recurring task on its start date)
       const alreadyExists = existingTasks.some(
-        (existing) =>
+        (existing: typeof existingTasks[number]) =>
           existing.title === task.title &&
           existing.categoryId === task.categoryId
       )

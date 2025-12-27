@@ -18,6 +18,7 @@ import {
   Repeat,
   Flame,
   CalendarDays,
+  Dumbbell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -42,6 +43,7 @@ const privateNavItems = [
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
+  { href: "/sport", label: "Sport", icon: Dumbbell },
   { href: "/goals", label: "Cele", icon: Target },
   { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },

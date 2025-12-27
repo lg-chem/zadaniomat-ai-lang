@@ -33,6 +33,9 @@ model User {
   backlogItems  BacklogItem[]
   aiConversations AIConversation[]
   settings      UserSettings?
+  sportActivityTypes SportActivityType[]
+  sportActivities SportActivity[]
+  stepsEntries  StepsEntry[]
 }
 
 model Account {
@@ -490,4 +493,68 @@ model AIMessage {
   conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
+}
+
+// ==================== SPORT ====================
+
+model SportActivityType {
+  id          String   @id @default(cuid())
+  name        String
+  icon        String?
+  color       String   @default("#3b82f6")
+  isDefault   Boolean  @default(false) // Default types: siłownia, padel, basen, rower
+  hasBodyParts Boolean @default(false) // Only gym has body parts
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activities  SportActivity[]
+
+  @@index([userId])
+}
+
+model SportActivity {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  duration    Int?     // Duration in minutes
+  notes       String?
+  fromSteps   Boolean  @default(false) // If copied from steps
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  typeId      String
+  type        SportActivityType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  bodyParts   SportBodyPart[]
+
+  @@index([userId, date])
+}
+
+model SportBodyPart {
+  id          String   @id @default(cuid())
+  name        String   // klata, plecy, barki, biceps, triceps, pośladki, nogi, brzuch
+
+  // Relations
+  activityId  String
+  activity    SportActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+}
+
+model StepsEntry {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  count       Int      // Number of steps
+  notes       String?
+  copiedToActivity Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
