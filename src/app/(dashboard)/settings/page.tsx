@@ -228,10 +228,10 @@ export default function SettingsPage() {
   })
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-4 md:space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-3xl font-bold">Ustawienia</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold">Ustawienia</h1>
+        <p className="text-sm md:text-base text-muted-foreground">
           Zarządzaj kategoriami i konfiguracją
         </p>
       </div>

@@ -202,17 +202,17 @@ export default function RecurringPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Zadania Cykliczne</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Zadania Cykliczne</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Zarządzaj zadaniami, które powtarzają się regularnie
           </p>
         </div>
 
-        <Button onClick={() => setIsDialogOpen(true)}>
+        <Button onClick={() => setIsDialogOpen(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Nowe zadanie cykliczne
         </Button>
@@ -243,7 +243,7 @@ export default function RecurringPage() {
       {Object.entries(groupedTasks).map(([rule, ruleTasks]) => (
         <Card key={rule}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
+            <CardTitle className="text-base md:text-lg flex items-center gap-2">
               <Repeat className="h-5 w-5" />
               {getRecurrenceLabel(rule)}
               <Badge variant="secondary">{ruleTasks.length}</Badge>

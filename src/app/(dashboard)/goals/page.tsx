@@ -206,16 +206,16 @@ export default function GoalsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Cele</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Cele</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Zarządzaj celami okresowymi i sprintowymi
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
+        <Button onClick={() => setShowCreate(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Nowy cel
         </Button>
@@ -239,7 +239,7 @@ export default function GoalsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:gap-4 md:grid-cols-2">
             {activeGoals.map((goal) => (
               <Card key={goal.id}>
                 <CardHeader className="pb-2">

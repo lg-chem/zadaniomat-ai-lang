@@ -226,12 +226,12 @@ export default function HabitsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Nawyki</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Nawyki</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Śledź codzienne nawyki i buduj streak
           </p>
         </div>
@@ -290,7 +290,7 @@ export default function HabitsPage() {
       {/* Habits Table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Tracker nawyków</CardTitle>
+          <CardTitle className="text-base md:text-lg">Tracker nawyków</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="border rounded-lg overflow-hidden">

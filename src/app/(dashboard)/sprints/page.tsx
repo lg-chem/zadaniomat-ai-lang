@@ -309,16 +309,16 @@ export default function SprintsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Okresy i Sprinty</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Okresy i Sprinty</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Zarządzaj okresami, sprintami i celami
           </p>
         </div>
-        <Button onClick={() => setShowCreatePeriod(true)}>
+        <Button onClick={() => setShowCreatePeriod(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Nowy okres
         </Button>
@@ -355,7 +355,7 @@ export default function SprintsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 md:space-y-4">
           {periods.map((period) => {
             const { grouped: periodGoalsByCategory, uncategorized: periodUncategorizedGoals } =
               groupGoalsByCategory(period.goals)
@@ -374,7 +374,7 @@ export default function SprintsPage() {
                         <ChevronRight className="h-5 w-5" />
                       )}
                       <div>
-                        <CardTitle className="text-xl">{period.name}</CardTitle>
+                        <CardTitle className="text-lg md:text-xl">{period.name}</CardTitle>
                         <CardDescription>
                           {format(new Date(period.startDate), "d MMM yyyy", { locale: pl })}
                           {" - "}
@@ -406,8 +406,8 @@ export default function SprintsPage() {
                   <CardContent className="pt-0 space-y-6">
                     {/* Period Goals by Strategic Categories */}
                     <div className="ml-8 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
                           <Target className="h-5 w-5" />
                           Cele okresowe
                         </h3>
@@ -481,7 +481,7 @@ export default function SprintsPage() {
 
                     {/* Sprints */}
                     <div className="ml-8 space-y-3">
-                      <h3 className="text-lg font-semibold">Sprinty</h3>
+                      <h3 className="text-base md:text-lg font-semibold">Sprinty</h3>
 
                       {period.sprints.length === 0 ? (
                         <p className="text-muted-foreground text-sm py-2">

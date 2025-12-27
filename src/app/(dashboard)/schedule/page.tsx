@@ -419,12 +419,12 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header with date navigation */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Harmonogram dnia</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Harmonogram dnia</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Planuj i śledź zadania na każdy dzień
           </p>
         </div>
@@ -478,8 +478,8 @@ export default function SchedulePage() {
       {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle className="text-base md:text-lg flex items-center gap-2">
                 <Target className="h-5 w-5" />
                 Cele sprintu: {activeSprint.name}
               </CardTitle>
@@ -490,7 +490,7 @@ export default function SchedulePage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
               {activeSprint.goals.map((goal) => {
                 const progress = goal.targetValue
                   ? Math.min(100, (goal.currentValue / goal.targetValue) * 100)
@@ -544,7 +544,7 @@ export default function SchedulePage() {
       {/* Task Table - Spreadsheet style */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Zadania na dziś</CardTitle>
+          <CardTitle className="text-base md:text-lg">Zadania na dziś</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="border rounded-lg overflow-hidden">

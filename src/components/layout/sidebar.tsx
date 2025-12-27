@@ -59,7 +59,8 @@ const bottomNavItems = [
   { href: "/settings", label: "Ustawienia", icon: Settings },
 ]
 
-export function Sidebar() {
+// Sidebar content component that can be used in both desktop sidebar and mobile sheet
+export function SidebarContent() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { workspace } = useWorkspaceStore()
@@ -72,94 +73,101 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-card">
-      <div className="flex h-full flex-col">
-        {/* Logo */}
-        <div className="flex h-16 items-center gap-2 border-b px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <CheckSquare className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-bold">Zadaniomat</span>
+    <div className="flex h-full flex-col">
+      {/* Logo */}
+      <div className="flex h-16 items-center gap-2 border-b px-6">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+          <CheckSquare className="h-5 w-5 text-primary-foreground" />
         </div>
+        <span className="text-lg font-bold">Zadaniomat</span>
+      </div>
 
-        {/* Workspace Switcher */}
-        <div className="p-4">
-          <WorkspaceSwitcher />
-        </div>
+      {/* Workspace Switcher */}
+      <div className="p-4">
+        <WorkspaceSwitcher />
+      </div>
 
-        <Separator />
+      <Separator />
 
-        {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-4">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive(item.href)
-                  ? workspace === "WORK"
-                    ? "bg-work/10 text-work"
-                    : "bg-private/10 text-private"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+      {/* Navigation */}
+      <nav className="flex-1 space-y-1 p-4">
+        {navItems.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              isActive(item.href)
+                ? workspace === "WORK"
+                  ? "bg-work/10 text-work"
+                  : "bg-private/10 text-private"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            <item.icon className="h-5 w-5" />
+            {item.label}
+          </Link>
+        ))}
+      </nav>
 
-        <Separator />
+      <Separator />
 
-        {/* Bottom Navigation */}
-        <nav className="space-y-1 p-4">
-          {bottomNavItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive(item.href)
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+      {/* Bottom Navigation */}
+      <nav className="space-y-1 p-4">
+        {bottomNavItems.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              isActive(item.href)
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            <item.icon className="h-5 w-5" />
+            {item.label}
+          </Link>
+        ))}
+      </nav>
 
-        <Separator />
+      <Separator />
 
-        {/* User */}
-        <div className="p-4">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-9 w-9">
-              <AvatarImage src={session?.user?.image || ""} />
-              <AvatarFallback>
-                {session?.user?.name?.charAt(0) || session?.user?.email?.charAt(0) || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">
-                {session?.user?.name || "Użytkownik"}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">
-                {session?.user?.email}
-              </p>
-            </div>
-            <button
-              onClick={() => signOut()}
-              className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent"
-              title="Wyloguj"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+      {/* User */}
+      <div className="p-4">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={session?.user?.image || ""} />
+            <AvatarFallback>
+              {session?.user?.name?.charAt(0) || session?.user?.email?.charAt(0) || "U"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">
+              {session?.user?.name || "Użytkownik"}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {session?.user?.email}
+            </p>
           </div>
+          <button
+            onClick={() => signOut()}
+            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent"
+            title="Wyloguj"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Desktop sidebar - hidden on mobile
+export function Sidebar() {
+  return (
+    <aside className="hidden md:fixed md:left-0 md:top-0 md:z-40 md:h-screen md:w-64 md:border-r md:bg-card md:block">
+      <SidebarContent />
     </aside>
   )
 }

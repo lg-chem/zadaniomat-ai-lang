@@ -390,12 +390,12 @@ export default function ChallengesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Wyzwania</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Wyzwania</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Ustaw cele i śledź postępy
           </p>
         </div>
@@ -411,7 +411,7 @@ export default function ChallengesPage() {
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Nowe wyzwanie
               </Button>
@@ -612,7 +612,7 @@ export default function ChallengesPage() {
       </Card>
 
       {/* Challenges Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
         {challenges.map((challenge) => {
           const progress = (challenge.currentValue / challenge.targetValue) * 100
           const progressCapped = Math.min(100, progress)
@@ -636,7 +636,7 @@ export default function ChallengesPage() {
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: challenge.color }}
                     />
-                    <CardTitle className="text-base">{challenge.name}</CardTitle>
+                    <CardTitle className="text-sm md:text-base">{challenge.name}</CardTitle>
                     {challenge.challengeType === "WEEKLY_HABIT" && (
                       <Badge variant="secondary" className="text-[10px]">
                         {challenge.weeklyTarget}x/tyg

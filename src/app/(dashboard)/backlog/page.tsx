@@ -164,12 +164,12 @@ export default function BacklogPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Backlog</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Backlog</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Szybkie zapisywanie pomysłów i zadań do przetworzenia
           </p>
         </div>
@@ -202,7 +202,7 @@ export default function BacklogPage() {
       {/* Backlog List */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base md:text-lg flex items-center gap-2">
             <Inbox className="h-5 w-5" />
             Lista pomysłów
           </CardTitle>
