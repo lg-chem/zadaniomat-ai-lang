@@ -3,22 +3,23 @@
 import { useEffect } from "react"
 import { Play, Pause, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useTimerStore } from "@/stores/timer-store"
+import { useTimerStore, formatTime } from "@/stores/timer-store"
 import { cn } from "@/lib/utils"
 
 interface TaskTimerProps {
   taskId: string
   taskTitle?: string
+  plannedMinutes?: number
   onStop?: (duration: number) => void
   compact?: boolean
 }
 
-export function TaskTimer({ taskId, taskTitle, onStop, compact = false }: TaskTimerProps) {
+export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact = false }: TaskTimerProps) {
   const {
     isRunning,
     isPaused,
     taskId: activeTaskId,
-    elapsedTime,
+    elapsedSeconds,
     startTimer,
     pauseTimer,
     resumeTimer,
@@ -39,17 +40,6 @@ export function TaskTimer({ taskId, taskTitle, onStop, compact = false }: TaskTi
     return () => clearInterval(interval)
   }, [isRunning, isPaused, tick])
 
-  const formatTime = (seconds: number) => {
-    const hrs = Math.floor(seconds / 3600)
-    const mins = Math.floor((seconds % 3600) / 60)
-    const secs = seconds % 60
-
-    if (hrs > 0) {
-      return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
-    }
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
   const handleStart = () => {
     if (isRunning && activeTaskId !== taskId) {
       // Stop current timer first
@@ -58,7 +48,7 @@ export function TaskTimer({ taskId, taskTitle, onStop, compact = false }: TaskTi
         onStop(result.duration)
       }
     }
-    startTimer(taskId)
+    startTimer(taskId, taskTitle || "Zadanie", plannedMinutes)
   }
 
   const handlePause = () => {
@@ -85,7 +75,7 @@ export function TaskTimer({ taskId, taskTitle, onStop, compact = false }: TaskTi
               "font-mono text-sm",
               isPaused ? "text-muted-foreground" : "text-foreground"
             )}>
-              {formatTime(elapsedTime)}
+              {formatTime(elapsedSeconds)}
             </span>
             <Button
               variant="ghost"
@@ -131,7 +121,7 @@ export function TaskTimer({ taskId, taskTitle, onStop, compact = false }: TaskTi
         "text-4xl font-mono font-bold",
         isActive && !isPaused ? "text-primary" : "text-muted-foreground"
       )}>
-        {isActive ? formatTime(elapsedTime) : "0:00"}
+        {isActive ? formatTime(elapsedSeconds) : "0:00"}
       </div>
 
       <div className="flex items-center gap-2">
