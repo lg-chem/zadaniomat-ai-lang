@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-type ChatMode = "sprint_goals" | "daily_tasks"
+type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -68,6 +68,11 @@ interface Sprint {
   name: string
 }
 
+interface Period {
+  id: string
+  name: string
+}
+
 export default function AIPage() {
   const [mode, setMode] = useState<ChatMode>("daily_tasks")
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -75,6 +80,7 @@ export default function AIPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [sprints, setSprints] = useState<Sprint[]>([])
+  const [periods, setPeriods] = useState<Period[]>([])
 
   // Add goal dialog
   const [addingGoal, setAddingGoal] = useState<GoalProposal | null>(null)
@@ -85,6 +91,7 @@ export default function AIPage() {
     unit: "",
     categoryId: "",
     sprintId: "",
+    periodId: "",
   })
 
   // Add task dialog
@@ -101,6 +108,7 @@ export default function AIPage() {
   useEffect(() => {
     fetchCategories()
     fetchSprints()
+    fetchPeriods()
   }, [])
 
   useEffect(() => {
@@ -133,6 +141,18 @@ export default function AIPage() {
       }
     } catch (error) {
       console.error("Error fetching sprints:", error)
+    }
+  }
+
+  const fetchPeriods = async () => {
+    try {
+      const res = await fetch("/api/periods?workspace=WORK")
+      if (res.ok) {
+        const data = await res.json()
+        setPeriods(data)
+      }
+    } catch (error) {
+      console.error("Error fetching periods:", error)
     }
   }
 
@@ -220,11 +240,15 @@ export default function AIPage() {
       unit: goal.unit || "",
       categoryId: category?.id || "",
       sprintId: "",
+      periodId: "",
     })
   }
 
   const handleAddGoal = async () => {
-    if (!goalForm.title || !goalForm.sprintId) return
+    // For period goals, require periodId; for sprint goals, require sprintId
+    if (!goalForm.title) return
+    if (mode === "period_goals" && !goalForm.periodId) return
+    if (mode === "sprint_goals" && !goalForm.sprintId) return
 
     try {
       await fetch("/api/goals", {
@@ -236,7 +260,8 @@ export default function AIPage() {
           targetValue: goalForm.targetValue ? parseFloat(goalForm.targetValue) : undefined,
           unit: goalForm.unit || undefined,
           categoryId: goalForm.categoryId || undefined,
-          sprintId: goalForm.sprintId,
+          sprintId: mode === "sprint_goals" ? goalForm.sprintId : undefined,
+          periodId: mode === "period_goals" ? goalForm.periodId : undefined,
           workspaceType: "WORK",
         }),
       })
@@ -248,6 +273,7 @@ export default function AIPage() {
         unit: "",
         categoryId: "",
         sprintId: "",
+        periodId: "",
       })
     } catch (error) {
       console.error("Error adding goal:", error)
@@ -292,6 +318,13 @@ export default function AIPage() {
   }
 
   const getQuickPrompts = () => {
+    if (mode === "period_goals") {
+      return [
+        "Zaproponuj długoterminowe cele na okres dla moich kategorii",
+        "Jakie strategiczne cele powinienem sobie postawić na kwartał?",
+        "Pomóż mi zaplanować cele rozwojowe na najbliższe 3 miesiące",
+      ]
+    }
     if (mode === "sprint_goals") {
       return [
         "Zaproponuj cele na sprint bazując na moich celach okresu",
@@ -323,14 +356,21 @@ export default function AIPage() {
 
       {/* Mode Tabs */}
       <Tabs value={mode} onValueChange={(v) => setMode(v as ChatMode)} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
           <TabsTrigger value="daily_tasks" className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4" />
-            Zadania na dziś
+            <span className="hidden sm:inline">Zadania na dziś</span>
+            <span className="sm:hidden">Dziś</span>
+          </TabsTrigger>
+          <TabsTrigger value="period_goals" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            <span className="hidden sm:inline">Cele na okres</span>
+            <span className="sm:hidden">Okres</span>
           </TabsTrigger>
           <TabsTrigger value="sprint_goals" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
-            Cele sprintu
+            <span className="hidden sm:inline">Cele sprintu</span>
+            <span className="sm:hidden">Sprint</span>
           </TabsTrigger>
         </TabsList>
 
@@ -487,7 +527,9 @@ export default function AIPage() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
-                    mode === "sprint_goals"
+                    mode === "period_goals"
+                      ? "Zapytaj o cele na okres..."
+                      : mode === "sprint_goals"
                       ? "Zapytaj o cele sprintu..."
                       : "Zapytaj o zadania na dziś..."
                   }
@@ -506,7 +548,9 @@ export default function AIPage() {
       <Dialog open={!!addingGoal} onOpenChange={(open) => !open && setAddingGoal(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dodaj cel do sprintu</DialogTitle>
+            <DialogTitle>
+              {mode === "period_goals" ? "Dodaj cel na okres" : "Dodaj cel do sprintu"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div>
@@ -566,29 +610,56 @@ export default function AIPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Sprint</Label>
-              <Select
-                value={goalForm.sprintId || "none"}
-                onValueChange={(v) => setGoalForm({ ...goalForm, sprintId: v === "none" ? "" : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Wybierz sprint..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Wybierz sprint</SelectItem>
-                  {sprints.map((sprint) => (
-                    <SelectItem key={sprint.id} value={sprint.id}>
-                      {sprint.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
+            {mode === "period_goals" ? (
+              <div>
+                <Label>Okres</Label>
+                <Select
+                  value={goalForm.periodId || "none"}
+                  onValueChange={(v) => setGoalForm({ ...goalForm, periodId: v === "none" ? "" : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz okres..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Wybierz okres</SelectItem>
+                    {periods.map((period) => (
+                      <SelectItem key={period.id} value={period.id}>
+                        {period.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div>
+                <Label>Sprint</Label>
+                <Select
+                  value={goalForm.sprintId || "none"}
+                  onValueChange={(v) => setGoalForm({ ...goalForm, sprintId: v === "none" ? "" : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz sprint..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Wybierz sprint</SelectItem>
+                    {sprints.map((sprint) => (
+                      <SelectItem key={sprint.id} value={sprint.id}>
+                        {sprint.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <Button
               onClick={handleAddGoal}
               className="w-full"
-              disabled={!goalForm.title || !goalForm.sprintId}
+              disabled={
+                !goalForm.title ||
+                (mode === "period_goals" ? !goalForm.periodId : !goalForm.sprintId)
+              }
             >
               <Plus className="h-4 w-4 mr-2" />
               Dodaj cel

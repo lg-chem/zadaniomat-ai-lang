@@ -6,7 +6,7 @@ import { generateAIResponse } from "@/lib/gemini"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
 
-type ChatMode = "sprint_goals" | "daily_tasks"
+type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals"
 
 interface ChatRequest {
   message: string
@@ -203,6 +203,44 @@ WAŻNE:
     }
   ],
   "message": "Twój komentarz do propozycji"
+}
+
+- Gdy prowadzisz normalną rozmowę, odpowiedz w formacie:
+{
+  "type": "message",
+  "message": "Twoja odpowiedź"
+}
+
+Zawsze odpowiadaj w formacie JSON.`
+  }
+
+  if (mode === "period_goals") {
+    return `Jesteś asystentem do planowania celów na okres (Period). Rozmawiasz po polsku.${customInstructions}
+
+KONTEKST UŻYTKOWNIKA:
+${contextJson}
+
+TWOJE ZADANIE:
+1. Pomagasz użytkownikowi tworzyć długoterminowe cele na okres (zwykle 3 miesiące)
+2. Cele okresowe są strategiczne i skupiają się na rozwoju w kategoriach
+3. Cele okresowe są później dzielone na cele sprintowe (2 tygodnie)
+4. Sugerujesz konkretne, mierzalne cele z wartościami docelowymi
+5. Możesz proponować kategorie dla celów (szczególnie strategiczne)
+
+WAŻNE:
+- Gdy użytkownik poprosi o zaproponowanie celów na okres, odpowiedz w formacie JSON:
+{
+  "type": "goals_proposal",
+  "goals": [
+    {
+      "title": "Tytuł celu okresowego",
+      "description": "Szczegółowy opis dlaczego ten cel jest ważny",
+      "targetValue": 50,
+      "unit": "zadań/godzin/projektów",
+      "category": "Nazwa kategorii lub null"
+    }
+  ],
+  "message": "Twój komentarz do propozycji celów okresowych"
 }
 
 - Gdy prowadzisz normalną rozmowę, odpowiedz w formacie:
