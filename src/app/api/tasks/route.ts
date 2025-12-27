@@ -37,6 +37,9 @@ export async function GET(req: Request) {
       where,
       include: {
         category: true,
+        goal: {
+          select: { id: true, title: true },
+        },
         timeEntries: {
           orderBy: { startTime: "desc" },
           take: 5,
@@ -75,6 +78,8 @@ export async function POST(req: Request) {
       workspaceType = "WORK",
       goalId,
       sprintId,
+      orderInDay,
+      status,
     } = body
 
     if (!title) {
@@ -93,10 +98,15 @@ export async function POST(req: Request) {
         workspaceType,
         goalId,
         sprintId,
+        orderInDay: orderInDay || 0,
+        status: status || "NEW",
         userId: session.user.id,
       },
       include: {
         category: true,
+        goal: {
+          select: { id: true, title: true },
+        },
       },
     })
 

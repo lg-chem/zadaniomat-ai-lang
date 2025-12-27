@@ -100,6 +100,14 @@ enum WorkspaceType {
   PRIVATE
 }
 
+enum TaskStatus {
+  NEW           // Nowe
+  IN_PROGRESS   // Rozpoczęte
+  COMPLETED     // Zakończone
+  CANCELLED     // Anulowane
+  TO_TRANSFER   // Do przeniesienia
+}
+
 // ==================== PERIODS & SPRINTS ====================
 
 model Period {
@@ -213,7 +221,7 @@ model Task {
   id             String        @id @default(cuid())
   title          String
   description    String?       @db.Text
-  status         String        @default("TODO")
+  status         TaskStatus    @default(NEW)
   priority       Int           @default(0) // 0-3: none, low, medium, high
   plannedMinutes Int?
   actualMinutes  Int           @default(0)

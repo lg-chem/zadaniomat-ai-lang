@@ -17,6 +17,7 @@ import {
   Trophy,
   Repeat,
   Flame,
+  CalendarDays,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -26,6 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 const workNavItems = [
   { href: "/", label: "Dziś", icon: LayoutDashboard },
+  { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/tasks", label: "Zadania", icon: CheckSquare },
   { href: "/goals", label: "Cele", icon: Target },
   { href: "/sprints", label: "Sprinty", icon: Timer },
@@ -37,6 +39,7 @@ const workNavItems = [
 
 const privateNavItems = [
   { href: "/", label: "Dziś", icon: LayoutDashboard },
+  { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
   { href: "/goals", label: "Cele", icon: Target },
