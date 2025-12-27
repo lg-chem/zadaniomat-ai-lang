@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useHabits } from "@/hooks/use-habits"
 
 type HabitFrequency = "DAILY" | "WEEKLY" | "MONTHLY"
 
@@ -67,11 +68,12 @@ const FREQUENCY_LABELS: Record<HabitFrequency, string> = {
 }
 
 export default function HabitsPage() {
-  const [habits, setHabits] = useState<Habit[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   )
+
+  // Use SWR hook for habits with cache
+  const { habits, isLoading, mutate: mutateHabits } = useHabits()
 
   // New habit form
   const [isAddingHabit, setIsAddingHabit] = useState(false)
@@ -89,30 +91,6 @@ export default function HabitsPage() {
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
-  const fetchHabits = useCallback(async () => {
-    const startDate = format(weekStart, "yyyy-MM-dd")
-    const endDate = format(addDays(weekStart, 6), "yyyy-MM-dd")
-
-    try {
-      const res = await fetch(
-        `/api/habits?includeCompletions=true&startDate=${startDate}&endDate=${endDate}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setHabits(data)
-      }
-    } catch (error) {
-      console.error("Error fetching habits:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [weekStart])
-
-  useEffect(() => {
-    setIsLoading(true)
-    fetchHabits()
-  }, [fetchHabits])
-
   const handlePrevWeek = () => setWeekStart((w) => subWeeks(w, 1))
   const handleNextWeek = () => setWeekStart((w) => addWeeks(w, 1))
   const handleThisWeek = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
@@ -127,7 +105,7 @@ export default function HabitsPage() {
         body: JSON.stringify(newHabit),
       })
       if (res.ok) {
-        fetchHabits()
+        mutateHabits()
         setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
         setIsAddingHabit(false)
       }
@@ -146,7 +124,7 @@ export default function HabitsPage() {
           ...(minutes !== undefined && { minutes }),
         }),
       })
-      fetchHabits()
+      mutateHabits()
     } catch (error) {
       console.error("Error toggling habit:", error)
     }
@@ -163,7 +141,7 @@ export default function HabitsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date, minutes: timeValue }),
       })
-      fetchHabits()
+      mutateHabits()
       setEditingTime(null)
       setTimeValue("")
     } catch (error) {
@@ -175,7 +153,7 @@ export default function HabitsPage() {
     if (!confirm("Czy na pewno chcesz usunąć ten nawyk?")) return
     try {
       await fetch(`/api/habits/${habitId}`, { method: "DELETE" })
-      fetchHabits()
+      mutateHabits()
     } catch (error) {
       console.error("Error deleting habit:", error)
     }

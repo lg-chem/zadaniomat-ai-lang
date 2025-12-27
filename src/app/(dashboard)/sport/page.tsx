@@ -8,6 +8,7 @@ import {
   subWeeks,
   addWeeks,
   isToday,
+  endOfWeek,
 } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -41,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { useSportTypes, useSportActivities, useSteps } from "@/hooks/use-sport"
 
 interface SportActivityType {
   id: string
@@ -87,13 +89,24 @@ const DEFAULT_TYPES = [
 ]
 
 export default function SportPage() {
-  const [activityTypes, setActivityTypes] = useState<SportActivityType[]>([])
-  const [activities, setActivities] = useState<SportActivity[]>([])
-  const [steps, setSteps] = useState<StepsEntry[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   )
+
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+
+  // Use SWR hooks for data fetching with cache
+  const { types: activityTypes, isLoading: typesLoading, mutate: mutateTypes } = useSportTypes()
+  const { activities, isLoading: activitiesLoading, mutate: mutateActivities } = useSportActivities({
+    from: weekStart,
+    to: weekEnd,
+  })
+  const { steps, isLoading: stepsLoading, mutate: mutateSteps } = useSteps({
+    from: weekStart,
+    to: weekEnd,
+  })
+
+  const isLoading = typesLoading || activitiesLoading || stepsLoading
 
   // Add activity dialog
   const [isAddingActivity, setIsAddingActivity] = useState(false)
@@ -114,57 +127,6 @@ export default function SportPage() {
   const [newTypeName, setNewTypeName] = useState("")
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-  const startDate = format(weekStart, "yyyy-MM-dd")
-  const endDate = format(addDays(weekStart, 6), "yyyy-MM-dd")
-
-  const fetchTypes = useCallback(async () => {
-    try {
-      const res = await fetch("/api/sport/types")
-      if (res.ok) {
-        const data = await res.json()
-        setActivityTypes(data)
-      }
-    } catch (error) {
-      console.error("Error fetching types:", error)
-    }
-  }, [])
-
-  const fetchActivities = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/sport/activities?startDate=${startDate}&endDate=${endDate}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setActivities(data)
-      }
-    } catch (error) {
-      console.error("Error fetching activities:", error)
-    }
-  }, [startDate, endDate])
-
-  const fetchSteps = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/sport/steps?startDate=${startDate}&endDate=${endDate}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setSteps(data)
-      }
-    } catch (error) {
-      console.error("Error fetching steps:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [startDate, endDate])
-
-  useEffect(() => {
-    setIsLoading(true)
-    fetchTypes()
-    fetchActivities()
-    fetchSteps()
-  }, [fetchTypes, fetchActivities, fetchSteps])
 
   const handlePrevWeek = () => setWeekStart((w) => subWeeks(w, 1))
   const handleNextWeek = () => setWeekStart((w) => addWeeks(w, 1))
@@ -182,7 +144,7 @@ export default function SportPage() {
           duration: newActivity.duration ? parseInt(newActivity.duration) : null,
         }),
       })
-      fetchActivities()
+      mutateActivities()
       setNewActivity({
         typeId: "",
         date: format(new Date(), "yyyy-MM-dd"),
@@ -199,7 +161,7 @@ export default function SportPage() {
   const handleDeleteActivity = async (id: string) => {
     try {
       await fetch(`/api/sport/activities/${id}`, { method: "DELETE" })
-      fetchActivities()
+      mutateActivities()
     } catch (error) {
       console.error("Error deleting activity:", error)
     }
@@ -220,7 +182,7 @@ export default function SportPage() {
           count: parseInt(stepsValue),
         }),
       })
-      fetchSteps()
+      mutateSteps()
       setEditingStepsDate(null)
       setStepsValue("")
     } catch (error) {
@@ -235,8 +197,8 @@ export default function SportPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       })
-      fetchActivities()
-      fetchSteps()
+      mutateActivities()
+      mutateSteps()
     } catch (error) {
       console.error("Error copying steps:", error)
     }

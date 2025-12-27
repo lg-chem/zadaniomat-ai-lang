@@ -32,6 +32,9 @@ import {
 } from "@/components/ui/select"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimerStore, formatMinutes } from "@/stores/timer-store"
+import { useTasks } from "@/hooks/use-tasks"
+import { useCategories } from "@/hooks/use-categories"
+import { useSprints } from "@/hooks/use-sprints"
 
 type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
@@ -107,10 +110,14 @@ export default function SchedulePage() {
   const timerStore = useTimerStore()
 
   const [selectedDate, setSelectedDate] = useState(new Date())
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [activeSprint, setActiveSprint] = useState<Sprint | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const dateString = format(selectedDate, "yyyy-MM-dd")
+
+  // Use SWR hooks for data fetching with cache
+  const { tasks, isLoading: tasksLoading, mutate: mutateTasks } = useTasks({ date: dateString })
+  const { categories, isLoading: categoriesLoading } = useCategories()
+  const { activeSprint } = useSprints()
+
+  const isLoading = tasksLoading || categoriesLoading
 
   // Inline add task state
   const [newTask, setNewTask] = useState({
@@ -126,75 +133,23 @@ export default function SchedulePage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
 
-  const dateString = format(selectedDate, "yyyy-MM-dd")
-
-  // Generate recurring tasks for the selected date
-  const generateRecurringTasks = useCallback(async () => {
-    try {
-      await fetch("/api/tasks/generate-recurring", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: dateString, workspace }),
-      })
-    } catch (error) {
-      console.error("Error generating recurring tasks:", error)
-    }
-  }, [dateString, workspace])
-
-  const fetchTasks = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/tasks?workspace=${workspace}&date=${dateString}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setTasks(data)
-      }
-    } catch (error) {
-      console.error("Error fetching tasks:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [workspace, dateString])
-
-  const fetchCategories = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/categories?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        setCategories(data)
-      }
-    } catch (error) {
-      console.error("Error fetching categories:", error)
-    }
-  }, [workspace])
-
-  const fetchActiveSprint = useCallback(async () => {
-    if (workspace !== "WORK") {
-      setActiveSprint(null)
-      return
-    }
-    try {
-      const res = await fetch("/api/sprints/active")
-      if (res.ok) {
-        const data = await res.json()
-        setActiveSprint(data)
-      }
-    } catch (error) {
-      console.error("Error fetching active sprint:", error)
-    }
-  }, [workspace])
-
+  // Generate recurring tasks on date change
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true)
-      await generateRecurringTasks()
-      await fetchTasks()
-      await fetchCategories()
-      await fetchActiveSprint()
+    const generateRecurringTasks = async () => {
+      try {
+        await fetch("/api/tasks/generate-recurring", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: dateString, workspace }),
+        })
+        // Refresh tasks after generating recurring ones
+        mutateTasks()
+      } catch (error) {
+        console.error("Error generating recurring tasks:", error)
+      }
     }
-    loadData()
-  }, [generateRecurringTasks, fetchTasks, fetchCategories, fetchActiveSprint])
+    generateRecurringTasks()
+  }, [dateString, workspace, mutateTasks])
 
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1))
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))
@@ -222,7 +177,7 @@ export default function SchedulePage() {
         }),
       })
       if (res.ok) {
-        fetchTasks()
+        mutateTasks()
         setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
         setIsAddingTask(false)
       }
@@ -253,7 +208,7 @@ export default function SchedulePage() {
       }
     }
 
-    fetchTasks()
+    mutateTasks()
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
@@ -276,7 +231,7 @@ export default function SchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),
       })
-      fetchTasks()
+      mutateTasks()
     } catch (error) {
       console.error("Error updating task:", error)
     }
@@ -294,7 +249,7 @@ export default function SchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: editingTitle }),
       })
-      fetchTasks()
+      mutateTasks()
       setEditingTaskId(null)
     } catch (error) {
       console.error("Error updating task:", error)
@@ -308,7 +263,7 @@ export default function SchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categoryId: categoryId || null }),
       })
-      fetchTasks()
+      mutateTasks()
     } catch (error) {
       console.error("Error updating task:", error)
     }
@@ -321,7 +276,7 @@ export default function SchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plannedMinutes: parseInt(minutes) || 25 }),
       })
-      fetchTasks()
+      mutateTasks()
     } catch (error) {
       console.error("Error updating task:", error)
     }
@@ -338,7 +293,7 @@ export default function SchedulePage() {
           recurrenceRule: isRecurring ? recurrence : null,
         }),
       })
-      fetchTasks()
+      mutateTasks()
     } catch (error) {
       console.error("Error updating task:", error)
     }
@@ -348,7 +303,7 @@ export default function SchedulePage() {
     if (!confirm("Czy na pewno chcesz usunąć to zadanie?")) return
     try {
       await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
-      fetchTasks()
+      mutateTasks()
     } catch (error) {
       console.error("Error deleting task:", error)
     }
@@ -365,7 +320,7 @@ export default function SchedulePage() {
           status: "NEW",
         }),
       })
-      fetchTasks()
+      mutateTasks()
     } catch (error) {
       console.error("Error transferring task:", error)
     }
