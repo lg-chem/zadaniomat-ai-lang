@@ -213,7 +213,7 @@ export default function SportPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newTypeName }),
       })
-      fetchTypes()
+      mutateTypes()
       setNewTypeName("")
       setIsAddingType(false)
     } catch (error) {
