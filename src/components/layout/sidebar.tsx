@@ -20,6 +20,7 @@ import {
   Flame,
   CalendarDays,
   Dumbbell,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -46,6 +47,7 @@ const privateNavItems = [
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
   { href: "/sport", label: "Sport", icon: Dumbbell },
+  { href: "/fitness-goals", label: "Cele fitness", icon: TrendingUp },
   { href: "/goals", label: "Cele", icon: Target },
   { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },
