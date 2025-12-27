@@ -185,7 +185,15 @@ export default function HabitsPage() {
     setTimeout(() => newHabitRef.current?.focus(), 0)
   }
 
-  // Stats
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Ładowanie...</p>
+      </div>
+    )
+  }
+
+  // Stats (after loading check to ensure habits is defined)
   const totalCompletionsThisWeek = habits.reduce(
     (sum, h) => sum + h.completions.length,
     0
@@ -194,14 +202,6 @@ export default function HabitsPage() {
   const totalMinutesThisWeek = habits.reduce((sum, h) => {
     return sum + h.completions.reduce((cSum, c) => cSum + (c.minutes || h.defaultMinutes || 0), 0)
   }, 0)
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-4 md:space-y-6">
