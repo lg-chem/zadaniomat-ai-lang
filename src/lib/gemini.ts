@@ -23,7 +23,7 @@ export const generateAIResponse = async (
 
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: systemInstruction }] },
+    systemInstruction: systemInstruction,
   })
 
   const response = result.response
@@ -38,7 +38,7 @@ export const streamAIResponse = async (
 
   const result = await model.generateContentStream({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: systemInstruction }] },
+    systemInstruction: systemInstruction,
   })
 
   return result.stream
