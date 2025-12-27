@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback } from "react"
 import { FloatingTimer } from "@/components/timer/floating-timer"
 
 interface DashboardClientProps {
@@ -7,7 +8,7 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ children }: DashboardClientProps) {
-  const handleTimerComplete = async (taskId: string, duration: number) => {
+  const handleTimerComplete = useCallback(async (taskId: string, duration: number) => {
     // Zapisz czas i ustaw status na COMPLETED
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -31,9 +32,9 @@ export function DashboardClient({ children }: DashboardClientProps) {
     } catch (error) {
       console.error("Error completing task:", error)
     }
-  }
+  }, [])
 
-  const handleTimerStop = async (taskId: string, duration: number) => {
+  const handleTimerStop = useCallback(async (taskId: string, duration: number) => {
     // Zapisz czas ale nie zmieniaj statusu
     try {
       // Pobierz aktualny czas zadania
@@ -62,7 +63,7 @@ export function DashboardClient({ children }: DashboardClientProps) {
     } catch (error) {
       console.error("Error saving time:", error)
     }
-  }
+  }, [])
 
   return (
     <>

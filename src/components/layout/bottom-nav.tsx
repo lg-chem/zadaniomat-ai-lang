@@ -1,5 +1,6 @@
 "use client"
 
+import { memo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -46,6 +47,7 @@ export function BottomNav() {
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
             className={cn(
               "flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-0 flex-1 touch-manipulation",
               isActive(item.href)
