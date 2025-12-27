@@ -233,28 +233,28 @@ export default function HabitsPage() {
 
       {/* Stats */}
       <Card>
-        <CardContent className="flex items-center gap-8 py-4">
+        <CardContent className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-8 py-4">
           <div>
-            <div className="text-sm text-muted-foreground">Nawyki</div>
-            <div className="text-2xl font-bold">{habits.length}</div>
+            <div className="text-xs md:text-sm text-muted-foreground">Nawyki</div>
+            <div className="text-xl md:text-2xl font-bold">{habits.length}</div>
           </div>
           <div>
-            <div className="text-sm text-muted-foreground">Wykonane w tym tygodniu</div>
-            <div className="text-2xl font-bold text-green-600">{totalCompletionsThisWeek}</div>
+            <div className="text-xs md:text-sm text-muted-foreground">Wykonane w tygodniu</div>
+            <div className="text-xl md:text-2xl font-bold text-green-600">{totalCompletionsThisWeek}</div>
           </div>
           <div className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-orange-500" />
+            <Flame className="h-4 w-4 md:h-5 md:w-5 text-orange-500 flex-shrink-0" />
             <div>
-              <div className="text-sm text-muted-foreground">Najdłuższy streak</div>
-              <div className="text-2xl font-bold">{maxStreak} dni</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Najdłuższy streak</div>
+              <div className="text-xl md:text-2xl font-bold">{maxStreak} dni</div>
             </div>
           </div>
           {totalMinutesThisWeek > 0 && (
             <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-blue-500" />
+              <Clock className="h-4 w-4 md:h-5 md:w-5 text-blue-500 flex-shrink-0" />
               <div>
-                <div className="text-sm text-muted-foreground">Czas w tym tygodniu</div>
-                <div className="text-2xl font-bold">
+                <div className="text-xs md:text-sm text-muted-foreground">Czas w tygodniu</div>
+                <div className="text-xl md:text-2xl font-bold">
                   {totalMinutesThisWeek >= 60
                     ? `${Math.floor(totalMinutesThisWeek / 60)}h ${totalMinutesThisWeek % 60}m`
                     : `${totalMinutesThisWeek}m`}
@@ -271,7 +271,234 @@ export default function HabitsPage() {
           <CardTitle className="text-base md:text-lg">Tracker nawyków</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-lg overflow-hidden">
+          {/* Mobile View - Cards */}
+          <div className="space-y-3 md:hidden">
+            {habits.map((habit) => (
+              <Card key={habit.id}>
+                <CardContent className="p-3">
+                  <div className="space-y-3">
+                    {/* Habit Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1">
+                        <div
+                          className="h-3 w-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: habit.color }}
+                        />
+                        <span className="font-medium text-sm">{habit.name}</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {FREQUENCY_LABELS[habit.frequency]}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleDeleteHabit(habit.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+
+                    {/* Streak Info */}
+                    {habit.currentStreak > 0 && (
+                      <div className="flex items-center gap-1.5 text-xs text-orange-500">
+                        <Flame className="h-3.5 w-3.5" />
+                        <span className="font-medium">{habit.currentStreak} dni streak</span>
+                      </div>
+                    )}
+
+                    {/* Week Grid - Horizontal Scroll */}
+                    <div className="overflow-x-auto -mx-3 px-3">
+                      <div className="flex gap-2 min-w-max">
+                        {weekDays.map((day) => {
+                          const completion = getCompletionOnDate(habit, day)
+                          const completed = !!completion
+                          const isFuture = day > new Date()
+                          const dateStr = format(day, "yyyy-MM-dd")
+                          const isEditing = editingTime?.habitId === habit.id && editingTime?.date === dateStr
+
+                          return (
+                            <div key={day.toISOString()} className="flex flex-col items-center gap-1">
+                              {/* Day label */}
+                              <div className={`text-[10px] ${isToday(day) ? "text-primary font-bold" : "text-muted-foreground"}`}>
+                                <div>{format(day, "EEE", { locale: pl })}</div>
+                                <div className="text-center">{format(day, "d")}</div>
+                              </div>
+
+                              {/* Checkbox */}
+                              <button
+                                onClick={() => !isFuture && handleToggleCompletion(habit.id, day)}
+                                disabled={isFuture}
+                                className={`
+                                  h-10 w-10 rounded-lg flex items-center justify-center transition-all
+                                  ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer active:scale-95"}
+                                  ${completed
+                                    ? "text-white shadow-sm"
+                                    : "border-2 border-dashed border-muted-foreground/30"
+                                  }
+                                `}
+                                style={{
+                                  backgroundColor: completed ? habit.color : "transparent",
+                                }}
+                              >
+                                {completed && <Check className="h-4 w-4" />}
+                              </button>
+
+                              {/* Time display/edit */}
+                              {completed && (habit.defaultMinutes || completion.minutes) && (
+                                isEditing ? (
+                                  <Input
+                                    type="number"
+                                    value={timeValue}
+                                    onChange={(e) => setTimeValue(e.target.value)}
+                                    onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTime(habit.id, dateStr))}
+                                    onBlur={() => handleUpdateTime(habit.id, dateStr)}
+                                    className="h-6 w-14 text-[10px] text-center p-0"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingTime({ habitId: habit.id, date: dateStr })
+                                      setTimeValue(completion.minutes?.toString() || habit.defaultMinutes?.toString() || "")
+                                    }}
+                                    className="text-[10px] text-muted-foreground flex items-center gap-0.5"
+                                  >
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {completion.minutes || habit.defaultMinutes}m
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Mobile Add Habit Button */}
+            {!isAddingHabit && (
+              <Button
+                onClick={handleAddRowClick}
+                variant="outline"
+                className="w-full"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Dodaj nawyk
+              </Button>
+            )}
+
+            {/* Mobile Add Habit Form */}
+            {isAddingHabit && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="p-3">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      {/* Color picker */}
+                      <div className="relative group">
+                        <div
+                          className="h-8 w-8 rounded-full cursor-pointer border-2 border-border"
+                          style={{ backgroundColor: newHabit.color }}
+                        />
+                        <div className="absolute left-0 top-10 z-10 hidden group-hover:flex flex-wrap gap-1.5 p-2 bg-popover border rounded-lg shadow-lg w-[140px]">
+                          {COLORS.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              className={`h-6 w-6 rounded-full border-2 transition-all ${
+                                newHabit.color === color
+                                  ? "border-foreground scale-110"
+                                  : "border-transparent"
+                              }`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => setNewHabit({ ...newHabit, color })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <Input
+                        ref={newHabitRef}
+                        placeholder="Nazwa nawyku..."
+                        value={newHabit.name}
+                        onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
+                        onKeyDown={(e) => handleKeyDown(e, handleCreateHabit)}
+                        className="h-9 flex-1"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Select
+                        value={newHabit.frequency}
+                        onValueChange={(v: HabitFrequency) =>
+                          setNewHabit({ ...newHabit, frequency: v })
+                        }
+                      >
+                        <SelectTrigger className="h-9 flex-1 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DAILY">Codziennie</SelectItem>
+                          <SelectItem value="WEEKLY">Co tydzień</SelectItem>
+                          <SelectItem value="MONTHLY">Co miesiąc</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <div className="flex items-center gap-1 flex-1">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="number"
+                          placeholder="min"
+                          value={newHabit.defaultMinutes}
+                          onChange={(e) => setNewHabit({ ...newHabit, defaultMinutes: e.target.value })}
+                          className="h-9 flex-1 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleCreateHabit}
+                        disabled={!newHabit.name.trim()}
+                        className="flex-1"
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        Dodaj
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIsAddingHabit(false)
+                          setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
+                        }}
+                        className="flex-1"
+                      >
+                        <X className="h-3.5 w-3.5 mr-1" />
+                        Anuluj
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Empty state */}
+            {habits.length === 0 && !isAddingHabit && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Flame className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Brak nawyków</p>
+                <p className="text-sm">Kliknij "Dodaj nawyk" aby zacząć śledzić</p>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop View - Table */}
+          <div className="border rounded-lg overflow-hidden hidden md:block">
             {/* Table Header */}
             <div className="grid grid-cols-[1fr_repeat(7,60px)_80px_50px] gap-1 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Nawyk</div>
@@ -495,16 +722,16 @@ export default function HabitsPage() {
                 Dodaj nawyk...
               </button>
             )}
-          </div>
 
-          {/* Empty state */}
-          {habits.length === 0 && !isAddingHabit && (
-            <div className="text-center py-8 text-muted-foreground">
-              <Flame className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Brak nawyków</p>
-              <p className="text-sm">Kliknij "Dodaj nawyk" aby zacząć śledzić</p>
-            </div>
-          )}
+            {/* Desktop Empty state */}
+            {habits.length === 0 && !isAddingHabit && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Flame className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Brak nawyków</p>
+                <p className="text-sm">Kliknij "Dodaj nawyk" aby zacząć śledzić</p>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

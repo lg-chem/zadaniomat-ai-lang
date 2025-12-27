@@ -45,8 +45,8 @@ export default function CalendarPage() {
     const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 })
     const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
     return {
-      from: start,
-      to: end
+      from: format(start, 'yyyy-MM-dd'),
+      to: format(end, 'yyyy-MM-dd')
     }
   }, [currentMonth])
 
