@@ -21,6 +21,11 @@ export async function GET(req: Request) {
       include: {
         sprints: {
           orderBy: { startDate: "asc" },
+          include: {
+            _count: {
+              select: { tasks: true, goals: true },
+            },
+          },
         },
         goals: true,
         _count: {
