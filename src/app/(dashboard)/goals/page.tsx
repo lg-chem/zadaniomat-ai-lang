@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
 interface Goal {
@@ -32,12 +39,40 @@ interface Goal {
   _count: { tasks: number }
 }
 
+interface Category {
+  id: string
+  name: string
+  color: string
+  isStrategic: boolean
+}
+
+interface Period {
+  id: string
+  name: string
+  sprints: Sprint[]
+}
+
+interface Sprint {
+  id: string
+  name: string
+}
+
 export default function GoalsPage() {
   const { workspace } = useWorkspaceStore()
   const [goals, setGoals] = useState<Goal[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [periods, setPeriods] = useState<Period[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
-  const [newGoal, setNewGoal] = useState({ title: "", description: "", targetValue: "", unit: "" })
+  const [newGoal, setNewGoal] = useState({
+    title: "",
+    description: "",
+    targetValue: "",
+    unit: "",
+    categoryId: "",
+    periodId: "",
+    sprintId: "",
+  })
 
   const fetchGoals = useCallback(async () => {
     try {
@@ -53,9 +88,35 @@ export default function GoalsPage() {
     }
   }, [workspace])
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/categories?workspace=${workspace}`)
+      if (res.ok) {
+        const data = await res.json()
+        setCategories(data)
+      }
+    } catch (error) {
+      console.error("Error fetching categories:", error)
+    }
+  }, [workspace])
+
+  const fetchPeriods = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/periods?workspace=${workspace}`)
+      if (res.ok) {
+        const data = await res.json()
+        setPeriods(data)
+      }
+    } catch (error) {
+      console.error("Error fetching periods:", error)
+    }
+  }, [workspace])
+
   useEffect(() => {
     fetchGoals()
-  }, [fetchGoals])
+    fetchCategories()
+    fetchPeriods()
+  }, [fetchGoals, fetchCategories, fetchPeriods])
 
   const handleCreateGoal = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,14 +125,28 @@ export default function GoalsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...newGoal,
+          title: newGoal.title,
+          description: newGoal.description || undefined,
+          targetValue: newGoal.targetValue || undefined,
+          unit: newGoal.unit || undefined,
+          categoryId: newGoal.categoryId || undefined,
+          periodId: newGoal.periodId || undefined,
+          sprintId: newGoal.sprintId || undefined,
           workspaceType: workspace,
         }),
       })
       if (res.ok) {
         fetchGoals()
         setShowCreate(false)
-        setNewGoal({ title: "", description: "", targetValue: "", unit: "" })
+        setNewGoal({
+          title: "",
+          description: "",
+          targetValue: "",
+          unit: "",
+          categoryId: "",
+          periodId: "",
+          sprintId: "",
+        })
       }
     } catch (error) {
       console.error("Error creating goal:", error)
@@ -333,6 +408,85 @@ export default function GoalsPage() {
                   />
                 </div>
               </div>
+
+              {/* Category Selection - only strategic categories */}
+              <div className="space-y-2">
+                <Label>Kategoria strategiczna (opcjonalnie)</Label>
+                <Select
+                  value={newGoal.categoryId}
+                  onValueChange={(value) => setNewGoal({ ...newGoal, categoryId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz kategorię..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories
+                      .filter((c) => c.isStrategic)
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: category.color }}
+                            />
+                            {category.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {categories.filter((c) => c.isStrategic).length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Brak kategorii strategicznych. Dodaj je w Ustawieniach.
+                  </p>
+                )}
+              </div>
+
+              {/* Period Selection */}
+              <div className="space-y-2">
+                <Label>Okres (opcjonalnie)</Label>
+                <Select
+                  value={newGoal.periodId}
+                  onValueChange={(value) =>
+                    setNewGoal({ ...newGoal, periodId: value, sprintId: "" })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz okres..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {periods.map((period) => (
+                      <SelectItem key={period.id} value={period.id}>
+                        {period.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Sprint Selection - only if period is selected */}
+              {newGoal.periodId && (
+                <div className="space-y-2">
+                  <Label>Sprint (opcjonalnie)</Label>
+                  <Select
+                    value={newGoal.sprintId}
+                    onValueChange={(value) => setNewGoal({ ...newGoal, sprintId: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Wybierz sprint..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {periods
+                        .find((p) => p.id === newGoal.periodId)
+                        ?.sprints.map((sprint) => (
+                          <SelectItem key={sprint.id} value={sprint.id}>
+                            {sprint.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
