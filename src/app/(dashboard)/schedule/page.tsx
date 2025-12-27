@@ -39,30 +39,6 @@ import { useSprints } from "@/hooks/use-sprints"
 type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
 
-interface Category {
-  id: string
-  name: string
-  color: string
-  isStrategic: boolean
-}
-
-interface Task {
-  id: string
-  title: string
-  description?: string | null
-  status: TaskStatus
-  plannedMinutes?: number | null
-  actualMinutes: number
-  scheduledDate?: string | null
-  orderInDay: number
-  category?: Category | null
-  categoryId?: string | null
-  goalId?: string | null
-  goal?: { id: string; title: string } | null
-  isRecurring?: boolean
-  recurrenceRule?: RecurrenceRule
-}
-
 interface SprintGoal {
   id: string
   title: string
