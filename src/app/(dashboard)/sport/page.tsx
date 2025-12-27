@@ -589,7 +589,12 @@ export default function SportPage() {
                             ) : (
                               <div
                                 className="cursor-pointer text-sm font-medium"
-                                onClick={() => !isFuture && handleStartStepsEdit(stepsEntry, dateStr)}
+                                onClick={() => {
+                                  if (!isFuture) {
+                                    setEditingStepsDate(dateStr)
+                                    setStepsValue(stepsEntry?.count.toString() || "")
+                                  }
+                                }}
                               >
                                 {stepsEntry ? stepsEntry.count.toLocaleString() : 0} kroków
                               </div>
@@ -612,11 +617,11 @@ export default function SportPage() {
                           )}
 
                           {/* Actions */}
-                          {stepsEntry && !stepsEntry.copiedToActivity && (
+                          {stepsEntry && !stepsEntry.copiedToActivity && stepsEntry.count >= 5000 && (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleCopyToActivity(stepsEntry.id)}
+                              onClick={() => handleCopyStepsToActivity(stepsEntry)}
                               className="w-full h-7 text-xs"
                             >
                               <Copy className="h-3 w-3 mr-1" />
