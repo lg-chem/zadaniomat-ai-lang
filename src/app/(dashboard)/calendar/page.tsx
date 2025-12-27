@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useMemo } from "react"
 import {
   format,
   startOfMonth,
@@ -19,26 +19,8 @@ import { ChevronLeft, ChevronRight, Calendar, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useRouter } from "next/navigation"
-
-type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
-
-interface Category {
-  id: string
-  name: string
-  color: string
-}
-
-interface Task {
-  id: string
-  title: string
-  status: TaskStatus
-  plannedMinutes?: number | null
-  scheduledDate: string
-  category?: Category | null
-  isRecurring?: boolean
-}
+import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 
 interface DayData {
   date: Date
@@ -55,39 +37,21 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 }
 
 export default function CalendarPage() {
-  const { workspace } = useWorkspaceStore()
   const router = useRouter()
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [isLoading, setIsLoading] = useState(true)
 
-  const fetchMonthTasks = useCallback(async () => {
+  // Calculate month range
+  const monthRange = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 })
     const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
-
-    try {
-      // Fetch tasks for the entire month range
-      const startStr = format(start, "yyyy-MM-dd")
-      const endStr = format(end, "yyyy-MM-dd")
-
-      const res = await fetch(
-        `/api/tasks?workspace=${workspace}&startDate=${startStr}&endDate=${endStr}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setTasks(data)
-      }
-    } catch (error) {
-      console.error("Error fetching tasks:", error)
-    } finally {
-      setIsLoading(false)
+    return {
+      from: start,
+      to: end
     }
-  }, [workspace, currentMonth])
+  }, [currentMonth])
 
-  useEffect(() => {
-    setIsLoading(true)
-    fetchMonthTasks()
-  }, [fetchMonthTasks])
+  // Use SWR for tasks with cache
+  const { tasks, isLoading } = useTasks(monthRange)
 
   const handlePrevMonth = () => setCurrentMonth((m) => subMonths(m, 1))
   const handleNextMonth = () => setCurrentMonth((m) => addMonths(m, 1))
