@@ -41,7 +41,7 @@ async function getUserContext(userId: string, mode: ChatMode) {
   })
 
   // Get backlog items
-  const backlogItems = await prisma.backlogIdea.findMany({
+  const backlogItems = await prisma.backlogItem.findMany({
     where: {
       userId,
       workspaceType: "WORK",
@@ -179,11 +179,9 @@ async function getUserContext(userId: string, mode: ChatMode) {
       isStrategic: c.isStrategic,
     })),
     backlog: backlogItems.map((item) => ({
-      title: item.title,
-      description: item.description,
+      content: item.content,
       priority: item.priority,
-      estimatedEffort: item.estimatedEffort,
-      category: item.category,
+      isProcessed: item.isProcessed,
     })),
   }
 }
