@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const workspace = searchParams.get("workspace") || "WORK"
+    const workspace = (searchParams.get("workspace") || "WORK") as "WORK" | "PRIVATE"
     const showProcessed = searchParams.get("showProcessed") === "true"
 
     const items = await prisma.backlogItem.findMany({
@@ -41,7 +41,8 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { content, workspaceType = "WORK", priority = 0 } = body
+    const { content, workspaceType: wsType = "WORK", priority = 0 } = body
+    const workspaceType = wsType as "WORK" | "PRIVATE"
 
     if (!content) {
       return NextResponse.json({ error: "Treść jest wymagana" }, { status: 400 })
