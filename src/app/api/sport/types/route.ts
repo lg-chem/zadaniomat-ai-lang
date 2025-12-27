@@ -30,6 +30,7 @@ export async function GET() {
     const existingNames = new Set(existingDefaults.map((t) => t.name))
     const missingDefaults = DEFAULT_TYPES.filter((t) => !existingNames.has(t.name))
 
+    // Create missing defaults
     if (missingDefaults.length > 0) {
       await prisma.sportActivityType.createMany({
         data: missingDefaults.map((t) => ({
@@ -40,6 +41,17 @@ export async function GET() {
           userId: session.user.id,
         })),
       })
+    }
+
+    // Update existing defaults to ensure hasBodyParts is set correctly
+    for (const existing of existingDefaults) {
+      const defaultType = DEFAULT_TYPES.find((t) => t.name === existing.name)
+      if (defaultType && existing.hasBodyParts !== defaultType.hasBodyParts) {
+        await prisma.sportActivityType.update({
+          where: { id: existing.id },
+          data: { hasBodyParts: defaultType.hasBodyParts },
+        })
+      }
     }
 
     const types = await prisma.sportActivityType.findMany({

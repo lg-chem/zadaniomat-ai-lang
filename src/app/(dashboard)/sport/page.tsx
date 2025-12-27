@@ -316,28 +316,28 @@ export default function SportPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 pb-20 md:pb-0">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Sport</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">Sport</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Śledź aktywność sportową i kroki
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handlePrevWeek}>
+        <div className="flex items-center gap-2 justify-between md:justify-end">
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={handlePrevWeek}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button variant="outline" onClick={handleThisWeek}>
+          <Button variant="outline" onClick={handleThisWeek} className="hidden sm:flex px-3 h-9 text-sm">
             Ten tydzień
           </Button>
-          <div className="px-4 py-2 font-medium min-w-[200px] text-center">
+          <div className="px-2 md:px-4 py-2 font-medium text-xs md:text-sm text-center min-w-[140px] md:min-w-[200px]">
             {format(weekStart, "d MMM", { locale: pl })} -{" "}
             {format(addDays(weekStart, 6), "d MMM yyyy", { locale: pl })}
           </div>
-          <Button variant="outline" size="icon" onClick={handleNextWeek}>
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleNextWeek}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -345,8 +345,8 @@ export default function SportPage() {
 
       {/* Stats */}
       <Card>
-        <CardContent className="py-4">
-          <div className="flex items-center gap-8 mb-4">
+        <CardContent className="py-3 md:py-4">
+          <div className="grid grid-cols-3 md:flex md:items-center gap-4 md:gap-8 mb-3 md:mb-4">
             <div className="flex items-center gap-2">
               <Dumbbell className="h-5 w-5 text-primary" />
               <div>
@@ -409,16 +409,18 @@ export default function SportPage() {
         {/* Activities Tab */}
         <TabsContent value="activities" className="space-y-4">
           <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Aktywności w tym tygodniu</CardTitle>
+            <CardHeader className="pb-3 space-y-3 md:space-y-0 md:flex md:flex-row md:items-center md:justify-between">
+              <CardTitle className="text-base md:text-lg">Aktywności w tym tygodniu</CardTitle>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsAddingType(true)}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Nowy typ
+                <Button variant="outline" size="sm" onClick={() => setIsAddingType(true)} className="text-xs md:text-sm">
+                  <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                  <span className="hidden sm:inline">Nowy typ</span>
+                  <span className="sm:hidden">Typ</span>
                 </Button>
-                <Button size="sm" onClick={() => setIsAddingActivity(true)}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Dodaj aktywność
+                <Button size="sm" onClick={() => setIsAddingActivity(true)} className="text-xs md:text-sm">
+                  <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                  <span className="hidden sm:inline">Dodaj aktywność</span>
+                  <span className="sm:hidden">Dodaj</span>
                 </Button>
               </div>
             </CardHeader>
