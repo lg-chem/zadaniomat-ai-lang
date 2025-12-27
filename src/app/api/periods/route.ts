@@ -22,12 +22,25 @@ export async function GET(req: Request) {
         sprints: {
           orderBy: { startDate: "asc" },
           include: {
+            goals: {
+              include: {
+                category: {
+                  select: { id: true, name: true, color: true },
+                },
+              },
+            },
             _count: {
               select: { tasks: true, goals: true },
             },
           },
         },
-        goals: true,
+        goals: {
+          include: {
+            category: {
+              select: { id: true, name: true, color: true },
+            },
+          },
+        },
         _count: {
           select: { sprints: true, goals: true },
         },
