@@ -1,7 +1,7 @@
 import useSWR from 'swr'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
-interface Category {
+export interface Category {
   id: string
   name: string
   color: string

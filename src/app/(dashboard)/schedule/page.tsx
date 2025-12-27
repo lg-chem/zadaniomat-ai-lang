@@ -32,11 +32,10 @@ import {
 } from "@/components/ui/select"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimerStore, formatMinutes } from "@/stores/timer-store"
-import { useTasks } from "@/hooks/use-tasks"
-import { useCategories } from "@/hooks/use-categories"
+import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
+import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
 
-type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
 
 interface SprintGoal {

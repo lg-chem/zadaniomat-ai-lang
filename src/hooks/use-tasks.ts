@@ -1,9 +1,9 @@
 import useSWR from 'swr'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
-type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
+export type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 
-interface Task {
+export interface Task {
   id: string
   title: string
   description?: string
