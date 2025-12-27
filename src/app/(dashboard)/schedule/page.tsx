@@ -16,11 +16,13 @@ import {
   Trash2,
   Sparkles,
   Repeat,
+  Target,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import {
   Select,
   SelectContent,
@@ -58,6 +60,23 @@ interface Task {
   recurrenceRule?: RecurrenceRule
 }
 
+interface SprintGoal {
+  id: string
+  title: string
+  targetValue?: number | null
+  currentValue: number
+  unit?: string | null
+  isCompleted: boolean
+}
+
+interface Sprint {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+  goals: SprintGoal[]
+}
+
 const STATUS_LABELS: Record<TaskStatus, string> = {
   NEW: "Nowe",
   IN_PROGRESS: "W trakcie",
@@ -89,6 +108,7 @@ export default function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [tasks, setTasks] = useState<Task[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [activeSprint, setActiveSprint] = useState<Sprint | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   // Inline add task state
@@ -148,15 +168,32 @@ export default function SchedulePage() {
     }
   }, [workspace])
 
+  const fetchActiveSprint = useCallback(async () => {
+    if (workspace !== "WORK") {
+      setActiveSprint(null)
+      return
+    }
+    try {
+      const res = await fetch("/api/sprints/active")
+      if (res.ok) {
+        const data = await res.json()
+        setActiveSprint(data)
+      }
+    } catch (error) {
+      console.error("Error fetching active sprint:", error)
+    }
+  }, [workspace])
+
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true)
       await generateRecurringTasks()
       await fetchTasks()
       await fetchCategories()
+      await fetchActiveSprint()
     }
     loadData()
-  }, [generateRecurringTasks, fetchTasks, fetchCategories])
+  }, [generateRecurringTasks, fetchTasks, fetchCategories, fetchActiveSprint])
 
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1))
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))
@@ -435,6 +472,60 @@ export default function SchedulePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Sprint Goals - WORK only */}
+      {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Cele sprintu: {activeSprint.name}
+              </CardTitle>
+              <Badge variant="secondary">
+                {format(new Date(activeSprint.startDate), "d MMM", { locale: pl })} -{" "}
+                {format(new Date(activeSprint.endDate), "d MMM", { locale: pl })}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {activeSprint.goals.map((goal) => {
+                const progress = goal.targetValue
+                  ? Math.min(100, (goal.currentValue / goal.targetValue) * 100)
+                  : 0
+
+                return (
+                  <div
+                    key={goal.id}
+                    className={`p-3 rounded-lg border ${
+                      goal.isCompleted ? "bg-green-50 border-green-200" : "bg-muted/30"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <span className={`font-medium text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                        {goal.title}
+                      </span>
+                      {goal.isCompleted && (
+                        <Check className="h-4 w-4 text-green-500" />
+                      )}
+                    </div>
+                    {goal.targetValue && (
+                      <>
+                        <Progress value={progress} className="h-1.5 mb-1" />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{goal.currentValue} / {goal.targetValue} {goal.unit}</span>
+                          <span>{Math.round(progress)}%</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Task Table - Spreadsheet style */}
       <Card>
