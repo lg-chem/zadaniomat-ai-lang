@@ -24,7 +24,7 @@ export default async function DashboardLayout({
         <Sidebar />
         <MobileHeader />
         <main className="md:pl-64 pt-16 md:pt-0">
-          <div className="p-4 md:p-8 pb-20 md:pb-8">
+          <div className="p-3 md:p-8 pb-16 md:pb-8">
             <DashboardClient>{children}</DashboardClient>
           </div>
         </main>

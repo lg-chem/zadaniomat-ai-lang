@@ -5,29 +5,25 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Target,
-  Calendar,
   Sparkles,
-  Settings,
   Dumbbell,
-  CheckSquare,
+  Menu,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { SidebarContent } from "./sidebar"
 
 const workBottomNav = [
   { href: "/", label: "Dziś", icon: LayoutDashboard },
-  { href: "/tasks", label: "Zadania", icon: CheckSquare },
   { href: "/goals", label: "Cele", icon: Target },
   { href: "/ai", label: "AI", icon: Sparkles },
-  { href: "/settings", label: "Więcej", icon: Settings },
 ]
 
 const privateBottomNav = [
   { href: "/", label: "Dziś", icon: LayoutDashboard },
   { href: "/sport", label: "Sport", icon: Dumbbell },
-  { href: "/goals", label: "Cele", icon: Target },
   { href: "/ai", label: "AI", icon: Sparkles },
-  { href: "/settings", label: "Więcej", icon: Settings },
 ]
 
 export function BottomNav() {
@@ -42,27 +38,46 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 border-t bg-card md:hidden">
-      <div className="flex h-full items-center justify-around px-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 h-14 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden safe-area-inset-bottom">
+      <div className="flex h-full items-center justify-around px-1">
         {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-0 flex-1",
+              "flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-0 flex-1 touch-manipulation",
               isActive(item.href)
                 ? workspace === "WORK"
                   ? "text-work"
                   : "text-private"
-                : "text-muted-foreground"
+                : "text-muted-foreground active:text-foreground"
             )}
           >
             <item.icon className="h-5 w-5 flex-shrink-0" />
-            <span className="text-xs font-medium truncate w-full text-center">
+            <span className="text-[10px] font-medium truncate w-full text-center leading-tight">
               {item.label}
             </span>
           </Link>
         ))}
+
+        {/* Menu button */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <button
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-0 flex-1 touch-manipulation text-muted-foreground active:text-foreground"
+              )}
+            >
+              <Menu className="h-5 w-5 flex-shrink-0" />
+              <span className="text-[10px] font-medium truncate w-full text-center leading-tight">
+                Menu
+              </span>
+            </button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-64 p-0">
+            <SidebarContent />
+          </SheetContent>
+        </Sheet>
       </div>
     </nav>
   )

@@ -342,13 +342,13 @@ export default function AIPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3 md:mb-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Sparkles className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+            <Sparkles className="h-6 w-6 md:h-8 md:w-8 text-primary" />
             Asystent AI
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm md:text-base text-muted-foreground">
             Pomogę Ci zaplanować cele i zadania
           </p>
         </div>
@@ -377,7 +377,7 @@ export default function AIPage() {
         <TabsContent value={mode} className="flex-1 flex flex-col mt-4">
           {/* Chat Area */}
           <Card className="flex-1 flex flex-col">
-            <CardContent className="flex-1 flex flex-col p-4 overflow-hidden">
+            <CardContent className="flex-1 flex flex-col p-3 md:p-4 overflow-hidden">
               {/* Messages */}
               <div className="flex-1 overflow-y-auto space-y-4 mb-4">
                 {messages.length === 0 && (
@@ -388,7 +388,7 @@ export default function AIPage() {
                         ? "Pomogę Ci zaplanować cele na sprint"
                         : "Pomogę Ci zaplanować zadania na dziś"}
                     </p>
-                    <div className="flex flex-wrap gap-2 justify-center mt-4">
+                    <div className="flex flex-wrap gap-2 justify-center mt-4 max-w-md mx-auto">
                       {getQuickPrompts().map((prompt) => (
                         <Button
                           key={prompt}
@@ -398,6 +398,7 @@ export default function AIPage() {
                             setInput(prompt)
                             inputRef.current?.focus()
                           }}
+                          className="text-xs md:text-sm touch-manipulation"
                         >
                           {prompt}
                         </Button>
@@ -433,12 +434,12 @@ export default function AIPage() {
                           {(message.data as GoalProposal[]).map((goal, i) => (
                             <div
                               key={i}
-                              className="flex items-start justify-between gap-2 p-2 bg-background rounded border"
+                              className="flex items-start justify-between gap-2 p-2.5 md:p-3 bg-background rounded-lg border hover:border-primary/50 transition-colors"
                             >
-                              <div className="flex-1">
-                                <div className="font-medium text-sm">{goal.title}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm md:text-base break-words">{goal.title}</div>
                                 {goal.category && (
-                                  <Badge variant="secondary" className="text-[10px] mt-1">
+                                  <Badge variant="secondary" className="text-[10px] md:text-xs mt-1">
                                     {goal.category}
                                   </Badge>
                                 )}
@@ -451,8 +452,9 @@ export default function AIPage() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 flex-shrink-0"
+                                className="h-8 w-8 flex-shrink-0 touch-manipulation"
                                 onClick={() => handleStartAddGoal(goal)}
+                                title="Edytuj i dodaj cel"
                               >
                                 <Plus className="h-4 w-4" />
                               </Button>
@@ -467,13 +469,13 @@ export default function AIPage() {
                           {(message.data as TaskProposal[]).map((task, i) => (
                             <div
                               key={i}
-                              className="flex items-start justify-between gap-2 p-2 bg-background rounded border"
+                              className="flex items-start justify-between gap-2 p-2.5 md:p-3 bg-background rounded-lg border hover:border-primary/50 transition-colors"
                             >
-                              <div className="flex-1">
-                                <div className="font-medium text-sm">{task.title}</div>
-                                <div className="flex gap-2 mt-1">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm md:text-base break-words">{task.title}</div>
+                                <div className="flex gap-2 mt-1 flex-wrap">
                                   {task.category && (
-                                    <Badge variant="secondary" className="text-[10px]">
+                                    <Badge variant="secondary" className="text-[10px] md:text-xs">
                                       {task.category}
                                     </Badge>
                                   )}
@@ -487,8 +489,9 @@ export default function AIPage() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 flex-shrink-0"
+                                className="h-8 w-8 flex-shrink-0 touch-manipulation"
                                 onClick={() => handleStartAddTask(task)}
+                                title="Edytuj i dodaj zadanie"
                               >
                                 <Plus className="h-4 w-4" />
                               </Button>
@@ -534,8 +537,14 @@ export default function AIPage() {
                       : "Zapytaj o zadania na dziś..."
                   }
                   disabled={isLoading}
+                  className="text-sm md:text-base"
                 />
-                <Button onClick={handleSend} disabled={isLoading || !input.trim()}>
+                <Button
+                  onClick={handleSend}
+                  disabled={isLoading || !input.trim()}
+                  size="icon"
+                  className="flex-shrink-0 touch-manipulation h-10 w-10"
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
