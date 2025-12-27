@@ -53,7 +53,7 @@ interface Habit {
   color: string
   currentStreak: number
   longestStreak: number
-  completions: HabitCompletion[]
+  completions?: HabitCompletion[]
 }
 
 const COLORS = [
@@ -161,7 +161,7 @@ export default function HabitsPage() {
 
   const getCompletionOnDate = (habit: Habit, date: Date): HabitCompletion | undefined => {
     const dateStr = format(date, "yyyy-MM-dd")
-    return habit.completions.find((c) => {
+    return habit.completions?.find((c) => {
       const completionDate = format(new Date(c.date), "yyyy-MM-dd")
       return completionDate === dateStr
     })
@@ -195,12 +195,12 @@ export default function HabitsPage() {
 
   // Stats (after loading check to ensure habits is defined)
   const totalCompletionsThisWeek = habits.reduce(
-    (sum, h) => sum + h.completions.length,
+    (sum, h) => sum + (h.completions?.length || 0),
     0
   )
-  const maxStreak = habits.reduce((max, h) => Math.max(max, h.currentStreak), 0)
+  const maxStreak = habits.reduce((max, h) => Math.max(max, h.currentStreak || 0), 0)
   const totalMinutesThisWeek = habits.reduce((sum, h) => {
-    return sum + h.completions.reduce((cSum, c) => cSum + (c.minutes || h.defaultMinutes || 0), 0)
+    return sum + (h.completions || []).reduce((cSum, c) => cSum + (c.minutes || h.defaultMinutes || 0), 0)
   }, 0)
 
   return (
