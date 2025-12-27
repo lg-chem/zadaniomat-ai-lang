@@ -42,15 +42,19 @@ interface ChallengeMilestone {
   isReached: boolean
 }
 
+type ChallengeType = "NUMERIC" | "WEEKLY_HABIT"
+
 interface Challenge {
   id: string
   name: string
   description?: string | null
+  challengeType: ChallengeType
   startDate: string
   endDate: string
   targetValue: number
   currentValue: number
   unit: string
+  weeklyTarget?: number | null
   isCompleted: boolean
   color: string
   milestones: ChallengeMilestone[]
@@ -71,10 +75,12 @@ export default function ChallengesPage() {
   const [newChallenge, setNewChallenge] = useState({
     name: "",
     description: "",
+    challengeType: "NUMERIC" as ChallengeType,
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: "",
     targetValue: "",
     unit: "",
+    weeklyTarget: "",
     color: COLORS[0],
   })
 
@@ -106,6 +112,11 @@ export default function ChallengesPage() {
       return
     }
 
+    // For weekly habits, weeklyTarget is required
+    if (newChallenge.challengeType === "WEEKLY_HABIT" && !newChallenge.weeklyTarget) {
+      return
+    }
+
     try {
       const res = await fetch("/api/challenges", {
         method: "POST",
@@ -117,10 +128,12 @@ export default function ChallengesPage() {
         setNewChallenge({
           name: "",
           description: "",
+          challengeType: "NUMERIC",
           startDate: format(new Date(), "yyyy-MM-dd"),
           endDate: "",
           targetValue: "",
           unit: "",
+          weeklyTarget: "",
           color: COLORS[0],
         })
         setIsDialogOpen(false)
@@ -212,12 +225,38 @@ export default function ChallengesPage() {
                 <DialogTitle>Nowe wyzwanie</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                {/* Challenge Type Toggle */}
+                <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                  <button
+                    type="button"
+                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      newChallenge.challengeType === "NUMERIC"
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "NUMERIC" })}
+                  >
+                    Cel liczbowy
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      newChallenge.challengeType === "WEEKLY_HABIT"
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "WEEKLY_HABIT", unit: "dni/tydzień" })}
+                  >
+                    Nawyk tygodniowy
+                  </button>
+                </div>
+
                 <div>
                   <Label>Nazwa</Label>
                   <Input
                     value={newChallenge.name}
                     onChange={(e) => setNewChallenge({ ...newChallenge, name: e.target.value })}
-                    placeholder="np. 100 km biegania"
+                    placeholder={newChallenge.challengeType === "WEEKLY_HABIT" ? "np. Gotować w domu" : "np. 100 km biegania"}
                   />
                 </div>
                 <div>
@@ -246,25 +285,52 @@ export default function ChallengesPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Cel</Label>
-                    <Input
-                      type="number"
-                      value={newChallenge.targetValue}
-                      onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
-                      placeholder="100"
-                    />
+
+                {newChallenge.challengeType === "WEEKLY_HABIT" ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Ile razy w tygodniu</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="7"
+                        value={newChallenge.weeklyTarget}
+                        onChange={(e) => setNewChallenge({ ...newChallenge, weeklyTarget: e.target.value })}
+                        placeholder="np. 3"
+                      />
+                    </div>
+                    <div>
+                      <Label>Cel (liczba tygodni)</Label>
+                      <Input
+                        type="number"
+                        value={newChallenge.targetValue}
+                        onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
+                        placeholder="np. 12"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Label>Jednostka</Label>
-                    <Input
-                      value={newChallenge.unit}
-                      onChange={(e) => setNewChallenge({ ...newChallenge, unit: e.target.value })}
-                      placeholder="km, dni, sesji..."
-                    />
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Cel</Label>
+                      <Input
+                        type="number"
+                        value={newChallenge.targetValue}
+                        onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
+                        placeholder="100"
+                      />
+                    </div>
+                    <div>
+                      <Label>Jednostka</Label>
+                      <Input
+                        value={newChallenge.unit}
+                        onChange={(e) => setNewChallenge({ ...newChallenge, unit: e.target.value })}
+                        placeholder="km, dni, sesji..."
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
+
                 <div>
                   <Label>Kolor</Label>
                   <div className="flex gap-2 mt-2">
@@ -327,6 +393,11 @@ export default function ChallengesPage() {
                       style={{ backgroundColor: challenge.color }}
                     />
                     <CardTitle className="text-base">{challenge.name}</CardTitle>
+                    {challenge.challengeType === "WEEKLY_HABIT" && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        {challenge.weeklyTarget}x/tydzień
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     {challenge.isCompleted && (
@@ -353,10 +424,21 @@ export default function ChallengesPage() {
                 {/* Progress */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>
-                      {challenge.currentValue} / {challenge.targetValue} {challenge.unit}
-                    </span>
-                    <span className="font-medium">{Math.round(progress)}%</span>
+                    {challenge.challengeType === "WEEKLY_HABIT" ? (
+                      <>
+                        <span>
+                          {challenge.currentValue} / {challenge.targetValue} tygodni zakończonych
+                        </span>
+                        <span className="font-medium">{Math.round(progress)}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          {challenge.currentValue} / {challenge.targetValue} {challenge.unit}
+                        </span>
+                        <span className="font-medium">{Math.round(progress)}%</span>
+                      </>
+                    )}
                   </div>
                   <Progress value={progress} className="h-2" />
                 </div>

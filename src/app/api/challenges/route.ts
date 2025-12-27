@@ -45,20 +45,27 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, startDate, endDate, targetValue, unit, color } = body
+    const { name, description, startDate, endDate, targetValue, unit, color, challengeType, weeklyTarget } = body
 
     if (!name || !startDate || !endDate || !targetValue || !unit) {
       return NextResponse.json({ error: "Wymagane pola: nazwa, daty, cel, jednostka" }, { status: 400 })
+    }
+
+    // For weekly habits, weeklyTarget is required
+    if (challengeType === "WEEKLY_HABIT" && !weeklyTarget) {
+      return NextResponse.json({ error: "Dla nawyku tygodniowego wymagana jest liczba dni w tygodniu" }, { status: 400 })
     }
 
     const challenge = await prisma.challenge.create({
       data: {
         name,
         description,
+        challengeType: challengeType || "NUMERIC",
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         targetValue: parseFloat(targetValue),
         unit,
+        weeklyTarget: weeklyTarget ? parseInt(weeklyTarget) : null,
         color: color || "#f59e0b",
         userId: session.user.id,
       },

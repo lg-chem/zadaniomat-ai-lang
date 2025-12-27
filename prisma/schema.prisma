@@ -327,11 +327,13 @@ model Challenge {
   id            String         @id @default(cuid())
   name          String
   description   String?        @db.Text
+  challengeType ChallengeType  @default(NUMERIC)
   startDate     DateTime
   endDate       DateTime
   targetValue   Float
   currentValue  Float          @default(0)
   unit          String         // e.g., "days", "km", "sessions"
+  weeklyTarget  Int?           // For WEEKLY_HABIT: number of days per week
   isCompleted   Boolean        @default(false)
   color         String         @default("#f59e0b")
   createdAt     DateTime       @default(now())
@@ -344,6 +346,11 @@ model Challenge {
   entries       ChallengeEntry[]
 
   @@index([userId])
+}
+
+enum ChallengeType {
+  NUMERIC       // Standard numeric challenge (100km, 30 days, etc.)
+  WEEKLY_HABIT  // Weekly habit (3 days per week)
 }
 
 model ChallengeMilestone {
