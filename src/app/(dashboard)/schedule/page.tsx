@@ -547,7 +547,101 @@ export default function SchedulePage() {
           <CardTitle className="text-base md:text-lg">Zadania na dziś</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-lg overflow-hidden">
+          {/* Mobile View - Cards */}
+          <div className="space-y-2 md:hidden">
+            {tasks.map((task) => (
+              <Card key={task.id} className={task.status === "COMPLETED" ? "opacity-60" : ""}>
+                <CardContent className="p-3">
+                  <div className="space-y-2">
+                    {/* Title and Status */}
+                    <div className="flex items-start gap-2">
+                      {editingTaskId === task.id ? (
+                        <Input
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))}
+                          onBlur={() => handleUpdateTaskTitle(task.id)}
+                          className="h-8 text-sm"
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          className="flex-1 flex items-center gap-2"
+                          onClick={() => handleStartEdit(task)}
+                        >
+                          {task.isRecurring && (
+                            <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                          )}
+                          <span className={`text-sm font-medium ${task.status === "COMPLETED" ? "line-through" : ""}`}>
+                            {task.title}
+                          </span>
+                        </div>
+                      )}
+                      <Badge className={`${STATUS_COLORS[task.status]} text-[10px]`}>
+                        {STATUS_LABELS[task.status]}
+                      </Badge>
+                    </div>
+
+                    {/* Category and Time */}
+                    <div className="flex items-center gap-2 text-xs">
+                      {task.category && (
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: task.category.color }}
+                          />
+                          <span>{task.category.name}</span>
+                        </div>
+                      )}
+                      {task.plannedMinutes && (
+                        <span className="text-muted-foreground">• {task.plannedMinutes} min</span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 pt-1">
+                      <Button
+                        size="sm"
+                        variant={task.status === "COMPLETED" ? "outline" : "default"}
+                        onClick={() =>
+                          handleUpdateTaskStatus(
+                            task.id,
+                            task.status === "COMPLETED" ? "NEW" : "COMPLETED"
+                          )
+                        }
+                        className="h-7 text-xs"
+                      >
+                        {task.status === "COMPLETED" ? "Cofnij" : "Zakończ"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="h-7 text-xs"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Mobile Add Task Button */}
+            {!isAddingTask && (
+              <Button
+                onClick={handleAddRowClick}
+                variant="outline"
+                className="w-full"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Dodaj zadanie
+              </Button>
+            )}
+          </div>
+
+          {/* Desktop View - Table */}
+          <div className="border rounded-lg overflow-hidden hidden md:block">
             {/* Table Header */}
             <div className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Kategoria</div>

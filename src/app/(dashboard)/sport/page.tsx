@@ -425,7 +425,62 @@ export default function SportPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-lg overflow-hidden">
+              {/* Mobile view - list of days */}
+              <div className="space-y-3 md:hidden">
+                {weekDays.map((day) => {
+                  const dayActivities = getActivitiesForDate(day)
+                  return (
+                    <Card key={day.toISOString()} className={isToday(day) ? "border-primary" : ""}>
+                      <CardHeader className="p-3 pb-2">
+                        <div className={`text-sm font-medium ${isToday(day) ? "text-primary" : ""}`}>
+                          {format(day, "EEEE, d MMM", { locale: pl })}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        {dayActivities.length === 0 ? (
+                          <div className="text-xs text-muted-foreground py-2">Brak aktywności</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {dayActivities.map((activity) => (
+                              <div
+                                key={activity.id}
+                                className="p-2 rounded text-xs text-white relative"
+                                style={{ backgroundColor: activity.type.color }}
+                              >
+                                <div className="font-medium">{activity.type.name}</div>
+                                {activity.duration && (
+                                  <div className="flex items-center gap-1 opacity-80">
+                                    <Clock className="h-3 w-3" />
+                                    {activity.duration} min
+                                  </div>
+                                )}
+                                {activity.bodyParts.length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {activity.bodyParts.map((bp) => (
+                                      <span key={bp.id} className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
+                                        {bp.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteActivity(activity.id)}
+                                  className="absolute top-1 right-1"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              {/* Desktop view - week grid */}
+              <div className="border rounded-lg overflow-hidden hidden md:block">
                 {/* Week header */}
                 <div className="grid grid-cols-7 gap-1 p-3 bg-muted/50 border-b">
                   {weekDays.map((day) => (
@@ -501,7 +556,82 @@ export default function SportPage() {
               <CardTitle className="text-lg">Kroki w tym tygodniu</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-lg overflow-hidden">
+              {/* Mobile view - Cards */}
+              <div className="space-y-2 md:hidden">
+                {weekDays.map((day) => {
+                  const stepsEntry = getStepsForDate(day)
+                  const progress = stepsEntry ? Math.min(100, (stepsEntry.count / 10000) * 100) : 0
+                  const isFuture = day > new Date()
+                  const dateStr = format(day, "yyyy-MM-dd")
+
+                  return (
+                    <Card key={day.toISOString()} className={isToday(day) ? "border-primary" : ""}>
+                      <CardContent className="p-3">
+                        <div className="space-y-2">
+                          {/* Date */}
+                          <div className={`text-sm font-medium ${isToday(day) ? "text-primary" : ""}`}>
+                            {format(day, "EEEE, d MMM", { locale: pl })}
+                          </div>
+
+                          {/* Steps */}
+                          <div className="flex items-center gap-2">
+                            <Footprints className="h-4 w-4 text-muted-foreground" />
+                            {editingStepsDate === dateStr ? (
+                              <Input
+                                type="number"
+                                value={stepsValue}
+                                onChange={(e) => setStepsValue(e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, () => handleSaveSteps(dateStr))}
+                                onBlur={() => handleSaveSteps(dateStr)}
+                                className="h-8 w-24 text-sm"
+                                autoFocus
+                              />
+                            ) : (
+                              <div
+                                className="cursor-pointer text-sm font-medium"
+                                onClick={() => !isFuture && handleStartStepsEdit(stepsEntry, dateStr)}
+                              >
+                                {stepsEntry ? stepsEntry.count.toLocaleString() : 0} kroków
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Progress */}
+                          {stepsEntry && (
+                            <div className="space-y-1">
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-primary h-2 rounded-full transition-all"
+                                  style={{ width: `${progress}%` }}
+                                />
+                              </div>
+                              <div className="text-xs text-muted-foreground text-right">
+                                {Math.round(progress)}% celu
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Actions */}
+                          {stepsEntry && !stepsEntry.copiedToActivity && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCopyToActivity(stepsEntry.id)}
+                              className="w-full h-7 text-xs"
+                            >
+                              <Copy className="h-3 w-3 mr-1" />
+                              Skopiuj jako aktywność
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              {/* Desktop view - Table */}
+              <div className="border rounded-lg overflow-hidden hidden md:block">
                 {/* Table header */}
                 <div className="grid grid-cols-[1fr_120px_120px_100px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
                   <div>Dzień</div>

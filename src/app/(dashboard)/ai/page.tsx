@@ -78,6 +78,8 @@ export default function AIPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
+  const [typingMessage, setTypingMessage] = useState("")
   const [categories, setCategories] = useState<Category[]>([])
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [periods, setPeriods] = useState<Period[]>([])
@@ -111,9 +113,7 @@ export default function AIPage() {
     fetchPeriods()
   }, [])
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  // Removed auto-scroll - let user read from top
 
   useEffect(() => {
     // Clear messages when mode changes
@@ -198,7 +198,25 @@ export default function AIPage() {
           assistantMessage.dataType = "tasks"
         }
 
-        setMessages((prev) => [...prev, assistantMessage])
+        // Typing effect - show message character by character
+        setIsTyping(true)
+        setTypingMessage("")
+
+        const fullText = assistantMessage.content
+        let currentIndex = 0
+
+        const typingInterval = setInterval(() => {
+          if (currentIndex < fullText.length) {
+            setTypingMessage(fullText.slice(0, currentIndex + 1))
+            currentIndex++
+          } else {
+            clearInterval(typingInterval)
+            setIsTyping(false)
+            setTypingMessage("")
+            setMessages((prev) => [...prev, assistantMessage])
+          }
+        }, 20) // 20ms per character for smooth typing
+
       } else {
         setMessages((prev) => [
           ...prev,
@@ -340,7 +358,7 @@ export default function AIPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
+    <div className="flex flex-col h-[calc(100vh-16rem)] md:h-[calc(100vh-8rem)]">
       {/* Header */}
       <div className="flex items-center justify-between mb-3 md:mb-4">
         <div>
@@ -508,7 +526,22 @@ export default function AIPage() {
                   </div>
                 ))}
 
-                {isLoading && (
+                {/* Typing message */}
+                {isTyping && typingMessage && (
+                  <div className="flex gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="bg-muted rounded-lg p-3 flex-1">
+                      <p className="whitespace-pre-wrap">
+                        {typingMessage}
+                        <span className="inline-block w-1 h-4 bg-primary ml-0.5 animate-pulse" />
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {isLoading && !isTyping && (
                   <div className="flex gap-3">
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                       <Bot className="h-4 w-4 text-primary" />
