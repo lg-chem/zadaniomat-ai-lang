@@ -6,7 +6,7 @@
 - **Backend**: Next.js API Routes + Server Actions
 - **Baza danych**: PostgreSQL (Supabase lub Neon) + Prisma ORM
 - **Auth**: NextAuth.js (lub Clerk dla szybszego startu)
-- **AI**: OpenAI API / Anthropic Claude API
+- **AI**: Google Gemini API
 - **Deployment**: Vercel
 - **Real-time**: Supabase Realtime (opcjonalnie)
 
