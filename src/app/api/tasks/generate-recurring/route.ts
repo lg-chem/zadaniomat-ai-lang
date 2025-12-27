@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     })
 
     // Create new tasks for recurring ones that don't exist yet
-    const createdTasks = []
+    const createdTasks: Array<{ id: string; title: string }> = []
     for (const task of tasksToGenerate) {
       // Check if a similar task already exists (same title, same category, or it's the original recurring task on its start date)
       const alreadyExists = existingTasks.some(
