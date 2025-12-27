@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { MobileHeader } from "@/components/layout/mobile-header"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { SessionProvider } from "@/components/providers/session-provider"
+import { SWRProvider } from "@/components/providers/swr-provider"
 import { DashboardClient } from "@/components/layout/dashboard-client"
 
 export default async function DashboardLayout({
@@ -20,16 +21,18 @@ export default async function DashboardLayout({
 
   return (
     <SessionProvider>
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <MobileHeader />
-        <main className="md:pl-64 pt-16 md:pt-0">
-          <div className="p-3 md:p-8 pb-16 md:pb-8">
-            <DashboardClient>{children}</DashboardClient>
-          </div>
-        </main>
-        <BottomNav />
-      </div>
+      <SWRProvider>
+        <div className="min-h-screen bg-background">
+          <Sidebar />
+          <MobileHeader />
+          <main className="md:pl-64 pt-16 md:pt-0">
+            <div className="p-3 md:p-8 pb-16 md:pb-8">
+              <DashboardClient>{children}</DashboardClient>
+            </div>
+          </main>
+          <BottomNav />
+        </div>
+      </SWRProvider>
     </SessionProvider>
   )
 }
