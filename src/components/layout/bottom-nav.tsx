@@ -8,6 +8,8 @@ import {
   Sparkles,
   Dumbbell,
   Menu,
+  CalendarDays,
+  Repeat,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -15,15 +17,15 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { SidebarContent } from "./sidebar"
 
 const workBottomNav = [
-  { href: "/", label: "Dziś", icon: LayoutDashboard },
-  { href: "/goals", label: "Cele", icon: Target },
+  { href: "/backlog", label: "Backlog", icon: LayoutDashboard },
   { href: "/ai", label: "AI", icon: Sparkles },
+  { href: "/schedule", label: "Plan", icon: CalendarDays },
 ]
 
 const privateBottomNav = [
-  { href: "/", label: "Dziś", icon: LayoutDashboard },
+  { href: "/schedule", label: "Plan", icon: CalendarDays },
   { href: "/sport", label: "Sport", icon: Dumbbell },
-  { href: "/ai", label: "AI", icon: Sparkles },
+  { href: "/habits", label: "Nawyki", icon: Repeat },
 ]
 
 export function BottomNav() {

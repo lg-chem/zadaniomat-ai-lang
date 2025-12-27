@@ -358,7 +358,7 @@ export default function AIPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-16rem)] md:h-[calc(100vh-8rem)]">
+    <div className="flex flex-col h-[calc(100vh-12rem)] md:h-[calc(100vh-8rem)]">
       {/* Header */}
       <div className="flex items-center justify-between mb-3 md:mb-4">
         <div>

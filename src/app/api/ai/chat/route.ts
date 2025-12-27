@@ -40,6 +40,16 @@ async function getUserContext(userId: string, mode: ChatMode) {
     orderBy: { startDate: "desc" },
   })
 
+  // Get backlog items
+  const backlogItems = await prisma.backlogIdea.findMany({
+    where: {
+      userId,
+      workspaceType: "WORK",
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20, // Limit to last 20 items
+  })
+
   // Get active period and sprint for WORK workspace
   const activePeriod = await prisma.period.findFirst({
     where: {
@@ -167,6 +177,13 @@ async function getUserContext(userId: string, mode: ChatMode) {
     categories: categories.map((c) => ({
       name: c.name,
       isStrategic: c.isStrategic,
+    })),
+    backlog: backlogItems.map((item) => ({
+      title: item.title,
+      description: item.description,
+      priority: item.priority,
+      estimatedEffort: item.estimatedEffort,
+      category: item.category,
     })),
   }
 }

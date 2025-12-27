@@ -29,29 +29,22 @@ import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 const workNavItems = [
-  { href: "/", label: "Dziś", icon: LayoutDashboard },
-  { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
-  { href: "/tasks", label: "Zadania", icon: CheckSquare },
-  { href: "/recurring", label: "Cykliczne", icon: Repeat2 },
-  { href: "/goals", label: "Cele", icon: Target },
-  { href: "/sprints", label: "Sprinty", icon: Timer },
-  { href: "/calendar", label: "Kalendarz", icon: Calendar },
-  { href: "/stats", label: "Statystyki", icon: BarChart3 },
   { href: "/backlog", label: "Backlog", icon: Inbox },
   { href: "/ai", label: "AI Asystent", icon: Sparkles },
+  { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
+  { href: "/calendar", label: "Kalendarz", icon: Calendar },
+  { href: "/goals", label: "Cele", icon: Target },
+  { href: "/sprints", label: "Sprinty", icon: Timer },
+  { href: "/recurring", label: "Cykliczne", icon: Repeat2 },
+  { href: "/stats", label: "Statystyki", icon: BarChart3 },
 ]
 
 const privateNavItems = [
-  { href: "/", label: "Dziś", icon: LayoutDashboard },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
   { href: "/sport", label: "Sport", icon: Dumbbell },
-  { href: "/fitness-goals", label: "Cele fitness", icon: TrendingUp },
-  { href: "/goals", label: "Cele", icon: Target },
-  { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },
-  { href: "/ai", label: "AI Asystent", icon: Sparkles },
 ]
 
 const bottomNavItems = [
