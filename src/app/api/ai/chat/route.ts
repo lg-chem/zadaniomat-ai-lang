@@ -18,6 +18,28 @@ async function getUserContext(userId: string, mode: ChatMode) {
   const today = new Date()
   const todayStr = format(today, "yyyy-MM-dd")
 
+  // Get AI knowledge base for WORK workspace
+  const knowledgeBase = await prisma.aIKnowledgeBase.findUnique({
+    where: {
+      userId_workspaceType: {
+        userId,
+        workspaceType: "WORK",
+      },
+    },
+  })
+
+  // Get active fitness goals
+  const activeFitnessGoals = await prisma.fitnessGoal.findMany({
+    where: {
+      userId,
+      endDate: {
+        gte: today,
+      },
+      isCompleted: false,
+    },
+    orderBy: { startDate: "desc" },
+  })
+
   // Get active period and sprint for WORK workspace
   const activePeriod = await prisma.period.findFirst({
     where: {
@@ -86,6 +108,22 @@ async function getUserContext(userId: string, mode: ChatMode) {
 
   return {
     today: format(today, "EEEE, d MMMM yyyy", { locale: pl }),
+    knowledgeBase: knowledgeBase
+      ? {
+          personalInfo: knowledgeBase.personalInfo,
+          companyInfo: knowledgeBase.companyInfo,
+          chatInstructions: knowledgeBase.chatInstructions,
+        }
+      : null,
+    fitnessGoals: activeFitnessGoals.map((g) => ({
+      name: g.name,
+      goalType: g.goalType,
+      currentValue: g.currentValue,
+      targetValue: g.targetValue,
+      unit: g.unit,
+      startDate: format(g.startDate, "d MMM yyyy", { locale: pl }),
+      endDate: format(g.endDate, "d MMM yyyy", { locale: pl }),
+    })),
     activePeriod: activePeriod
       ? {
           name: activePeriod.name,
@@ -135,9 +173,12 @@ async function getUserContext(userId: string, mode: ChatMode) {
 
 function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getUserContext>>) {
   const contextJson = JSON.stringify(context, null, 2)
+  const customInstructions = context.knowledgeBase?.chatInstructions
+    ? `\n\nINSTRUKCJE OD UŻYTKOWNIKA:\n${context.knowledgeBase.chatInstructions}`
+    : ""
 
   if (mode === "sprint_goals") {
-    return `Jesteś asystentem do planowania celów sprintowych. Rozmawiasz po polsku.
+    return `Jesteś asystentem do planowania celów sprintowych. Rozmawiasz po polsku.${customInstructions}
 
 KONTEKST UŻYTKOWNIKA:
 ${contextJson}
@@ -174,7 +215,7 @@ Zawsze odpowiadaj w formacie JSON.`
   }
 
   // daily_tasks mode
-  return `Jesteś asystentem do planowania zadań na dzień. Rozmawiasz po polsku.
+  return `Jesteś asystentem do planowania zadań na dzień. Rozmawiasz po polsku.${customInstructions}
 
 KONTEKST UŻYTKOWNIKA:
 ${contextJson}

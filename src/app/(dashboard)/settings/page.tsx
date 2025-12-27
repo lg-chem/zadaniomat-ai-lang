@@ -1,11 +1,13 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { Plus, Trash2, Star, Check } from "lucide-react"
+import { Plus, Trash2, Star, Check, Brain, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
 interface Category {
@@ -17,6 +19,14 @@ interface Category {
   workspaceType: string
 }
 
+interface AIKnowledgeBase {
+  id?: string
+  workspaceType: string
+  personalInfo?: string | null
+  companyInfo?: string | null
+  chatInstructions?: string | null
+}
+
 const COLORS = [
   "#3b82f6", "#8b5cf6", "#ec4899", "#ef4444", "#f59e0b",
   "#10b981", "#06b6d4", "#6366f1", "#84cc16", "#f97316",
@@ -26,6 +36,15 @@ export default function SettingsPage() {
   const { workspace } = useWorkspaceStore()
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // AI Knowledge Base
+  const [knowledgeBase, setKnowledgeBase] = useState<AIKnowledgeBase>({
+    workspaceType: workspace,
+    personalInfo: "",
+    companyInfo: "",
+    chatInstructions: "",
+  })
+  const [isSavingKnowledge, setIsSavingKnowledge] = useState(false)
 
   // Inline editing state for new row
   const [newRow, setNewRow] = useState({
@@ -54,9 +73,29 @@ export default function SettingsPage() {
     }
   }, [workspace])
 
+  const fetchKnowledgeBase = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/ai/knowledge?workspaceType=${workspace}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data) {
+          setKnowledgeBase({
+            ...data,
+            personalInfo: data.personalInfo || "",
+            companyInfo: data.companyInfo || "",
+            chatInstructions: data.chatInstructions || "",
+          })
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching knowledge base:", error)
+    }
+  }, [workspace])
+
   useEffect(() => {
     fetchCategories()
-  }, [fetchCategories])
+    fetchKnowledgeBase()
+  }, [fetchCategories, fetchKnowledgeBase])
 
   const handleCreateCategory = async () => {
     if (!newRow.name.trim()) return
@@ -115,6 +154,29 @@ export default function SettingsPage() {
       fetchCategories()
     } catch (error) {
       console.error("Error updating category:", error)
+    }
+  }
+
+  const handleSaveKnowledgeBase = async () => {
+    setIsSavingKnowledge(true)
+    try {
+      const res = await fetch("/api/ai/knowledge", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceType: workspace,
+          personalInfo: knowledgeBase.personalInfo || null,
+          companyInfo: knowledgeBase.companyInfo || null,
+          chatInstructions: knowledgeBase.chatInstructions || null,
+        }),
+      })
+      if (res.ok) {
+        await fetchKnowledgeBase()
+      }
+    } catch (error) {
+      console.error("Error saving knowledge base:", error)
+    } finally {
+      setIsSavingKnowledge(false)
     }
   }
 
@@ -345,6 +407,89 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* AI Knowledge Base */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle>Baza wiedzy AI</CardTitle>
+              <CardDescription>
+                Dostarcz kontekst dla asystenta AI w workspace: <strong>{workspace}</strong>
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {workspace === "PRIVATE" && (
+            <div className="space-y-2">
+              <Label htmlFor="personalInfo">
+                Informacje osobiste i fitness
+              </Label>
+              <Textarea
+                id="personalInfo"
+                placeholder="Np. wiek, wzrost, waga, cele fitness, preferencje treningowe, ograniczenia zdrowotne..."
+                value={knowledgeBase.personalInfo || ""}
+                onChange={(e) =>
+                  setKnowledgeBase({ ...knowledgeBase, personalInfo: e.target.value })
+                }
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground">
+                Te informacje pomogą AI lepiej dostosować sugestie treningów i celów
+              </p>
+            </div>
+          )}
+
+          {workspace === "WORK" && (
+            <div className="space-y-2">
+              <Label htmlFor="companyInfo">
+                Informacje o firmie i projekcie
+              </Label>
+              <Textarea
+                id="companyInfo"
+                placeholder="Np. nazwa firmy, branża, projekty, cele biznesowe, zespół..."
+                value={knowledgeBase.companyInfo || ""}
+                onChange={(e) =>
+                  setKnowledgeBase({ ...knowledgeBase, companyInfo: e.target.value })
+                }
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground">
+                Te informacje pomogą AI lepiej rozumieć kontekst pracy
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="chatInstructions">
+              Instrukcje dla asystenta AI
+            </Label>
+            <Textarea
+              id="chatInstructions"
+              placeholder="Np. Odpowiadaj zwięźle, używaj bullet points, mów jak mentor..."
+              value={knowledgeBase.chatInstructions || ""}
+              onChange={(e) =>
+                setKnowledgeBase({ ...knowledgeBase, chatInstructions: e.target.value })
+              }
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              Określ jak AI powinien się komunikować i zachowywać
+            </p>
+          </div>
+
+          <Button
+            onClick={handleSaveKnowledgeBase}
+            disabled={isSavingKnowledge}
+            className="w-full sm:w-auto"
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {isSavingKnowledge ? "Zapisywanie..." : "Zapisz bazę wiedzy"}
+          </Button>
         </CardContent>
       </Card>
     </div>

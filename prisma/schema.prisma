@@ -32,10 +32,12 @@ model User {
   gamification  Gamification?
   backlogItems  BacklogItem[]
   aiConversations AIConversation[]
+  aiKnowledgeBases AIKnowledgeBase[]
   settings      UserSettings?
   sportActivityTypes SportActivityType[]
   sportActivities SportActivity[]
   stepsEntries  StepsEntry[]
+  fitnessGoals  FitnessGoal[]
 }
 
 model Account {
@@ -128,6 +130,7 @@ model Period {
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   sprints       Sprint[]
   goals         Goal[]        @relation("PeriodGoals")
+  fitnessGoals  FitnessGoal[]
 
   @@index([userId, workspaceType])
 }
@@ -505,6 +508,23 @@ model AIMessage {
   @@index([conversationId])
 }
 
+model AIKnowledgeBase {
+  id              String        @id @default(cuid())
+  workspaceType   WorkspaceType // WORK or PRIVATE context
+  personalInfo    String?       @db.Text // Personal info, fitness data, preferences
+  companyInfo     String?       @db.Text // Company info for WORK workspace
+  chatInstructions String?      @db.Text // How the chat should behave
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceType])
+  @@index([userId])
+}
+
 // ==================== SPORT ====================
 
 model SportActivityType {
@@ -567,4 +587,41 @@ model StepsEntry {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+model FitnessGoal {
+  id            String          @id @default(cuid())
+  name          String
+  description   String?         @db.Text
+  goalType      FitnessGoalType
+  targetValue   Float
+  currentValue  Float           @default(0)
+  unit          String          // kg, cm, reps, minutes, etc.
+  startDate     DateTime        @db.Date
+  endDate       DateTime        @db.Date
+  isCompleted   Boolean         @default(false)
+  workspaceType WorkspaceType   @default(PRIVATE)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relations
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodId      String?
+  period        Period?         @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  @@index([userId, workspaceType])
+  @@index([userId, startDate, endDate])
+}
+
+enum FitnessGoalType {
+  WEIGHT_LOSS
+  WEIGHT_GAIN
+  MUSCLE_GAIN
+  CARDIO_IMPROVEMENT
+  STRENGTH_INCREASE
+  FLEXIBILITY
+  ENDURANCE
+  BODY_FAT_REDUCTION
+  CUSTOM
 }
