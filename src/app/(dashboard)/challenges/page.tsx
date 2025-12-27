@@ -1,7 +1,18 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { format, differenceInDays } from "date-fns"
+import { useEffect, useState, useCallback, KeyboardEvent } from "react"
+import {
+  format,
+  differenceInDays,
+  startOfWeek,
+  addDays,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameDay,
+  getWeek,
+  getMonth,
+} from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Plus,
@@ -9,9 +20,10 @@ import {
   Trash2,
   X,
   Trophy,
-  Target,
   Calendar,
   TrendingUp,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,7 +54,7 @@ interface ChallengeMilestone {
   isReached: boolean
 }
 
-type ChallengeType = "NUMERIC" | "WEEKLY_HABIT"
+type ChallengeType = "NUMERIC" | "WEEKLY_HABIT" | "MONTHLY_GOAL"
 
 interface Challenge {
   id: string
@@ -59,6 +71,12 @@ interface Challenge {
   color: string
   milestones: ChallengeMilestone[]
   entries: ChallengeEntry[]
+}
+
+const CHALLENGE_TYPE_LABELS: Record<ChallengeType, string> = {
+  NUMERIC: "Cel liczbowy",
+  WEEKLY_HABIT: "Nawyk tygodniowy",
+  MONTHLY_GOAL: "Cel miesięczny",
 }
 
 const COLORS = [
@@ -170,6 +188,20 @@ export default function ChallengesPage() {
     }
   }
 
+  const handleToggleDay = async (challengeId: string, date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd")
+    try {
+      await fetch(`/api/challenges/${challengeId}/entry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: 1, date: dateStr, toggle: true }),
+      })
+      fetchChallenges()
+    } catch (error) {
+      console.error("Error toggling day:", error)
+    }
+  }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
     if (e.key === "Enter") {
       e.preventDefault()
@@ -179,6 +211,31 @@ export default function ChallengesPage() {
       setAddingProgressId(null)
       setProgressValue("")
     }
+  }
+
+  // Check if a day has an entry
+  const isDayCompleted = (challenge: Challenge, date: Date): boolean => {
+    const dateStr = format(date, "yyyy-MM-dd")
+    return challenge.entries.some((e) => format(new Date(e.date), "yyyy-MM-dd") === dateStr)
+  }
+
+  // Get current week days
+  const getCurrentWeekDays = () => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  }
+
+  // Get months for monthly goal
+  const getMonthsInRange = (startDate: string, endDate: string) => {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const months: Date[] = []
+    const current = startOfMonth(start)
+    while (current <= end) {
+      months.push(new Date(current))
+      current.setMonth(current.getMonth() + 1)
+    }
+    return months
   }
 
   // Stats
@@ -226,28 +283,39 @@ export default function ChallengesPage() {
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 {/* Challenge Type Toggle */}
-                <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                <div className="flex gap-1 p-1 bg-muted rounded-lg">
                   <button
                     type="button"
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                    className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors ${
                       newChallenge.challengeType === "NUMERIC"
                         ? "bg-background shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
-                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "NUMERIC" })}
+                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "NUMERIC", unit: "" })}
                   >
                     Cel liczbowy
                   </button>
                   <button
                     type="button"
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                    className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors ${
                       newChallenge.challengeType === "WEEKLY_HABIT"
                         ? "bg-background shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
-                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "WEEKLY_HABIT", unit: "dni/tydzień" })}
+                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "WEEKLY_HABIT", unit: "tygodni" })}
                   >
-                    Nawyk tygodniowy
+                    Nawyk tyg.
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors ${
+                      newChallenge.challengeType === "MONTHLY_GOAL"
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => setNewChallenge({ ...newChallenge, challengeType: "MONTHLY_GOAL", unit: "miesięcy" })}
+                  >
+                    Cel mies.
                   </button>
                 </div>
 
@@ -256,7 +324,13 @@ export default function ChallengesPage() {
                   <Input
                     value={newChallenge.name}
                     onChange={(e) => setNewChallenge({ ...newChallenge, name: e.target.value })}
-                    placeholder={newChallenge.challengeType === "WEEKLY_HABIT" ? "np. Gotować w domu" : "np. 100 km biegania"}
+                    placeholder={
+                      newChallenge.challengeType === "WEEKLY_HABIT"
+                        ? "np. Gotować w domu"
+                        : newChallenge.challengeType === "MONTHLY_GOAL"
+                        ? "np. Wpłata na oszczędności"
+                        : "np. 100 km biegania"
+                    }
                   />
                 </div>
                 <div>
@@ -264,7 +338,11 @@ export default function ChallengesPage() {
                   <Input
                     value={newChallenge.description}
                     onChange={(e) => setNewChallenge({ ...newChallenge, description: e.target.value })}
-                    placeholder="Szczegóły wyzwania..."
+                    placeholder={
+                      newChallenge.challengeType === "MONTHLY_GOAL"
+                        ? "np. 500 zł na konto oszczędnościowe"
+                        : "Szczegóły wyzwania..."
+                    }
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -308,6 +386,19 @@ export default function ChallengesPage() {
                         placeholder="np. 12"
                       />
                     </div>
+                  </div>
+                ) : newChallenge.challengeType === "MONTHLY_GOAL" ? (
+                  <div>
+                    <Label>Cel (liczba miesięcy)</Label>
+                    <Input
+                      type="number"
+                      value={newChallenge.targetValue}
+                      onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
+                      placeholder="np. 12"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Raz w miesiącu będziesz odznaczać wykonanie celu
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
@@ -376,18 +467,24 @@ export default function ChallengesPage() {
       {/* Challenges Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {challenges.map((challenge) => {
-          const progress = Math.min(100, (challenge.currentValue / challenge.targetValue) * 100)
+          const progress = (challenge.currentValue / challenge.targetValue) * 100
+          const progressCapped = Math.min(100, progress)
+          const isExceeded = progress > 100
           const daysLeft = differenceInDays(new Date(challenge.endDate), new Date())
           const isOverdue = daysLeft < 0 && !challenge.isCompleted
+          const weekDays = getCurrentWeekDays()
+          const months = challenge.challengeType === "MONTHLY_GOAL"
+            ? getMonthsInRange(challenge.startDate, challenge.endDate)
+            : []
 
           return (
             <Card
               key={challenge.id}
-              className={`${challenge.isCompleted ? "opacity-60" : ""}`}
+              className={`${challenge.isCompleted && !isExceeded ? "opacity-60" : ""}`}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: challenge.color }}
@@ -395,12 +492,22 @@ export default function ChallengesPage() {
                     <CardTitle className="text-base">{challenge.name}</CardTitle>
                     {challenge.challengeType === "WEEKLY_HABIT" && (
                       <Badge variant="secondary" className="text-[10px]">
-                        {challenge.weeklyTarget}x/tydzień
+                        {challenge.weeklyTarget}x/tyg
+                      </Badge>
+                    )}
+                    {challenge.challengeType === "MONTHLY_GOAL" && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        1x/mies
                       </Badge>
                     )}
                   </div>
                   <div className="flex gap-1">
-                    {challenge.isCompleted && (
+                    {isExceeded && (
+                      <Badge className="bg-purple-100 text-purple-700 text-[10px]">
+                        🎉 Przekroczono!
+                      </Badge>
+                    )}
+                    {challenge.isCompleted && !isExceeded && (
                       <Badge className="bg-green-100 text-green-700">
                         <Trophy className="h-3 w-3 mr-1" />
                         Ukończone
@@ -427,21 +534,107 @@ export default function ChallengesPage() {
                     {challenge.challengeType === "WEEKLY_HABIT" ? (
                       <>
                         <span>
-                          {challenge.currentValue} / {challenge.targetValue} tygodni zakończonych
+                          {challenge.currentValue} / {challenge.targetValue} tygodni
                         </span>
-                        <span className="font-medium">{Math.round(progress)}%</span>
+                        <span className={`font-medium ${isExceeded ? "text-purple-600" : ""}`}>
+                          {Math.round(progress)}%
+                        </span>
+                      </>
+                    ) : challenge.challengeType === "MONTHLY_GOAL" ? (
+                      <>
+                        <span>
+                          {challenge.currentValue} / {challenge.targetValue} miesięcy
+                        </span>
+                        <span className={`font-medium ${isExceeded ? "text-purple-600" : ""}`}>
+                          {Math.round(progress)}%
+                        </span>
                       </>
                     ) : (
                       <>
                         <span>
                           {challenge.currentValue} / {challenge.targetValue} {challenge.unit}
                         </span>
-                        <span className="font-medium">{Math.round(progress)}%</span>
+                        <span className={`font-medium ${isExceeded ? "text-purple-600" : ""}`}>
+                          {Math.round(progress)}%
+                        </span>
                       </>
                     )}
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <Progress value={progressCapped} className="h-2" />
                 </div>
+
+                {/* Weekly Habit - Day Checkboxes */}
+                {challenge.challengeType === "WEEKLY_HABIT" && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-2">Ten tydzień:</div>
+                    <div className="flex gap-1 justify-between">
+                      {weekDays.map((day) => {
+                        const isCompleted = isDayCompleted(challenge, day)
+                        const isToday = isSameDay(day, new Date())
+                        const isFuture = day > new Date()
+                        return (
+                          <button
+                            key={day.toISOString()}
+                            onClick={() => !isFuture && handleToggleDay(challenge.id, day)}
+                            disabled={isFuture}
+                            className={`
+                              h-8 w-8 rounded-lg flex flex-col items-center justify-center text-[10px] transition-all
+                              ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer hover:scale-110"}
+                              ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
+                              ${isToday && !isCompleted ? "border-primary border-solid" : ""}
+                            `}
+                            style={{
+                              backgroundColor: isCompleted ? challenge.color : "transparent",
+                            }}
+                          >
+                            <span className="font-medium">
+                              {format(day, "EEEEE", { locale: pl })}
+                            </span>
+                            {isCompleted && <Check className="h-3 w-3" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Monthly Goal - Month Checkboxes */}
+                {challenge.challengeType === "MONTHLY_GOAL" && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-2">Miesiące:</div>
+                    <div className="flex gap-1 flex-wrap">
+                      {months.slice(0, 12).map((month) => {
+                        const monthStart = startOfMonth(month)
+                        const isCompleted = challenge.entries.some(
+                          (e) => getMonth(new Date(e.date)) === getMonth(month) &&
+                                 new Date(e.date).getFullYear() === month.getFullYear()
+                        )
+                        const isCurrentMonth = getMonth(new Date()) === getMonth(month) &&
+                                              new Date().getFullYear() === month.getFullYear()
+                        const isFuture = monthStart > new Date()
+                        return (
+                          <button
+                            key={month.toISOString()}
+                            onClick={() => !isFuture && handleToggleDay(challenge.id, monthStart)}
+                            disabled={isFuture}
+                            className={`
+                              h-7 px-2 rounded flex items-center justify-center text-[10px] transition-all
+                              ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer hover:scale-105"}
+                              ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
+                              ${isCurrentMonth && !isCompleted ? "border-primary border-solid" : ""}
+                            `}
+                            style={{
+                              backgroundColor: isCompleted ? challenge.color : "transparent",
+                            }}
+                          >
+                            {format(month, "MMM", { locale: pl })}
+                            {isCompleted && <Check className="h-3 w-3 ml-0.5" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Dates */}
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -457,8 +650,8 @@ export default function ChallengesPage() {
                   )}
                 </div>
 
-                {/* Add progress */}
-                {!challenge.isCompleted && (
+                {/* Add progress - only for NUMERIC */}
+                {challenge.challengeType === "NUMERIC" && (
                   <div>
                     {addingProgressId === challenge.id ? (
                       <div className="flex gap-2">
@@ -505,8 +698,8 @@ export default function ChallengesPage() {
                   </div>
                 )}
 
-                {/* Recent entries */}
-                {challenge.entries.length > 0 && (
+                {/* Recent entries - only for NUMERIC */}
+                {challenge.challengeType === "NUMERIC" && challenge.entries.length > 0 && (
                   <div className="text-xs text-muted-foreground">
                     <div className="font-medium mb-1">Ostatnie wpisy:</div>
                     {challenge.entries.slice(0, 3).map((entry) => (

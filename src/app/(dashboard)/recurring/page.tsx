@@ -420,14 +420,14 @@ export default function RecurringPage() {
               <div>
                 <Label>Kategoria</Label>
                 <Select
-                  value={newTask.categoryId}
-                  onValueChange={(v) => setNewTask({ ...newTask, categoryId: v })}
+                  value={newTask.categoryId || "none"}
+                  onValueChange={(v) => setNewTask({ ...newTask, categoryId: v === "none" ? "" : v })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Wybierz..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Brak</SelectItem>
+                    <SelectItem value="none">Brak</SelectItem>
                     {categories.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         <div className="flex items-center gap-2">

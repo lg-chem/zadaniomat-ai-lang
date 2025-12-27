@@ -351,6 +351,7 @@ model Challenge {
 enum ChallengeType {
   NUMERIC       // Standard numeric challenge (100km, 30 days, etc.)
   WEEKLY_HABIT  // Weekly habit (3 days per week)
+  MONTHLY_GOAL  // Monthly goal (once per month for X months)
 }
 
 model ChallengeMilestone {

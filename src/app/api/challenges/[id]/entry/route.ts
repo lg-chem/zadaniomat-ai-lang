@@ -15,11 +15,11 @@ export async function POST(
 
     const { id } = params
     const body = await req.json()
-    const { value, date, notes } = body
+    const { value, date, notes, toggle } = body
 
     const challenge = await prisma.challenge.findFirst({
       where: { id, userId: session.user.id },
-      include: { milestones: true },
+      include: { milestones: true, entries: true },
     })
 
     if (!challenge) {
@@ -28,6 +28,37 @@ export async function POST(
 
     const entryDate = date ? new Date(date) : new Date()
     entryDate.setHours(0, 0, 0, 0)
+    const entryDateStr = entryDate.toISOString().split("T")[0]
+
+    // For toggle mode (weekly habits, monthly goals), check if entry exists
+    if (toggle) {
+      const existingEntry = challenge.entries.find((e) => {
+        const eDate = new Date(e.date).toISOString().split("T")[0]
+        return eDate === entryDateStr
+      })
+
+      if (existingEntry) {
+        // Delete entry
+        await prisma.challengeEntry.delete({
+          where: { id: existingEntry.id },
+        })
+
+        // Update challenge progress (decrease by entry value)
+        const newCurrentValue = Math.max(0, challenge.currentValue - existingEntry.value)
+        await prisma.challenge.update({
+          where: { id },
+          data: {
+            currentValue: newCurrentValue,
+            isCompleted: false, // Un-complete when removing
+          },
+        })
+
+        return NextResponse.json({
+          toggled: "off",
+          currentValue: newCurrentValue,
+        })
+      }
+    }
 
     // Create entry
     const entry = await prisma.challengeEntry.create({
@@ -41,13 +72,15 @@ export async function POST(
 
     // Update challenge progress
     const newCurrentValue = challenge.currentValue + parseFloat(value)
-    const isCompleted = newCurrentValue >= challenge.targetValue
+    // Don't auto-complete for NUMERIC - user might want to keep tracking
+    // Only auto-complete for WEEKLY_HABIT and MONTHLY_GOAL when target reached
+    const shouldAutoComplete = challenge.challengeType !== "NUMERIC" && newCurrentValue >= challenge.targetValue
 
     await prisma.challenge.update({
       where: { id },
       data: {
         currentValue: newCurrentValue,
-        isCompleted,
+        ...(shouldAutoComplete && { isCompleted: true }),
       },
     })
 
@@ -66,8 +99,9 @@ export async function POST(
 
     return NextResponse.json({
       entry,
+      toggled: "on",
       currentValue: newCurrentValue,
-      isCompleted,
+      isCompleted: shouldAutoComplete,
     })
   } catch (error) {
     console.error("Error adding entry:", error)

@@ -228,12 +228,12 @@ export default function SportPage() {
     }
   }
 
-  const handleCopyStepsToActivity = async (stepsEntry: StepsEntry, typeId: string) => {
+  const handleCopyStepsToActivity = async (stepsEntry: StepsEntry) => {
     try {
       await fetch(`/api/sport/steps/${stepsEntry.id}/copy-to-activity`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ typeId }),
+        body: JSON.stringify({}),
       })
       fetchActivities()
       fetchSteps()
@@ -298,6 +298,15 @@ export default function SportPage() {
     ...activities.map((a) => format(new Date(a.date), "yyyy-MM-dd")),
   ]).size
 
+  // Body parts stats for this week
+  const bodyPartsStats = activities
+    .filter((a) => a.type.hasBodyParts)
+    .flatMap((a) => a.bodyParts)
+    .reduce((acc, bp) => {
+      acc[bp.name] = (acc[bp.name] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -336,25 +345,52 @@ export default function SportPage() {
 
       {/* Stats */}
       <Card>
-        <CardContent className="flex items-center gap-8 py-4">
-          <div className="flex items-center gap-2">
-            <Dumbbell className="h-5 w-5 text-primary" />
+        <CardContent className="py-4">
+          <div className="flex items-center gap-8 mb-4">
+            <div className="flex items-center gap-2">
+              <Dumbbell className="h-5 w-5 text-primary" />
+              <div>
+                <div className="text-sm text-muted-foreground">Treningi</div>
+                <div className="text-2xl font-bold">{totalActivities}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Footprints className="h-5 w-5 text-green-500" />
+              <div>
+                <div className="text-sm text-muted-foreground">Kroki</div>
+                <div className="text-2xl font-bold">{totalSteps.toLocaleString()}</div>
+              </div>
+            </div>
             <div>
-              <div className="text-sm text-muted-foreground">Treningi</div>
-              <div className="text-2xl font-bold">{totalActivities}</div>
+              <div className="text-sm text-muted-foreground">Aktywne dni</div>
+              <div className="text-2xl font-bold text-orange-500">{activeDays}/7</div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Footprints className="h-5 w-5 text-green-500" />
+
+          {/* Body parts stats */}
+          {Object.keys(bodyPartsStats).length > 0 && (
             <div>
-              <div className="text-sm text-muted-foreground">Kroki</div>
-              <div className="text-2xl font-bold">{totalSteps.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground mb-2">Partie mięśniowe w tym tygodniu:</div>
+              <div className="flex flex-wrap gap-2">
+                {BODY_PARTS.map((part) => {
+                  const count = bodyPartsStats[part] || 0
+                  return (
+                    <div
+                      key={part}
+                      className={`px-3 py-1 rounded-full text-sm ${
+                        count > 0
+                          ? "bg-primary/10 text-primary border border-primary/20"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {part}
+                      {count > 0 && <span className="ml-1 font-bold">×{count}</span>}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Aktywne dni</div>
-            <div className="text-2xl font-bold text-orange-500">{activeDays}/7</div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -434,10 +470,10 @@ export default function SportPage() {
                                 ))}
                               </div>
                             )}
-                            {activity.fromSteps && (
-                              <Badge variant="secondary" className="absolute -top-1 -right-1 text-[8px] px-1">
-                                kroki
-                              </Badge>
+                            {activity.fromSteps && activity.notes && (
+                              <div className="mt-1 text-[10px] opacity-80">
+                                {parseInt(activity.notes).toLocaleString()} kroków
+                              </div>
                             )}
                             <button
                               onClick={() => handleDeleteActivity(activity.id)}
@@ -541,23 +577,15 @@ export default function SportPage() {
                       {/* Actions */}
                       <div className="flex gap-1">
                         {stepsEntry && !stepsEntry.copiedToActivity && stepsEntry.count >= 5000 && (
-                          <Select
-                            onValueChange={(typeId) => handleCopyStepsToActivity(stepsEntry, typeId)}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => handleCopyStepsToActivity(stepsEntry)}
                           >
-                            <SelectTrigger className="h-7 w-7 p-0">
-                              <Copy className="h-3.5 w-3.5" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <div className="text-xs text-muted-foreground px-2 py-1">
-                                Kopiuj jako:
-                              </div>
-                              {activityTypes.map((type) => (
-                                <SelectItem key={type.id} value={type.id}>
-                                  {type.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                            Kopiuj
+                          </Button>
                         )}
                         {stepsEntry?.copiedToActivity && (
                           <Badge variant="secondary" className="text-[10px]">

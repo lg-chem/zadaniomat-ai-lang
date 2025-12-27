@@ -23,6 +23,9 @@ export async function GET() {
       include: {
         goals: {
           orderBy: { createdAt: "asc" },
+          include: {
+            category: true,
+          },
         },
         period: {
           select: { id: true, name: true },

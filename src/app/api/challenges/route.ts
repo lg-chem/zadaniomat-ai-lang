@@ -13,10 +13,22 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const showCompleted = searchParams.get("showCompleted") === "true"
 
+    // For active view, show both incomplete and those that exceeded target
     const challenges = await prisma.challenge.findMany({
       where: {
         userId: session.user.id,
-        ...(showCompleted ? {} : { isCompleted: false }),
+        ...(showCompleted
+          ? {}
+          : {
+              OR: [
+                { isCompleted: false },
+                // Also show completed challenges that exceeded target (for NUMERIC type)
+                {
+                  isCompleted: true,
+                  challengeType: "NUMERIC",
+                },
+              ],
+            }),
       },
       include: {
         milestones: {
@@ -24,7 +36,6 @@ export async function GET(req: Request) {
         },
         entries: {
           orderBy: { date: "desc" },
-          take: 10,
         },
       },
       orderBy: { endDate: "asc" },

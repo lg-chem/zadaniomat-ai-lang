@@ -67,6 +67,7 @@ interface SprintGoal {
   currentValue: number
   unit?: string | null
   isCompleted: boolean
+  category?: { id: string; name: string; color: string } | null
 }
 
 interface Sprint {
@@ -503,11 +504,24 @@ export default function SchedulePage() {
                     }`}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <span className={`font-medium text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-                        {goal.title}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        {goal.category && (
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: goal.category.color }}
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {goal.category.name}
+                            </span>
+                          </div>
+                        )}
+                        <span className={`font-medium text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                          {goal.title}
+                        </span>
+                      </div>
                       {goal.isCompleted && (
-                        <Check className="h-4 w-4 text-green-500" />
+                        <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                       )}
                     </div>
                     {goal.targetValue && (

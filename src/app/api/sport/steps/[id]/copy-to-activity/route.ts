@@ -15,8 +15,6 @@ export async function POST(
     }
 
     const { id } = params
-    const body = await req.json()
-    const { typeId } = body // Which activity type to copy as
 
     const stepsEntry = await prisma.stepsEntry.findFirst({
       where: { id, userId: session.user.id },
@@ -26,13 +24,36 @@ export async function POST(
       return NextResponse.json({ error: "Steps entry not found" }, { status: 404 })
     }
 
-    // Create activity from steps
+    // Get or create "Kroki" activity type for this user
+    let stepsType = await prisma.sportActivityType.findFirst({
+      where: {
+        name: "Kroki",
+        OR: [
+          { userId: session.user.id },
+          { isDefault: true },
+        ],
+      },
+    })
+
+    if (!stepsType) {
+      stepsType = await prisma.sportActivityType.create({
+        data: {
+          name: "Kroki",
+          color: "#10b981", // green
+          isDefault: false,
+          hasBodyParts: false,
+          userId: session.user.id,
+        },
+      })
+    }
+
+    // Create activity from steps - always as "Kroki" type with step count in notes
     const activity = await prisma.sportActivity.create({
       data: {
-        typeId,
+        typeId: stepsType.id,
         date: stepsEntry.date,
         duration: null, // Steps don't have duration
-        notes: `${stepsEntry.count} kroków`,
+        notes: stepsEntry.count.toString(), // Store count for display
         fromSteps: true,
         userId: session.user.id,
       },
