@@ -24,6 +24,9 @@ import {
   TrendingUp,
   ChevronLeft,
   ChevronRight,
+  Edit2,
+  Copy,
+  MoreHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +41,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 
 interface ChallengeEntry {
@@ -106,6 +115,32 @@ export default function ChallengesPage() {
   const [addingProgressId, setAddingProgressId] = useState<string | null>(null)
   const [progressValue, setProgressValue] = useState("")
 
+  // Edit challenge
+  const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(null)
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+    targetValue: "",
+    unit: "",
+    weeklyTarget: "",
+    color: COLORS[0],
+  })
+
+  // Copy challenge
+  const [copyingChallenge, setCopyingChallenge] = useState<Challenge | null>(null)
+  const [copyForm, setCopyForm] = useState({
+    name: "",
+    startDate: "",
+    endDate: "",
+    targetValue: "",
+  })
+
+  // Edit entry
+  const [editingEntry, setEditingEntry] = useState<{ challengeId: string; entry: ChallengeEntry } | null>(null)
+  const [editEntryValue, setEditEntryValue] = useState("")
+
   const fetchChallenges = useCallback(async () => {
     try {
       const res = await fetch(`/api/challenges?showCompleted=${showCompleted}`)
@@ -126,7 +161,7 @@ export default function ChallengesPage() {
   }, [fetchChallenges])
 
   const handleCreateChallenge = async () => {
-    if (!newChallenge.name || !newChallenge.endDate || !newChallenge.targetValue || !newChallenge.unit) {
+    if (!newChallenge.name || !newChallenge.endDate) {
       return
     }
 
@@ -135,11 +170,29 @@ export default function ChallengesPage() {
       return
     }
 
+    // Auto-calculate target for weekly/monthly if dates are set
+    let targetValue = newChallenge.targetValue
+    if (newChallenge.challengeType === "WEEKLY_HABIT" && newChallenge.startDate && newChallenge.endDate && !newChallenge.targetValue) {
+      targetValue = Math.ceil(differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) / 7).toString()
+    }
+    if (newChallenge.challengeType === "MONTHLY_GOAL" && newChallenge.startDate && newChallenge.endDate && !newChallenge.targetValue) {
+      const start = new Date(newChallenge.startDate)
+      const end = new Date(newChallenge.endDate)
+      targetValue = ((end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1).toString()
+    }
+
+    if (!targetValue && newChallenge.challengeType === "NUMERIC") {
+      return
+    }
+    if (!newChallenge.unit && newChallenge.challengeType === "NUMERIC") {
+      return
+    }
+
     try {
       const res = await fetch("/api/challenges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newChallenge),
+        body: JSON.stringify({ ...newChallenge, targetValue }),
       })
       if (res.ok) {
         fetchChallenges()
@@ -199,6 +252,92 @@ export default function ChallengesPage() {
       fetchChallenges()
     } catch (error) {
       console.error("Error toggling day:", error)
+    }
+  }
+
+  const handleStartEdit = (challenge: Challenge) => {
+    setEditingChallenge(challenge)
+    setEditForm({
+      name: challenge.name,
+      description: challenge.description || "",
+      startDate: format(new Date(challenge.startDate), "yyyy-MM-dd"),
+      endDate: format(new Date(challenge.endDate), "yyyy-MM-dd"),
+      targetValue: challenge.targetValue.toString(),
+      unit: challenge.unit,
+      weeklyTarget: challenge.weeklyTarget?.toString() || "",
+      color: challenge.color,
+    })
+  }
+
+  const handleUpdateChallenge = async () => {
+    if (!editingChallenge) return
+    try {
+      await fetch(`/api/challenges/${editingChallenge.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      })
+      fetchChallenges()
+      setEditingChallenge(null)
+    } catch (error) {
+      console.error("Error updating challenge:", error)
+    }
+  }
+
+  const handleStartCopy = (challenge: Challenge) => {
+    setCopyingChallenge(challenge)
+    setCopyForm({
+      name: challenge.name,
+      startDate: format(new Date(), "yyyy-MM-dd"),
+      endDate: "",
+      targetValue: challenge.targetValue.toString(),
+    })
+  }
+
+  const handleCopyChallenge = async () => {
+    if (!copyingChallenge) return
+    try {
+      await fetch(`/api/challenges/${copyingChallenge.id}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(copyForm),
+      })
+      fetchChallenges()
+      setCopyingChallenge(null)
+    } catch (error) {
+      console.error("Error copying challenge:", error)
+    }
+  }
+
+  const handleStartEditEntry = (challengeId: string, entry: ChallengeEntry) => {
+    setEditingEntry({ challengeId, entry })
+    setEditEntryValue(entry.value.toString())
+  }
+
+  const handleUpdateEntry = async () => {
+    if (!editingEntry) return
+    try {
+      await fetch(`/api/challenges/${editingEntry.challengeId}/entry`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId: editingEntry.entry.id, value: editEntryValue }),
+      })
+      fetchChallenges()
+      setEditingEntry(null)
+      setEditEntryValue("")
+    } catch (error) {
+      console.error("Error updating entry:", error)
+    }
+  }
+
+  const handleDeleteEntry = async (challengeId: string, entryId: string) => {
+    try {
+      await fetch(`/api/challenges/${challengeId}/entry?entryId=${entryId}`, {
+        method: "DELETE",
+      })
+      fetchChallenges()
+    } catch (error) {
+      console.error("Error deleting entry:", error)
     }
   }
 
@@ -365,7 +504,7 @@ export default function ChallengesPage() {
                 </div>
 
                 {newChallenge.challengeType === "WEEKLY_HABIT" ? (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4">
                     <div>
                       <Label>Ile razy w tygodniu</Label>
                       <Input
@@ -377,15 +516,23 @@ export default function ChallengesPage() {
                         placeholder="np. 3"
                       />
                     </div>
-                    <div>
-                      <Label>Cel (liczba tygodni)</Label>
-                      <Input
-                        type="number"
-                        value={newChallenge.targetValue}
-                        onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
-                        placeholder="np. 12"
-                      />
-                    </div>
+                    {/* Show target weeks only if dates not fully set */}
+                    {!(newChallenge.startDate && newChallenge.endDate) && (
+                      <div>
+                        <Label>Cel (liczba tygodni)</Label>
+                        <Input
+                          type="number"
+                          value={newChallenge.targetValue}
+                          onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
+                          placeholder="np. 12"
+                        />
+                      </div>
+                    )}
+                    {newChallenge.startDate && newChallenge.endDate && (
+                      <p className="text-xs text-muted-foreground">
+                        Cel zostanie obliczony automatycznie na podstawie dat ({Math.ceil(differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) / 7)} tygodni)
+                      </p>
+                    )}
                   </div>
                 ) : newChallenge.challengeType === "MONTHLY_GOAL" ? (
                   <div>
@@ -501,7 +648,7 @@ export default function ChallengesPage() {
                       </Badge>
                     )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
                     {isExceeded && (
                       <Badge className="bg-purple-100 text-purple-700 text-[10px]">
                         🎉 Przekroczono!
@@ -513,14 +660,30 @@ export default function ChallengesPage() {
                         Ukończone
                       </Badge>
                     )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6"
-                      onClick={() => handleDeleteChallenge(challenge.id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-6 w-6">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleStartEdit(challenge)}>
+                          <Edit2 className="h-3.5 w-3.5 mr-2" />
+                          Edytuj
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleStartCopy(challenge)}>
+                          <Copy className="h-3.5 w-3.5 mr-2" />
+                          Kopiuj
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDeleteChallenge(challenge.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Usuń
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
                 {challenge.description && (
@@ -702,10 +865,26 @@ export default function ChallengesPage() {
                 {challenge.challengeType === "NUMERIC" && challenge.entries.length > 0 && (
                   <div className="text-xs text-muted-foreground">
                     <div className="font-medium mb-1">Ostatnie wpisy:</div>
-                    {challenge.entries.slice(0, 3).map((entry) => (
-                      <div key={entry.id} className="flex justify-between">
+                    {challenge.entries.slice(0, 5).map((entry) => (
+                      <div key={entry.id} className="flex justify-between items-center group">
                         <span>{format(new Date(entry.date), "d MMM", { locale: pl })}</span>
-                        <span>+{entry.value} {challenge.unit}</span>
+                        <div className="flex items-center gap-1">
+                          <span>+{entry.value} {challenge.unit}</span>
+                          <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+                            <button
+                              onClick={() => handleStartEditEntry(challenge.id, entry)}
+                              className="p-0.5 hover:bg-muted rounded"
+                            >
+                              <Edit2 className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEntry(challenge.id, entry.id)}
+                              className="p-0.5 hover:bg-muted rounded text-destructive"
+                            >
+                              <Trash2 className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -724,6 +903,181 @@ export default function ChallengesPage() {
           <p className="text-sm">Kliknij "Nowe wyzwanie" aby zacząć</p>
         </div>
       )}
+
+      {/* Edit Challenge Dialog */}
+      <Dialog open={!!editingChallenge} onOpenChange={(open) => !open && setEditingChallenge(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edytuj wyzwanie</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Nazwa</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Opis</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Data rozpoczęcia</Label>
+                <Input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Data zakończenia</Label>
+                <Input
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Cel</Label>
+                <Input
+                  type="number"
+                  value={editForm.targetValue}
+                  onChange={(e) => setEditForm({ ...editForm, targetValue: e.target.value })}
+                />
+              </div>
+              {editingChallenge?.challengeType === "NUMERIC" && (
+                <div>
+                  <Label>Jednostka</Label>
+                  <Input
+                    value={editForm.unit}
+                    onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                  />
+                </div>
+              )}
+              {editingChallenge?.challengeType === "WEEKLY_HABIT" && (
+                <div>
+                  <Label>Razy w tygodniu</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="7"
+                    value={editForm.weeklyTarget}
+                    onChange={(e) => setEditForm({ ...editForm, weeklyTarget: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Kolor</Label>
+              <div className="flex gap-2 mt-2">
+                {COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`h-8 w-8 rounded-full border-2 transition-all ${
+                      editForm.color === color ? "border-foreground scale-110" : "border-transparent"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setEditForm({ ...editForm, color })}
+                  />
+                ))}
+              </div>
+            </div>
+            <Button onClick={handleUpdateChallenge} className="w-full">
+              Zapisz zmiany
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy Challenge Dialog */}
+      <Dialog open={!!copyingChallenge} onOpenChange={(open) => !open && setCopyingChallenge(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Kopiuj wyzwanie</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Tworzysz kopię wyzwania "{copyingChallenge?.name}". Możesz zmienić daty i cel.
+            </p>
+            <div>
+              <Label>Nazwa (opcjonalnie)</Label>
+              <Input
+                value={copyForm.name}
+                onChange={(e) => setCopyForm({ ...copyForm, name: e.target.value })}
+                placeholder={copyingChallenge?.name}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Data rozpoczęcia</Label>
+                <Input
+                  type="date"
+                  value={copyForm.startDate}
+                  onChange={(e) => setCopyForm({ ...copyForm, startDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Data zakończenia</Label>
+                <Input
+                  type="date"
+                  value={copyForm.endDate}
+                  onChange={(e) => setCopyForm({ ...copyForm, endDate: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Cel (opcjonalnie)</Label>
+              <Input
+                type="number"
+                value={copyForm.targetValue}
+                onChange={(e) => setCopyForm({ ...copyForm, targetValue: e.target.value })}
+                placeholder={copyingChallenge?.targetValue.toString()}
+              />
+            </div>
+            <Button onClick={handleCopyChallenge} className="w-full">
+              <Copy className="h-4 w-4 mr-2" />
+              Utwórz kopię
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Entry Dialog */}
+      <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edytuj wpis</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Data</Label>
+              <p className="text-sm text-muted-foreground">
+                {editingEntry && format(new Date(editingEntry.entry.date), "d MMMM yyyy", { locale: pl })}
+              </p>
+            </div>
+            <div>
+              <Label>Wartość</Label>
+              <Input
+                type="number"
+                value={editEntryValue}
+                onChange={(e) => setEditEntryValue(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, handleUpdateEntry)}
+              />
+            </div>
+            <Button onClick={handleUpdateEntry} className="w-full">
+              Zapisz
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

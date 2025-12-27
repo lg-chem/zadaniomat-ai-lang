@@ -24,7 +24,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Challenge not found" }, { status: 404 })
     }
 
-    const { name, description, targetValue, currentValue, isCompleted, color } = body
+    const { name, description, targetValue, currentValue, isCompleted, color, startDate, endDate, weeklyTarget, unit } = body
     const updateData: Record<string, unknown> = {}
 
     if (name !== undefined) updateData.name = name
@@ -33,6 +33,10 @@ export async function PATCH(
     if (currentValue !== undefined) updateData.currentValue = parseFloat(currentValue)
     if (isCompleted !== undefined) updateData.isCompleted = isCompleted
     if (color !== undefined) updateData.color = color
+    if (startDate !== undefined) updateData.startDate = new Date(startDate)
+    if (endDate !== undefined) updateData.endDate = new Date(endDate)
+    if (weeklyTarget !== undefined) updateData.weeklyTarget = weeklyTarget ? parseInt(weeklyTarget) : null
+    if (unit !== undefined) updateData.unit = unit
 
     const challenge = await prisma.challenge.update({
       where: { id },

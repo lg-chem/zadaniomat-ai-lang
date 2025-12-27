@@ -3,12 +3,43 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+const DEFAULT_TYPES = [
+  { name: "Siłownia", color: "#ef4444", hasBodyParts: true },
+  { name: "Padel", color: "#f59e0b", hasBodyParts: false },
+  { name: "Basen", color: "#3b82f6", hasBodyParts: false },
+  { name: "Rower", color: "#10b981", hasBodyParts: false },
+  { name: "Spacer", color: "#8b5cf6", hasBodyParts: false },
+]
+
 // Get activity types (defaults + user custom)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Ensure default types exist for this user
+    const existingDefaults = await prisma.sportActivityType.findMany({
+      where: {
+        userId: session.user.id,
+        name: { in: DEFAULT_TYPES.map((t) => t.name) },
+      },
+    })
+
+    const existingNames = new Set(existingDefaults.map((t) => t.name))
+    const missingDefaults = DEFAULT_TYPES.filter((t) => !existingNames.has(t.name))
+
+    if (missingDefaults.length > 0) {
+      await prisma.sportActivityType.createMany({
+        data: missingDefaults.map((t) => ({
+          name: t.name,
+          color: t.color,
+          hasBodyParts: t.hasBodyParts,
+          isDefault: false,
+          userId: session.user.id,
+        })),
+      })
     }
 
     const types = await prisma.sportActivityType.findMany({

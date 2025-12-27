@@ -108,3 +108,118 @@ export async function POST(
     return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
+
+// Update entry
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { id } = params
+    const body = await req.json()
+    const { entryId, value, notes } = body
+
+    const challenge = await prisma.challenge.findFirst({
+      where: { id, userId: session.user.id },
+    })
+
+    if (!challenge) {
+      return NextResponse.json({ error: "Challenge not found" }, { status: 404 })
+    }
+
+    const entry = await prisma.challengeEntry.findFirst({
+      where: { id: entryId, challengeId: id },
+    })
+
+    if (!entry) {
+      return NextResponse.json({ error: "Entry not found" }, { status: 404 })
+    }
+
+    const oldValue = entry.value
+    const newValue = parseFloat(value)
+    const valueDiff = newValue - oldValue
+
+    // Update entry
+    await prisma.challengeEntry.update({
+      where: { id: entryId },
+      data: {
+        value: newValue,
+        notes,
+      },
+    })
+
+    // Update challenge current value
+    await prisma.challenge.update({
+      where: { id },
+      data: {
+        currentValue: challenge.currentValue + valueDiff,
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error updating entry:", error)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
+  }
+}
+
+// Delete entry
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { id } = params
+    const { searchParams } = new URL(req.url)
+    const entryId = searchParams.get("entryId")
+
+    if (!entryId) {
+      return NextResponse.json({ error: "Entry ID required" }, { status: 400 })
+    }
+
+    const challenge = await prisma.challenge.findFirst({
+      where: { id, userId: session.user.id },
+    })
+
+    if (!challenge) {
+      return NextResponse.json({ error: "Challenge not found" }, { status: 404 })
+    }
+
+    const entry = await prisma.challengeEntry.findFirst({
+      where: { id: entryId, challengeId: id },
+    })
+
+    if (!entry) {
+      return NextResponse.json({ error: "Entry not found" }, { status: 404 })
+    }
+
+    // Delete entry
+    await prisma.challengeEntry.delete({
+      where: { id: entryId },
+    })
+
+    // Update challenge current value
+    await prisma.challenge.update({
+      where: { id },
+      data: {
+        currentValue: Math.max(0, challenge.currentValue - entry.value),
+        isCompleted: false,
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting entry:", error)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
+  }
+}
