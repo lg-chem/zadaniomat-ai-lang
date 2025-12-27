@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress"
 import { TaskItem } from "@/components/tasks/task-item"
 import { QuickAddTask } from "@/components/tasks/quick-add-task"
-import { GlobalTimer } from "@/components/timer/global-timer"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
 interface Category {
@@ -120,7 +119,7 @@ export default function DashboardPage() {
   }
 
   // Stats
-  const completedTasks = tasks.filter((t) => t.status === "DONE").length
+  const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
   const totalTasks = tasks.length
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
   const totalPlannedMinutes = tasks.reduce((acc, t) => acc + (t.plannedMinutes || 0), 0)
@@ -133,8 +132,8 @@ export default function DashboardPage() {
     return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
   }
 
-  const todoTasks = tasks.filter((t) => t.status !== "DONE")
-  const doneTasks = tasks.filter((t) => t.status === "DONE")
+  const todoTasks = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED")
+  const doneTasks = tasks.filter((t) => t.status === "COMPLETED")
 
   return (
     <div className="space-y-8">
@@ -266,8 +265,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Global Timer */}
-      <GlobalTimer onStop={handleTimeAdd} />
     </div>
   )
 }
