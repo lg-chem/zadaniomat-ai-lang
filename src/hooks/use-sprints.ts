@@ -50,9 +50,29 @@ export function useSprints() {
     `/api/sprints?workspace=${workspace}`
   )
 
+  // Find current sprint based on today's date (not just isActive flag)
+  const findCurrentSprint = (sprints: Sprint[]): Sprint | null => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    // First, try to find a sprint where today is within the date range
+    const currentByDate = sprints.find(s => {
+      const start = new Date(s.startDate)
+      const end = new Date(s.endDate)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+      return today >= start && today <= end
+    })
+
+    if (currentByDate) return currentByDate
+
+    // Fallback to isActive flag if no date match
+    return sprints.find(s => s.isActive) ?? null
+  }
+
   return {
     sprints: data ?? [],
-    activeSprint: data?.find(s => s.isActive) ?? null,
+    activeSprint: data ? findCurrentSprint(data) : null,
     isLoading,
     isError: error,
     mutate,

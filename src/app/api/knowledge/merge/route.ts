@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { categoryId, newInfo, workspace } = body
+    const { categoryId, newInfo, workspace, title } = body
 
     if (!categoryId || !newInfo) {
       return NextResponse.json(
@@ -35,28 +35,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    // Get existing entries in this category
-    const existingEntries = await prisma.knowledgeEntry.findMany({
-      where: {
-        categoryId,
-        userId: session.user.id,
-      },
-      select: {
-        id: true,
-        title: true,
-        content: true,
-      },
-    })
+    // Try AI-powered merge, but fall back to simple create if AI fails
+    let entry = null
+    let action = "create"
+    let reason = "Zapisano nową informację"
 
-    // Build context of existing knowledge
-    const existingKnowledge = existingEntries.map((e) =>
-      `## ${e.title}\n${e.content}`
-    ).join("\n\n")
+    // Check if GEMINI_API_KEY is configured
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        // Get existing entries in this category
+        const existingEntries = await prisma.knowledgeEntry.findMany({
+          where: {
+            categoryId,
+            userId: session.user.id,
+          },
+          select: {
+            id: true,
+            title: true,
+            content: true,
+          },
+        })
 
-    // Use AI to determine how to merge
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+        // Build context of existing knowledge
+        const existingKnowledge = existingEntries.map((e: { id: string; title: string; content: string }) =>
+          `## ${e.title}\n${e.content}`
+        ).join("\n\n")
 
-    const prompt = `Jesteś asystentem zarządzającym bazą wiedzy firmowej/osobistej.
+        // Use AI to determine how to merge
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+        const prompt = `Jesteś asystentem zarządzającym bazą wiedzy firmowej/osobistej.
 
 ISTNIEJĄCA WIEDZA w kategorii "${category.name}":
 ${existingKnowledge || "(brak wpisów)"}
@@ -80,34 +88,70 @@ Odpowiedz w formacie JSON:
 }
 
 ISTNIEJĄCE ID WPISÓW:
-${existingEntries.map((e) => `- ${e.id}: ${e.title}`).join("\n") || "(brak)"}
+${existingEntries.map((e: { id: string; title: string; content: string }) => `- ${e.id}: ${e.title}`).join("\n") || "(brak)"}
 
 Odpowiedz TYLKO JSON, bez markdown.`
 
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text().trim()
+        const result = await model.generateContent(prompt)
+        const responseText = result.response.text().trim()
 
-    // Parse AI response
-    let mergeDecision
-    try {
-      // Remove potential markdown code blocks
-      const cleanJson = responseText.replace(/```json\n?|\n?```/g, "").trim()
-      mergeDecision = JSON.parse(cleanJson)
-    } catch {
-      return NextResponse.json(
-        { error: "Nie udało się przetworzyć odpowiedzi AI", raw: responseText },
-        { status: 500 }
-      )
+        // Parse AI response
+        const cleanJson = responseText.replace(/```json\n?|\n?```/g, "").trim()
+        const mergeDecision = JSON.parse(cleanJson)
+
+        action = mergeDecision.action
+        reason = mergeDecision.reason
+
+        if (mergeDecision.action === "create" && mergeDecision.title && mergeDecision.content) {
+          entry = await prisma.knowledgeEntry.create({
+            data: {
+              title: mergeDecision.title,
+              content: mergeDecision.content,
+              categoryId,
+              workspaceType: workspace || "WORK",
+              userId: session.user.id,
+            },
+            include: {
+              category: true,
+            },
+          })
+        } else if (mergeDecision.action === "update" && mergeDecision.entryId && mergeDecision.content) {
+          // Verify the entry exists and belongs to user
+          const existingEntry = await prisma.knowledgeEntry.findFirst({
+            where: {
+              id: mergeDecision.entryId,
+              userId: session.user.id,
+            },
+          })
+
+          if (existingEntry) {
+            entry = await prisma.knowledgeEntry.update({
+              where: { id: mergeDecision.entryId },
+              data: {
+                title: mergeDecision.title || existingEntry.title,
+                content: mergeDecision.content,
+              },
+              include: {
+                category: true,
+              },
+            })
+          }
+        }
+        // If action is "skip", entry remains null
+
+      } catch (aiError) {
+        console.error("AI merge failed, falling back to simple create:", aiError)
+        // Fall through to simple create below
+      }
     }
 
-    // Execute the merge action
-    let entry = null
-
-    if (mergeDecision.action === "create" && mergeDecision.title && mergeDecision.content) {
+    // Fallback: simple create if AI didn't work or wasn't configured
+    if (!entry && action !== "skip") {
+      const entryTitle = title || `Notatka z ${new Date().toLocaleDateString("pl-PL")}`
       entry = await prisma.knowledgeEntry.create({
         data: {
-          title: mergeDecision.title,
-          content: mergeDecision.content,
+          title: entryTitle,
+          content: newInfo,
           categoryId,
           workspaceType: workspace || "WORK",
           userId: session.user.id,
@@ -116,36 +160,17 @@ Odpowiedz TYLKO JSON, bez markdown.`
           category: true,
         },
       })
-    } else if (mergeDecision.action === "update" && mergeDecision.entryId && mergeDecision.content) {
-      // Verify the entry exists and belongs to user
-      const existingEntry = await prisma.knowledgeEntry.findFirst({
-        where: {
-          id: mergeDecision.entryId,
-          userId: session.user.id,
-        },
-      })
-
-      if (existingEntry) {
-        entry = await prisma.knowledgeEntry.update({
-          where: { id: mergeDecision.entryId },
-          data: {
-            title: mergeDecision.title || existingEntry.title,
-            content: mergeDecision.content,
-          },
-          include: {
-            category: true,
-          },
-        })
-      }
+      action = "create"
+      reason = "Zapisano jako nowy wpis"
     }
 
     return NextResponse.json({
-      action: mergeDecision.action,
-      reason: mergeDecision.reason,
+      action,
+      reason,
       entry,
     })
   } catch (error) {
     console.error("Error merging knowledge:", error)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    return NextResponse.json({ error: "Nie udało się zapisać. Spróbuj ponownie." }, { status: 500 })
   }
 }

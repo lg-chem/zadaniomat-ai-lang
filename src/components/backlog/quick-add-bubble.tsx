@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Plus, X, Lightbulb } from "lucide-react"
+import { Plus, X, StickyNote } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useBacklog } from "@/hooks/use-backlog"
@@ -43,7 +43,7 @@ export function BacklogQuickAddBubble() {
       {showQuickAdd ? (
         <div className="bg-background border rounded-lg shadow-lg p-3 w-80">
           <div className="flex items-center gap-2 mb-2">
-            <Lightbulb className="h-4 w-4 text-yellow-500" />
+            <StickyNote className="h-4 w-4 text-yellow-500" />
             <span className="text-sm font-medium">Szybka notatka</span>
           </div>
           <Input
@@ -90,14 +90,17 @@ export function BacklogQuickAddBubble() {
       ) : (
         <Button
           size="lg"
-          className="h-14 w-14 rounded-full shadow-lg"
+          className="h-14 w-14 rounded-full shadow-lg bg-yellow-500 hover:bg-yellow-600"
           onClick={() => {
             setShowQuickAdd(true)
             setTimeout(() => quickAddRef.current?.focus(), 0)
           }}
           title="Szybka notatka do backlogu"
         >
-          <Lightbulb className="h-6 w-6" />
+          <div className="relative">
+            <StickyNote className="h-6 w-6" />
+            <Plus className="h-3 w-3 absolute -top-1 -right-1 bg-yellow-600 rounded-full" />
+          </div>
         </Button>
       )}
     </div>
