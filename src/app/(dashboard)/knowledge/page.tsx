@@ -391,7 +391,9 @@ export default function KnowledgePage() {
             <span className="font-medium text-sm truncate">{category.name}</span>
             <Badge variant="secondary" className="text-xs flex-shrink-0">{totalEntries}</Badge>
             {category.linkedCategory && (
-              <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" title={`Powiązano z: ${category.linkedCategory.name}`} />
+              <span title={`Powiązano z: ${category.linkedCategory.name}`}>
+                <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              </span>
             )}
           </div>
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
