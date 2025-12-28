@@ -12,10 +12,13 @@ import {
   Plus,
   Loader2,
   Sparkles,
+  BookOpen,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -73,6 +76,12 @@ interface Period {
   name: string
 }
 
+interface KnowledgeCategory {
+  id: string
+  name: string
+  color: string
+}
+
 export default function AIPage() {
   const [mode, setMode] = useState<ChatMode>("daily_tasks")
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -103,6 +112,17 @@ export default function AIPage() {
     categoryId: "",
     plannedMinutes: "25",
   })
+
+  // Knowledge save dialog
+  const [savingKnowledge, setSavingKnowledge] = useState(false)
+  const [knowledgeCategories, setKnowledgeCategories] = useState<KnowledgeCategory[]>([])
+  const [knowledgeForm, setKnowledgeForm] = useState({
+    title: "",
+    content: "",
+    categoryId: "",
+  })
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false)
+  const [knowledgeSaved, setKnowledgeSaved] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -153,6 +173,18 @@ export default function AIPage() {
       }
     } catch (error) {
       console.error("Error fetching periods:", error)
+    }
+  }
+
+  const fetchKnowledgeCategories = async () => {
+    try {
+      const res = await fetch("/api/knowledge/categories?workspace=WORK")
+      if (res.ok) {
+        const data = await res.json()
+        setKnowledgeCategories(data)
+      }
+    } catch (error) {
+      console.error("Error fetching knowledge categories:", error)
     }
   }
 
@@ -335,6 +367,60 @@ export default function AIPage() {
     }
   }
 
+  const handleStartSaveKnowledge = () => {
+    // Fetch categories when opening dialog
+    fetchKnowledgeCategories()
+
+    // Prepare content from conversation
+    const conversationSummary = messages
+      .map((m) => `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${m.content}`)
+      .join("\n\n")
+
+    setKnowledgeForm({
+      title: "",
+      content: conversationSummary,
+      categoryId: "",
+    })
+    setSavingKnowledge(true)
+    setKnowledgeSaved(false)
+  }
+
+  const handleSaveKnowledge = async () => {
+    if (!knowledgeForm.content || !knowledgeForm.categoryId) return
+
+    setKnowledgeSaving(true)
+    try {
+      // Use the merge endpoint for intelligent update
+      const res = await fetch("/api/knowledge/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: knowledgeForm.title || "Notatka z rozmowy AI",
+          content: knowledgeForm.content,
+          categoryId: knowledgeForm.categoryId,
+          workspaceType: "WORK",
+        }),
+      })
+
+      if (res.ok) {
+        setKnowledgeSaved(true)
+        setTimeout(() => {
+          setSavingKnowledge(false)
+          setKnowledgeSaved(false)
+          setKnowledgeForm({
+            title: "",
+            content: "",
+            categoryId: "",
+          })
+        }, 1500)
+      }
+    } catch (error) {
+      console.error("Error saving knowledge:", error)
+    } finally {
+      setKnowledgeSaving(false)
+    }
+  }
+
   const getQuickPrompts = () => {
     if (mode === "period_goals") {
       return [
@@ -370,6 +456,17 @@ export default function AIPage() {
             Pomogę Ci zaplanować cele i zadania
           </p>
         </div>
+        {messages.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleStartSaveKnowledge}
+            className="flex items-center gap-2"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span className="hidden sm:inline">Zapisz do wiedzy</span>
+          </Button>
+        )}
       </div>
 
       {/* Mode Tabs */}
@@ -764,6 +861,87 @@ export default function AIPage() {
             >
               <Plus className="h-4 w-4 mr-2" />
               Dodaj zadanie
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Knowledge Dialog */}
+      <Dialog open={savingKnowledge} onOpenChange={(open) => !open && setSavingKnowledge(false)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              Zapisz do bazy wiedzy
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Tytuł (opcjonalnie)</Label>
+              <Input
+                value={knowledgeForm.title}
+                onChange={(e) => setKnowledgeForm({ ...knowledgeForm, title: e.target.value })}
+                placeholder="Zostaw puste dla automatycznego tytułu"
+              />
+            </div>
+            <div>
+              <Label>Kategoria wiedzy</Label>
+              <Select
+                value={knowledgeForm.categoryId || "none"}
+                onValueChange={(v) => setKnowledgeForm({ ...knowledgeForm, categoryId: v === "none" ? "" : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz kategorię..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Wybierz kategorię</SelectItem>
+                  {knowledgeCategories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        {cat.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Treść do zapisania</Label>
+              <Textarea
+                value={knowledgeForm.content}
+                onChange={(e) => setKnowledgeForm({ ...knowledgeForm, content: e.target.value })}
+                rows={10}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                AI inteligentnie połączy te informacje z istniejącą wiedzą w wybranej kategorii.
+              </p>
+            </div>
+            <Button
+              onClick={handleSaveKnowledge}
+              className="w-full"
+              disabled={!knowledgeForm.content || !knowledgeForm.categoryId || knowledgeSaving}
+            >
+              {knowledgeSaved ? (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  Zapisano!
+                </>
+              ) : knowledgeSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Zapisywanie...
+                </>
+              ) : (
+                <>
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  Zapisz wiedzę
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

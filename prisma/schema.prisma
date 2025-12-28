@@ -33,6 +33,8 @@ model User {
   backlogItems  BacklogItem[]
   aiConversations AIConversation[]
   aiKnowledgeBases AIKnowledgeBase[]
+  knowledgeCategories KnowledgeCategory[]
+  knowledgeEntries KnowledgeEntry[]
   settings      UserSettings?
   sportActivityTypes SportActivityType[]
   sportActivities SportActivity[]
@@ -186,6 +188,7 @@ model Category {
   tasks         Task[]
   goals         Goal[]
   habits        Habit[]
+  knowledgeCategories KnowledgeCategory[]
 
   @@unique([userId, name, workspaceType])
   @@index([userId, workspaceType])
@@ -478,6 +481,7 @@ model AIConversation {
   summary       String?             @db.Text
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
+  expiresAt     DateTime?           // Conversations expire after 5 days
 
   // Relations
   userId        String
@@ -485,6 +489,7 @@ model AIConversation {
   messages      AIMessage[]
 
   @@index([userId, type])
+  @@index([expiresAt])
 }
 
 enum AIConversationType {
@@ -492,6 +497,7 @@ enum AIConversationType {
   PLANNING
   RETROSPECTIVE
   GENERAL
+  BACKLOG_DISCUSSION
 }
 
 model AIMessage {
@@ -523,6 +529,52 @@ model AIKnowledgeBase {
 
   @@unique([userId, workspaceType])
   @@index([userId])
+}
+
+// Knowledge Base - Encyklopedia firmowa / osobista
+model KnowledgeCategory {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  color         String        @default("#6366f1")
+  icon          String?
+  workspaceType WorkspaceType
+  isDefault     Boolean       @default(false) // Default categories cannot be deleted
+  order         Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries       KnowledgeEntry[]
+
+  // Optional link to strategic category
+  linkedCategoryId String?
+  linkedCategory   Category?   @relation(fields: [linkedCategoryId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, name, workspaceType])
+  @@index([userId, workspaceType])
+}
+
+model KnowledgeEntry {
+  id            String        @id @default(cuid())
+  title         String
+  content       String        @db.Text
+  workspaceType WorkspaceType
+  isImportant   Boolean       @default(false) // Highlighted entries
+  lastUsedAt    DateTime?     // Track when AI last used this
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceType])
+  @@index([categoryId])
 }
 
 // ==================== SPORT ====================

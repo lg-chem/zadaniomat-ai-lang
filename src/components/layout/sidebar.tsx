@@ -21,6 +21,7 @@ import {
   CalendarDays,
   Dumbbell,
   TrendingUp,
+  BookOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -31,6 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 const workNavItems = [
   { href: "/backlog", label: "Backlog", icon: Inbox },
   { href: "/ai", label: "AI Asystent", icon: Sparkles },
+  { href: "/knowledge", label: "Wiedza", icon: BookOpen },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/goals", label: "Cele", icon: Target },
@@ -41,6 +43,7 @@ const workNavItems = [
 
 const privateNavItems = [
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
+  { href: "/knowledge", label: "Wiedza", icon: BookOpen },
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
   { href: "/sport", label: "Sport", icon: Dumbbell },

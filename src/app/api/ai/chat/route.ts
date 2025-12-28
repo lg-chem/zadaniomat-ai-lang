@@ -28,6 +28,19 @@ async function getUserContext(userId: string, mode: ChatMode) {
     },
   })
 
+  // Get knowledge entries (important ones first)
+  const knowledgeEntries = await prisma.knowledgeEntry.findMany({
+    where: {
+      userId,
+      workspaceType: "WORK",
+    },
+    include: {
+      category: true,
+    },
+    orderBy: [{ isImportant: "desc" }, { updatedAt: "desc" }],
+    take: 30, // Limit to avoid too much context
+  })
+
   // Get active fitness goals
   const activeFitnessGoals = await prisma.fitnessGoal.findMany({
     where: {
@@ -182,6 +195,12 @@ async function getUserContext(userId: string, mode: ChatMode) {
       content: item.content,
       priority: item.priority,
       isProcessed: item.isProcessed,
+    })),
+    knowledgeEntries: knowledgeEntries.map((entry) => ({
+      title: entry.title,
+      content: entry.content,
+      category: entry.category?.name,
+      isImportant: entry.isImportant,
     })),
   }
 }
