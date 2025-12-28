@@ -12,13 +12,33 @@ import {
   ArrowUp,
   ArrowDown,
   CheckCircle2,
+  MessageSquare,
+  CalendarPlus,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useBacklog } from "@/hooks/use-backlog"
+import { useCategories } from "@/hooks/use-categories"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 
 interface BacklogItem {
   id: string
@@ -31,9 +51,11 @@ interface BacklogItem {
 
 export default function BacklogPage() {
   const [showProcessed, setShowProcessed] = useState(false)
+  const { workspace } = useWorkspaceStore()
 
   // Use SWR hook for data fetching with cache
   const { items, isLoading, mutate } = useBacklog({ showProcessed })
+  const { categories } = useCategories()
 
   // Quick add
   const [newContent, setNewContent] = useState("")
@@ -43,6 +65,20 @@ export default function BacklogPage() {
   // Edit mode
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
+
+  // AI Discussion dialog
+  const [discussingItem, setDiscussingItem] = useState<BacklogItem | null>(null)
+  const [aiResponse, setAiResponse] = useState("")
+  const [aiLoading, setAiLoading] = useState(false)
+
+  // Convert to task dialog
+  const [convertingItem, setConvertingItem] = useState<BacklogItem | null>(null)
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    categoryId: "",
+    plannedMinutes: "25",
+    scheduledDate: format(new Date(), "yyyy-MM-dd"),
+  })
 
   const handleCreate = async () => {
     if (!newContent.trim()) return
@@ -127,6 +163,81 @@ export default function BacklogPage() {
       handleUpdate(editingId, { content: editingContent })
     } else {
       setEditingId(null)
+    }
+  }
+
+  // AI Discussion
+  const handleDiscuss = async (item: BacklogItem) => {
+    setDiscussingItem(item)
+    setAiResponse("")
+    setAiLoading(true)
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Przeanalizuj ten pomysł z backlogu i pomóż mi zdecydować co z nim zrobić. Pomysł: "${item.content}". Podaj konkretne sugestie: czy to warto realizować, jak podzielić na zadania, jaki priorytet nadać.`,
+          mode: "daily_tasks",
+          history: [],
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setAiResponse(data.message || "Nie udało się uzyskać odpowiedzi.")
+      } else {
+        setAiResponse("Błąd: Upewnij się, że GEMINI_API_KEY jest skonfigurowany.")
+      }
+    } catch (error) {
+      console.error("Error discussing with AI:", error)
+      setAiResponse("Wystąpił błąd podczas komunikacji z AI.")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // Convert to task
+  const handleStartConvert = (item: BacklogItem) => {
+    setConvertingItem(item)
+    setTaskForm({
+      title: item.content,
+      categoryId: "",
+      plannedMinutes: "25",
+      scheduledDate: format(new Date(), "yyyy-MM-dd"),
+    })
+  }
+
+  const handleConvertToTask = async () => {
+    if (!taskForm.title.trim() || !convertingItem) return
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskForm.title,
+          categoryId: taskForm.categoryId || undefined,
+          plannedMinutes: parseInt(taskForm.plannedMinutes) || 25,
+          scheduledDate: taskForm.scheduledDate,
+          workspaceType: workspace,
+          status: "NEW",
+        }),
+      })
+
+      if (res.ok) {
+        // Mark backlog item as processed
+        await handleUpdate(convertingItem.id, { isProcessed: true })
+        setConvertingItem(null)
+        setTaskForm({
+          title: "",
+          categoryId: "",
+          plannedMinutes: "25",
+          scheduledDate: format(new Date(), "yyyy-MM-dd"),
+        })
+      }
+    } catch (error) {
+      console.error("Error converting to task:", error)
     }
   }
 
@@ -268,15 +379,35 @@ export default function BacklogPage() {
                 {/* Actions */}
                 <div className="flex items-center gap-1">
                   {!item.isProcessed && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => handleMarkProcessed(item.id)}
-                      title="Oznacz jako przetworzone"
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                    </Button>
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => handleDiscuss(item)}
+                        title="Przedyskutuj z AI"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => handleStartConvert(item)}
+                        title="Zamień na zadanie"
+                      >
+                        <CalendarPlus className="h-3.5 w-3.5 text-primary" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => handleMarkProcessed(item.id)}
+                        title="Oznacz jako przetworzone"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                      </Button>
+                    </>
                   )}
                   <Button
                     size="icon"
@@ -349,6 +480,125 @@ export default function BacklogPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* AI Discussion Dialog */}
+      <Dialog open={!!discussingItem} onOpenChange={(open) => !open && setDiscussingItem(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-blue-500" />
+              Dyskusja z AI
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="p-3 bg-muted rounded-lg">
+              <div className="text-sm text-muted-foreground mb-1">Pomysł z backlogu:</div>
+              <div className="font-medium">{discussingItem?.content}</div>
+            </div>
+
+            {aiLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Analizuję...</span>
+              </div>
+            ) : aiResponse ? (
+              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                <div className="text-sm text-muted-foreground mb-2">Odpowiedź AI:</div>
+                <div className="whitespace-pre-wrap text-sm">{aiResponse}</div>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            {discussingItem && !aiLoading && (
+              <Button
+                variant="outline"
+                onClick={() => handleStartConvert(discussingItem)}
+              >
+                <CalendarPlus className="h-4 w-4 mr-2" />
+                Zamień na zadanie
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setDiscussingItem(null)}>
+              Zamknij
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert to Task Dialog */}
+      <Dialog open={!!convertingItem} onOpenChange={(open) => !open && setConvertingItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-primary" />
+              Zamień na zadanie
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Tytuł zadania</Label>
+              <Input
+                value={taskForm.title}
+                onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Kategoria</Label>
+              <Select
+                value={taskForm.categoryId || "none"}
+                onValueChange={(v) => setTaskForm({ ...taskForm, categoryId: v === "none" ? "" : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz kategorię..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Brak kategorii</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        {cat.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Planowany czas (min)</Label>
+                <Input
+                  type="number"
+                  value={taskForm.plannedMinutes}
+                  onChange={(e) => setTaskForm({ ...taskForm, plannedMinutes: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Data</Label>
+                <Input
+                  type="date"
+                  value={taskForm.scheduledDate}
+                  onChange={(e) => setTaskForm({ ...taskForm, scheduledDate: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertingItem(null)}>
+              Anuluj
+            </Button>
+            <Button onClick={handleConvertToTask} disabled={!taskForm.title.trim()}>
+              <Check className="h-4 w-4 mr-2" />
+              Utwórz zadanie
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

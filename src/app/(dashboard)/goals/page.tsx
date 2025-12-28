@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import { Plus, Target, Check, Trash2 } from "lucide-react"
+import { useEffect, useState, useCallback, useMemo } from "react"
+import { Plus, Target, Check, Trash2, Pencil, Filter, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+
+type GroupBy = "none" | "period" | "sprint" | "category"
 
 interface Goal {
   id: string
@@ -65,6 +72,25 @@ export default function GoalsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [newGoal, setNewGoal] = useState({
+    title: "",
+    description: "",
+    targetValue: "",
+    unit: "",
+    categoryId: "",
+    periodId: "",
+    sprintId: "",
+  })
+
+  // Filtering and grouping state
+  const [groupBy, setGroupBy] = useState<GroupBy>("none")
+  const [filterCategory, setFilterCategory] = useState<string>("all")
+  const [filterPeriod, setFilterPeriod] = useState<string>("all")
+  const [filterSprint, setFilterSprint] = useState<string>("all")
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["all"]))
+
+  // Edit dialog state
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
+  const [editForm, setEditForm] = useState({
     title: "",
     description: "",
     targetValue: "",
@@ -189,6 +215,93 @@ export default function GoalsPage() {
     }
   }
 
+  // Edit goal handlers
+  const handleStartEdit = (goal: Goal) => {
+    setEditingGoal(goal)
+    setEditForm({
+      title: goal.title,
+      description: goal.description || "",
+      targetValue: goal.targetValue?.toString() || "",
+      unit: goal.unit || "",
+      categoryId: goal.category?.id || "",
+      periodId: goal.period?.id || "",
+      sprintId: goal.sprint?.id || "",
+    })
+  }
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingGoal) return
+
+    try {
+      const res = await fetch(`/api/goals/${editingGoal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editForm.title,
+          description: editForm.description || null,
+          targetValue: editForm.targetValue ? parseFloat(editForm.targetValue) : null,
+          unit: editForm.unit || null,
+          categoryId: editForm.categoryId || null,
+          periodId: editForm.periodId || null,
+          sprintId: editForm.sprintId || null,
+        }),
+      })
+      if (res.ok) {
+        fetchGoals()
+        setEditingGoal(null)
+      }
+    } catch (error) {
+      console.error("Error updating goal:", error)
+    }
+  }
+
+  // Group toggling
+  const toggleGroup = (groupId: string) => {
+    const newExpanded = new Set(expandedGroups)
+    if (newExpanded.has(groupId)) {
+      newExpanded.delete(groupId)
+    } else {
+      newExpanded.add(groupId)
+    }
+    setExpandedGroups(newExpanded)
+  }
+
+  // Filtering and grouping logic
+  const filteredGoals = useMemo(() => {
+    return goals.filter((goal) => {
+      if (filterCategory !== "all" && goal.category?.id !== filterCategory) return false
+      if (filterPeriod !== "all" && goal.period?.id !== filterPeriod) return false
+      if (filterSprint !== "all" && goal.sprint?.id !== filterSprint) return false
+      return true
+    })
+  }, [goals, filterCategory, filterPeriod, filterSprint])
+
+  const groupedGoals = useMemo(() => {
+    if (groupBy === "none") {
+      return { "all": filteredGoals.filter((g) => !g.isCompleted) }
+    }
+
+    const groups: Record<string, Goal[]> = {}
+    const activeGoals = filteredGoals.filter((g) => !g.isCompleted)
+
+    activeGoals.forEach((goal) => {
+      let key = "Bez przypisania"
+      if (groupBy === "period" && goal.period) {
+        key = goal.period.name
+      } else if (groupBy === "sprint" && goal.sprint) {
+        key = goal.sprint.name
+      } else if (groupBy === "category" && goal.category) {
+        key = goal.category.name
+      }
+
+      if (!groups[key]) groups[key] = []
+      groups[key].push(goal)
+    })
+
+    return groups
+  }, [filteredGoals, groupBy])
+
   const getProgress = (goal: Goal) => {
     if (!goal.targetValue) return goal.isCompleted ? 100 : 0
     return Math.min(100, (goal.currentValue / goal.targetValue) * 100)
@@ -221,10 +334,78 @@ export default function GoalsPage() {
         </Button>
       </div>
 
+      {/* Filters and Grouping */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-4 py-4">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Filtruj:</span>
+          </div>
+
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-[150px] h-8">
+              <SelectValue placeholder="Kategoria" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie kategorie</SelectItem>
+              {categories.filter((c) => c.isStrategic).map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                    {cat.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+            <SelectTrigger className="w-[130px] h-8">
+              <SelectValue placeholder="Okres" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie okresy</SelectItem>
+              {periods.map((period) => (
+                <SelectItem key={period.id} value={period.id}>{period.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterSprint} onValueChange={setFilterSprint}>
+            <SelectTrigger className="w-[130px] h-8">
+              <SelectValue placeholder="Sprint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie sprinty</SelectItem>
+              {periods.flatMap((p) => p.sprints).map((sprint) => (
+                <SelectItem key={sprint.id} value={sprint.id}>{sprint.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Grupuj wg:</span>
+            <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+              <SelectTrigger className="w-[130px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Bez grupowania</SelectItem>
+                <SelectItem value="period">Okres</SelectItem>
+                <SelectItem value="sprint">Sprint</SelectItem>
+                <SelectItem value="category">Kategoria</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Active Goals */}
       <div>
-        <h2 className="text-xl font-semibold mb-4">Aktywne cele ({activeGoals.length})</h2>
-        {activeGoals.length === 0 ? (
+        <h2 className="text-xl font-semibold mb-4">
+          Aktywne cele ({filteredGoals.filter((g) => !g.isCompleted).length})
+        </h2>
+        {Object.keys(groupedGoals).length === 0 || Object.values(groupedGoals).every((g) => g.length === 0) ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Target className="h-12 w-12 text-muted-foreground mb-4" />
@@ -239,91 +420,126 @@ export default function GoalsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3 md:gap-4 md:grid-cols-2">
-            {activeGoals.map((goal) => (
-              <Card key={goal.id}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">{goal.title}</CardTitle>
-                      {goal.description && (
-                        <CardDescription className="mt-1">
-                          {goal.description}
-                        </CardDescription>
+          <div className="space-y-4">
+            {Object.entries(groupedGoals).map(([groupName, groupGoals]) => (
+              <Collapsible
+                key={groupName}
+                open={expandedGroups.has(groupName)}
+                onOpenChange={() => toggleGroup(groupName)}
+              >
+                {groupBy !== "none" && (
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-start gap-2 mb-2">
+                      {expandedGroups.has(groupName) ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
                       )}
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleToggleComplete(goal)}
-                      >
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(goal.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+                      <span className="font-semibold">{groupName}</span>
+                      <Badge variant="secondary" className="ml-2">{groupGoals.length}</Badge>
+                    </Button>
+                  </CollapsibleTrigger>
+                )}
+                <CollapsibleContent>
+                  <div className="grid gap-3 md:gap-4 md:grid-cols-2">
+                    {groupGoals.map((goal) => (
+                      <Card key={goal.id}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <CardTitle className="text-lg">{goal.title}</CardTitle>
+                              {goal.description && (
+                                <CardDescription className="mt-1">
+                                  {goal.description}
+                                </CardDescription>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleStartEdit(goal)}
+                                title="Edytuj"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleToggleComplete(goal)}
+                                title="Oznacz jako ukończony"
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(goal.id)}
+                                title="Usuń"
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            {goal.targetValue ? (
+                              <>
+                                <div className="flex justify-between text-sm">
+                                  <span>
+                                    {goal.currentValue} / {goal.targetValue} {goal.unit}
+                                  </span>
+                                  <span>{Math.round(getProgress(goal))}%</span>
+                                </div>
+                                <Progress value={getProgress(goal)} />
+                                <div className="flex gap-2">
+                                  <Input
+                                    type="number"
+                                    placeholder="Aktualizuj postęp"
+                                    className="h-8"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        handleUpdateProgress(goal, parseFloat((e.target as HTMLInputElement).value))
+                                        ;(e.target as HTMLInputElement).value = ""
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">Cel jakościowy</Badge>
+                                {goal._count.tasks > 0 && (
+                                  <span className="text-sm text-muted-foreground">
+                                    {goal._count.tasks} powiązanych zadań
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div className="flex gap-2 flex-wrap">
+                              {goal.category && (
+                                <Badge
+                                  variant="outline"
+                                  style={{ borderColor: goal.category.color, color: goal.category.color }}
+                                >
+                                  {goal.category.name}
+                                </Badge>
+                              )}
+                              {goal.period && (
+                                <Badge variant="secondary">{goal.period.name}</Badge>
+                              )}
+                              {goal.sprint && (
+                                <Badge variant="outline">{goal.sprint.name}</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {goal.targetValue ? (
-                      <>
-                        <div className="flex justify-between text-sm">
-                          <span>
-                            {goal.currentValue} / {goal.targetValue} {goal.unit}
-                          </span>
-                          <span>{Math.round(getProgress(goal))}%</span>
-                        </div>
-                        <Progress value={getProgress(goal)} />
-                        <div className="flex gap-2">
-                          <Input
-                            type="number"
-                            placeholder="Aktualizuj postęp"
-                            className="h-8"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handleUpdateProgress(goal, parseFloat((e.target as HTMLInputElement).value))
-                                ;(e.target as HTMLInputElement).value = ""
-                              }
-                            }}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">Cel jakościowy</Badge>
-                        {goal._count.tasks > 0 && (
-                          <span className="text-sm text-muted-foreground">
-                            {goal._count.tasks} powiązanych zadań
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex gap-2 flex-wrap">
-                      {goal.category && (
-                        <Badge
-                          variant="outline"
-                          style={{ borderColor: goal.category.color, color: goal.category.color }}
-                        >
-                          {goal.category.name}
-                        </Badge>
-                      )}
-                      {goal.period && (
-                        <Badge variant="secondary">{goal.period.name}</Badge>
-                      )}
-                      {goal.sprint && (
-                        <Badge variant="outline">{goal.sprint.name}</Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                </CollapsibleContent>
+              </Collapsible>
             ))}
           </div>
         )}
@@ -493,6 +709,141 @@ export default function GoalsPage() {
                 Anuluj
               </Button>
               <Button type="submit">Stwórz cel</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingGoal} onOpenChange={(open) => !open && setEditingGoal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edytuj cel</DialogTitle>
+            <DialogDescription>
+              Zmień szczegóły celu
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveEdit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Tytuł celu</Label>
+                <Input
+                  placeholder="np. Przeczytać 12 książek"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Opis (opcjonalnie)</Label>
+                <Input
+                  placeholder="Dodatkowe informacje..."
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Wartość docelowa (opcjonalnie)</Label>
+                  <Input
+                    type="number"
+                    placeholder="np. 12"
+                    value={editForm.targetValue}
+                    onChange={(e) => setEditForm({ ...editForm, targetValue: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Jednostka (opcjonalnie)</Label>
+                  <Input
+                    placeholder="np. książek, km, godzin"
+                    value={editForm.unit}
+                    onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Category Selection */}
+              <div className="space-y-2">
+                <Label>Kategoria strategiczna</Label>
+                <Select
+                  value={editForm.categoryId || "none"}
+                  onValueChange={(value) => setEditForm({ ...editForm, categoryId: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz kategorię..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak kategorii</SelectItem>
+                    {categories
+                      .filter((c) => c.isStrategic)
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: category.color }}
+                            />
+                            {category.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Period Selection */}
+              <div className="space-y-2">
+                <Label>Okres</Label>
+                <Select
+                  value={editForm.periodId || "none"}
+                  onValueChange={(value) =>
+                    setEditForm({ ...editForm, periodId: value === "none" ? "" : value, sprintId: "" })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz okres..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak okresu</SelectItem>
+                    {periods.map((period) => (
+                      <SelectItem key={period.id} value={period.id}>
+                        {period.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Sprint Selection */}
+              {editForm.periodId && (
+                <div className="space-y-2">
+                  <Label>Sprint</Label>
+                  <Select
+                    value={editForm.sprintId || "none"}
+                    onValueChange={(value) => setEditForm({ ...editForm, sprintId: value === "none" ? "" : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Wybierz sprint..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Brak sprintu</SelectItem>
+                      {periods
+                        .find((p) => p.id === editForm.periodId)
+                        ?.sprints.map((sprint) => (
+                          <SelectItem key={sprint.id} value={sprint.id}>
+                            {sprint.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingGoal(null)}>
+                Anuluj
+              </Button>
+              <Button type="submit">Zapisz zmiany</Button>
             </DialogFooter>
           </form>
         </DialogContent>

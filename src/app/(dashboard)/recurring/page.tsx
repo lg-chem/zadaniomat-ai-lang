@@ -1,23 +1,22 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { format } from "date-fns"
+import { useEffect, useState, useCallback, useMemo } from "react"
+import { format, addDays, addWeeks, addMonths, startOfWeek, getDay, isBefore, isAfter } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Plus,
-  Check,
   Trash2,
-  X,
   Repeat,
   Clock,
   Calendar,
-  Target,
+  Pencil,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -30,7 +29,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
@@ -89,6 +94,21 @@ export default function RecurringPage() {
     priority: 0,
     categoryId: "",
   })
+
+  // Edit state
+  const [editingTask, setEditingTask] = useState<RecurringTask | null>(null)
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    recurrenceRule: "DAILY",
+    scheduledTime: "",
+    plannedMinutes: "",
+    priority: 0,
+    categoryId: "",
+  })
+
+  // Expanded task detail
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -176,6 +196,78 @@ export default function RecurringPage() {
     }
   }
 
+  // Edit handlers
+  const handleStartEdit = (task: RecurringTask) => {
+    setEditingTask(task)
+    setEditForm({
+      title: task.title,
+      description: task.description || "",
+      recurrenceRule: task.recurrenceRule,
+      scheduledTime: task.scheduledTime || "",
+      plannedMinutes: task.plannedMinutes?.toString() || "",
+      priority: task.priority,
+      categoryId: task.category?.id || "",
+    })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingTask || !editForm.title.trim()) return
+
+    try {
+      const res = await fetch(`/api/recurring/${editingTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editForm.title,
+          description: editForm.description || null,
+          recurrenceRule: editForm.recurrenceRule,
+          scheduledTime: editForm.scheduledTime || null,
+          plannedMinutes: editForm.plannedMinutes ? parseInt(editForm.plannedMinutes) : null,
+          priority: editForm.priority,
+          categoryId: editForm.categoryId || null,
+        }),
+      })
+      if (res.ok) {
+        fetchTasks()
+        setEditingTask(null)
+      }
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
+  // Generate next scheduled dates
+  const getNextDates = (rule: string, count: number = 5): Date[] => {
+    const dates: Date[] = []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    if (rule === "DAILY") {
+      for (let i = 0; i < count; i++) {
+        dates.push(addDays(today, i))
+      }
+    } else if (rule === "WEEKDAYS") {
+      let current = today
+      while (dates.length < count) {
+        const dayOfWeek = getDay(current)
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+          dates.push(new Date(current))
+        }
+        current = addDays(current, 1)
+      }
+    } else if (rule === "WEEKLY") {
+      for (let i = 0; i < count; i++) {
+        dates.push(addWeeks(today, i))
+      }
+    } else if (rule === "MONTHLY") {
+      for (let i = 0; i < count; i++) {
+        dates.push(addMonths(today, i))
+      }
+    }
+
+    return dates
+  }
+
   const getRecurrenceLabel = (rule: string) => {
     const option = RECURRENCE_OPTIONS.find(o => o.value === rule)
     return option?.label || rule
@@ -252,79 +344,122 @@ export default function RecurringPage() {
           <CardContent>
             <div className="border rounded-lg overflow-hidden">
               {/* Table Header */}
-              <div className="grid grid-cols-[1fr_150px_100px_100px_50px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+              <div className="grid grid-cols-[1fr_150px_100px_100px_80px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
                 <div>Zadanie</div>
                 <div>Kategoria</div>
                 <div className="text-center">Czas</div>
                 <div className="text-center">Priorytet</div>
-                <div></div>
+                <div>Akcje</div>
               </div>
 
               {/* Task Rows */}
               {ruleTasks.map((task) => {
                 const priorityOption = getPriorityOption(task.priority)
+                const isExpanded = expandedTaskId === task.id
+                const nextDates = getNextDates(task.recurrenceRule)
+
                 return (
-                  <div
-                    key={task.id}
-                    className="grid grid-cols-[1fr_150px_100px_100px_50px] gap-2 p-3 border-b last:border-b-0 items-center hover:bg-muted/20"
-                  >
-                    {/* Task Info */}
-                    <div>
-                      <div className="font-medium">{task.title}</div>
-                      {task.description && (
-                        <div className="text-sm text-muted-foreground truncate">
-                          {task.description}
-                        </div>
-                      )}
-                      {task.scheduledTime && (
-                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                          <Clock className="h-3 w-3" />
-                          {task.scheduledTime}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Category */}
-                    <div>
-                      {task.category ? (
-                        <Badge
-                          variant="outline"
-                          style={{ borderColor: task.category.color, color: task.category.color }}
+                  <div key={task.id} className="border-b last:border-b-0">
+                    <div
+                      className="grid grid-cols-[1fr_150px_100px_100px_80px] gap-2 p-3 items-center hover:bg-muted/20"
+                    >
+                      {/* Task Info */}
+                      <div>
+                        <button
+                          className="flex items-center gap-2 text-left w-full"
+                          onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
                         >
-                          {task.category.name}
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          )}
+                          <div>
+                            <div className="font-medium">{task.title}</div>
+                            {task.description && (
+                              <div className="text-sm text-muted-foreground truncate">
+                                {task.description}
+                              </div>
+                            )}
+                            {task.scheduledTime && (
+                              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <Clock className="h-3 w-3" />
+                                {task.scheduledTime}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Category */}
+                      <div>
+                        {task.category ? (
+                          <Badge
+                            variant="outline"
+                            style={{ borderColor: task.category.color, color: task.category.color }}
+                          >
+                            {task.category.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </div>
+
+                      {/* Time */}
+                      <div className="text-center">
+                        {task.plannedMinutes ? (
+                          <span className="text-sm">{task.plannedMinutes} min</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
+
+                      {/* Priority */}
+                      <div className="flex justify-center">
+                        <Badge className={`${priorityOption.color} text-white text-[10px]`}>
+                          {priorityOption.label}
                         </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleStartEdit(task)}
+                          title="Edytuj"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleDeleteTask(task.id)}
+                          title="Usuń"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
 
-                    {/* Time */}
-                    <div className="text-center">
-                      {task.plannedMinutes ? (
-                        <span className="text-sm">{task.plannedMinutes} min</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </div>
-
-                    {/* Priority */}
-                    <div className="flex justify-center">
-                      <Badge className={`${priorityOption.color} text-white text-[10px]`}>
-                        {priorityOption.label}
-                      </Badge>
-                    </div>
-
-                    {/* Delete */}
-                    <div className="flex justify-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleDeleteTask(task.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </div>
+                    {/* Expanded dates section */}
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 bg-muted/10">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">Następne wystąpienia:</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {nextDates.map((date, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs">
+                              {format(date, "EEEE, d MMM", { locale: pl })}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -466,6 +601,127 @@ export default function RecurringPage() {
               Utwórz zadanie cykliczne
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Task Dialog */}
+      <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edytuj zadanie cykliczne</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Nazwa zadania</Label>
+              <Input
+                value={editForm.title}
+                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                placeholder="np. Codzienny raport"
+              />
+            </div>
+
+            <div>
+              <Label>Opis (opcjonalnie)</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                placeholder="Szczegóły zadania..."
+              />
+            </div>
+
+            <div>
+              <Label>Powtarzalność</Label>
+              <Select
+                value={editForm.recurrenceRule}
+                onValueChange={(v) => setEditForm({ ...editForm, recurrenceRule: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RECURRENCE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Godzina (opcjonalnie)</Label>
+                <Input
+                  type="time"
+                  value={editForm.scheduledTime}
+                  onChange={(e) => setEditForm({ ...editForm, scheduledTime: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Czas trwania (min)</Label>
+                <Input
+                  type="number"
+                  value={editForm.plannedMinutes}
+                  onChange={(e) => setEditForm({ ...editForm, plannedMinutes: e.target.value })}
+                  placeholder="np. 30"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Kategoria</Label>
+                <Select
+                  value={editForm.categoryId || "none"}
+                  onValueChange={(v) => setEditForm({ ...editForm, categoryId: v === "none" ? "" : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          {cat.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Priorytet</Label>
+                <Select
+                  value={editForm.priority.toString()}
+                  onValueChange={(v) => setEditForm({ ...editForm, priority: parseInt(v) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value.toString()}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTask(null)}>
+              Anuluj
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!editForm.title.trim()}>
+              Zapisz zmiany
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

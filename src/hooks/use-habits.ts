@@ -31,8 +31,9 @@ interface Habit {
 export function useHabits() {
   const { workspace } = useWorkspaceStore()
 
+  // Always include completions in the fetch
   const { data, error, isLoading, mutate } = useSWR<Habit[]>(
-    workspace === 'PRIVATE' ? '/api/habits' : null
+    workspace === 'PRIVATE' ? '/api/habits?includeCompletions=true' : null
   )
 
   return {
