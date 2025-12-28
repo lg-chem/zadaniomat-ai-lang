@@ -27,19 +27,48 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
 
-    // Get categories with entry count
+    // Get categories with entry count and children (for hierarchy)
     const categories = await prisma.knowledgeCategory.findMany({
       where: {
         userId: session.user.id,
         workspaceType: workspace as "WORK" | "PRIVATE",
+        parentId: null, // Only top-level categories
       },
       include: {
         linkedCategory: true,
+        children: {
+          include: {
+            linkedCategory: true,
+            children: {
+              include: {
+                linkedCategory: true,
+                _count: { select: { entries: true } },
+              },
+            },
+            _count: { select: { entries: true } },
+          },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        },
         _count: {
           select: { entries: true },
         },
       },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+    })
+
+    // Also get strategic categories for linking
+    const strategicCategories = await prisma.category.findMany({
+      where: {
+        userId: session.user.id,
+        workspaceType: workspace as "WORK" | "PRIVATE",
+        isStrategic: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+      },
+      orderBy: { name: "asc" },
     })
 
     // If no categories exist, create defaults
@@ -68,10 +97,10 @@ export async function GET(req: Request) {
         )
       )
 
-      return NextResponse.json(createdCategories)
+      return NextResponse.json({ categories: createdCategories, strategicCategories })
     }
 
-    return NextResponse.json(categories)
+    return NextResponse.json({ categories, strategicCategories })
   } catch (error) {
     console.error("Error fetching knowledge categories:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
@@ -86,17 +115,31 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, color, icon, workspace, linkedCategoryId } = body
+    const { name, description, color, icon, workspace, linkedCategoryId, parentId } = body
 
     if (!name) {
       return NextResponse.json({ error: "Nazwa jest wymagana" }, { status: 400 })
     }
 
-    // Get max order
+    // If parentId provided, verify it exists and belongs to user
+    if (parentId) {
+      const parent = await prisma.knowledgeCategory.findFirst({
+        where: {
+          id: parentId,
+          userId: session.user.id,
+        },
+      })
+      if (!parent) {
+        return NextResponse.json({ error: "Kategoria nadrzędna nie znaleziona" }, { status: 404 })
+      }
+    }
+
+    // Get max order within the same parent
     const maxOrder = await prisma.knowledgeCategory.findFirst({
       where: {
         userId: session.user.id,
         workspaceType: workspace || "WORK",
+        parentId: parentId || null,
       },
       orderBy: { order: "desc" },
       select: { order: true },
@@ -111,10 +154,12 @@ export async function POST(req: Request) {
         workspaceType: workspace || "WORK",
         userId: session.user.id,
         linkedCategoryId,
+        parentId,
         order: (maxOrder?.order ?? -1) + 1,
       },
       include: {
         linkedCategory: true,
+        children: true,
         _count: {
           select: { entries: true },
         },

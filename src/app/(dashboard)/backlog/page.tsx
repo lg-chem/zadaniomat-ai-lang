@@ -15,7 +15,10 @@ import {
   MessageSquare,
   CalendarPlus,
   Loader2,
+  ExternalLink,
+  Lightbulb,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -50,12 +53,18 @@ interface BacklogItem {
 }
 
 export default function BacklogPage() {
+  const router = useRouter()
   const [showProcessed, setShowProcessed] = useState(false)
   const { workspace } = useWorkspaceStore()
 
   // Use SWR hook for data fetching with cache
   const { items, isLoading, mutate } = useBacklog({ showProcessed })
   const { categories } = useCategories()
+
+  // Floating quick add
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [quickAddContent, setQuickAddContent] = useState("")
+  const quickAddRef = useRef<HTMLInputElement>(null)
 
   // Quick add
   const [newContent, setNewContent] = useState("")
@@ -151,6 +160,41 @@ export default function BacklogPage() {
   const handleAddClick = () => {
     setIsAdding(true)
     setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  // Quick add from floating bubble
+  const handleQuickAdd = async () => {
+    if (!quickAddContent.trim()) return
+
+    try {
+      const res = await fetch("/api/backlog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: quickAddContent,
+          workspaceType: "WORK",
+        }),
+      })
+      if (res.ok) {
+        mutate()
+        setQuickAddContent("")
+        setShowQuickAdd(false)
+      }
+    } catch (error) {
+      console.error("Error creating item:", error)
+    }
+  }
+
+  // Continue discussion in main AI chat
+  const handleContinueToChat = (item: BacklogItem) => {
+    // Store the context in sessionStorage for AI chat to pick up
+    sessionStorage.setItem("aiChatContext", JSON.stringify({
+      type: "backlog_discussion",
+      content: item.content,
+      aiResponse: aiResponse,
+    }))
+    setDiscussingItem(null)
+    router.push("/ai")
   }
 
   const handleStartEdit = (item: BacklogItem) => {
@@ -508,15 +552,24 @@ export default function BacklogPage() {
               </div>
             ) : null}
           </div>
-          <DialogFooter className="gap-2">
-            {discussingItem && !aiLoading && (
-              <Button
-                variant="outline"
-                onClick={() => handleStartConvert(discussingItem)}
-              >
-                <CalendarPlus className="h-4 w-4 mr-2" />
-                Zamień na zadanie
-              </Button>
+          <DialogFooter className="gap-2 flex-wrap">
+            {discussingItem && !aiLoading && aiResponse && (
+              <>
+                <Button
+                  variant="default"
+                  onClick={() => handleContinueToChat(discussingItem)}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Kontynuuj w czacie AI
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleStartConvert(discussingItem)}
+                >
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                  Zamień na zadanie
+                </Button>
+              </>
             )}
             <Button variant="outline" onClick={() => setDiscussingItem(null)}>
               Zamknij
@@ -599,6 +652,67 @@ export default function BacklogPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Floating Quick Add Bubble */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {showQuickAdd ? (
+          <div className="bg-background border rounded-lg shadow-lg p-3 w-80">
+            <div className="flex items-center gap-2 mb-2">
+              <Lightbulb className="h-4 w-4 text-yellow-500" />
+              <span className="text-sm font-medium">Szybka notatka</span>
+            </div>
+            <Input
+              ref={quickAddRef}
+              value={quickAddContent}
+              onChange={(e) => setQuickAddContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleQuickAdd()
+                }
+                if (e.key === "Escape") {
+                  setShowQuickAdd(false)
+                  setQuickAddContent("")
+                }
+              }}
+              placeholder="Wpisz pomysł..."
+              className="mb-2"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={handleQuickAdd}
+                disabled={!quickAddContent.trim()}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Dodaj
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowQuickAdd(false)
+                  setQuickAddContent("")
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            size="lg"
+            className="h-14 w-14 rounded-full shadow-lg"
+            onClick={() => {
+              setShowQuickAdd(true)
+              setTimeout(() => quickAddRef.current?.focus(), 0)
+            }}
+          >
+            <Lightbulb className="h-6 w-6" />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

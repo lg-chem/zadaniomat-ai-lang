@@ -14,7 +14,7 @@ export async function PATCH(
     }
 
     const body = await req.json()
-    const { name, description, color, icon, order, linkedCategoryId } = body
+    const { name, description, color, icon, order, linkedCategoryId, parentId } = body
 
     // Verify category belongs to user
     const existing = await prisma.knowledgeCategory.findFirst({
@@ -28,6 +28,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
+    // Prevent setting parent to self or creating circular reference
+    if (parentId !== undefined && parentId === params.id) {
+      return NextResponse.json({ error: "Kategoria nie może być swoim rodzicem" }, { status: 400 })
+    }
+
     const category = await prisma.knowledgeCategory.update({
       where: { id: params.id },
       data: {
@@ -37,9 +42,11 @@ export async function PATCH(
         ...(icon !== undefined && { icon }),
         ...(order !== undefined && { order }),
         ...(linkedCategoryId !== undefined && { linkedCategoryId }),
+        ...(parentId !== undefined && { parentId }),
       },
       include: {
         linkedCategory: true,
+        children: true,
         _count: {
           select: { entries: true },
         },
@@ -81,6 +88,12 @@ export async function DELETE(
         { status: 400 }
       )
     }
+
+    // Move children to parent level (or root if no parent)
+    await prisma.knowledgeCategory.updateMany({
+      where: { parentId: params.id },
+      data: { parentId: category.parentId },
+    })
 
     // Delete all entries in this category first
     await prisma.knowledgeEntry.deleteMany({

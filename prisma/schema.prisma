@@ -553,8 +553,14 @@ model KnowledgeCategory {
   linkedCategoryId String?
   linkedCategory   Category?   @relation(fields: [linkedCategoryId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, name, workspaceType])
+  // Nesting - parent category
+  parentId      String?
+  parent        KnowledgeCategory?  @relation("KnowledgeCategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      KnowledgeCategory[] @relation("KnowledgeCategoryHierarchy")
+
+  @@unique([userId, name, workspaceType, parentId])
   @@index([userId, workspaceType])
+  @@index([parentId])
 }
 
 model KnowledgeEntry {

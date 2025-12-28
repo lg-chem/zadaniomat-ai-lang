@@ -113,16 +113,15 @@ export default function AIPage() {
     plannedMinutes: "25",
   })
 
-  // Knowledge save dialog
-  const [savingKnowledge, setSavingKnowledge] = useState(false)
+  // Knowledge save dialog - conversational flow
+  const [knowledgeStep, setKnowledgeStep] = useState<"idle" | "generating" | "review" | "saving" | "saved">("idle")
   const [knowledgeCategories, setKnowledgeCategories] = useState<KnowledgeCategory[]>([])
   const [knowledgeForm, setKnowledgeForm] = useState({
     title: "",
     content: "",
     categoryId: "",
   })
-  const [knowledgeSaving, setKnowledgeSaving] = useState(false)
-  const [knowledgeSaved, setKnowledgeSaved] = useState(false)
+  const [knowledgeSummary, setKnowledgeSummary] = useState("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -131,13 +130,41 @@ export default function AIPage() {
     fetchCategories()
     fetchSprints()
     fetchPeriods()
+
+    // Check for context from backlog discussion
+    const aiChatContext = sessionStorage.getItem("aiChatContext")
+    if (aiChatContext) {
+      try {
+        const context = JSON.parse(aiChatContext)
+        if (context.type === "backlog_discussion") {
+          // Pre-populate conversation with backlog context
+          setMessages([
+            {
+              role: "user",
+              content: `Kontynuujmy rozmowę o pomyśle z backlogu: "${context.content}"`,
+            },
+            {
+              role: "assistant",
+              content: context.aiResponse || "Chętnie pomogę z tym pomysłem. W czym mogę pomóc?",
+            },
+          ])
+          // Clear context after using
+          sessionStorage.removeItem("aiChatContext")
+        }
+      } catch (e) {
+        console.error("Error parsing AI chat context:", e)
+        sessionStorage.removeItem("aiChatContext")
+      }
+    }
   }, [])
 
   // Removed auto-scroll - let user read from top
 
   useEffect(() => {
-    // Clear messages when mode changes
-    setMessages([])
+    // Clear messages when mode changes (but only if not pre-populated)
+    if (messages.length === 0 || !sessionStorage.getItem("aiChatContext")) {
+      // Don't clear if we just loaded context
+    }
   }, [mode])
 
   const fetchCategories = async () => {
@@ -181,7 +208,18 @@ export default function AIPage() {
       const res = await fetch("/api/knowledge/categories?workspace=WORK")
       if (res.ok) {
         const data = await res.json()
-        setKnowledgeCategories(data)
+        // Flatten categories for simple selection
+        const flatCats: KnowledgeCategory[] = []
+        const flatten = (cats: KnowledgeCategory[], prefix = "") => {
+          for (const cat of cats) {
+            flatCats.push({ id: cat.id, name: prefix + cat.name, color: cat.color })
+            if ((cat as unknown as { children?: KnowledgeCategory[] }).children) {
+              flatten((cat as unknown as { children: KnowledgeCategory[] }).children, prefix + "— ")
+            }
+          }
+        }
+        flatten(data.categories || [])
+        setKnowledgeCategories(flatCats)
       }
     } catch (error) {
       console.error("Error fetching knowledge categories:", error)
@@ -367,28 +405,64 @@ export default function AIPage() {
     }
   }
 
-  const handleStartSaveKnowledge = () => {
-    // Fetch categories when opening dialog
+  const handleStartSaveKnowledge = async () => {
+    // Fetch categories when starting
     fetchKnowledgeCategories()
+    setKnowledgeStep("generating")
+    setKnowledgeSummary("")
+    setKnowledgeForm({ title: "", content: "", categoryId: "" })
 
-    // Prepare content from conversation
-    const conversationSummary = messages
+    // Build conversation for AI to summarize
+    const conversationText = messages
       .map((m) => `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${m.content}`)
       .join("\n\n")
 
-    setKnowledgeForm({
-      title: "",
-      content: conversationSummary,
-      categoryId: "",
-    })
-    setSavingKnowledge(true)
-    setKnowledgeSaved(false)
+    try {
+      // Ask AI to create a concise summary
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Stwórz zwięzłe podsumowanie poniższej rozmowy, które będzie nadawać się do zapisania w bazie wiedzy. Wyodrębnij kluczowe informacje, fakty i wnioski. Odpowiedz tylko podsumowaniem, bez dodatkowych komentarzy.\n\nRozmowa:\n${conversationText}`,
+          mode: "daily_tasks",
+          history: [],
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setKnowledgeSummary(data.message || conversationText)
+        setKnowledgeForm({
+          title: "",
+          content: data.message || conversationText,
+          categoryId: "",
+        })
+        setKnowledgeStep("review")
+      } else {
+        // Fallback to raw conversation
+        setKnowledgeSummary(conversationText)
+        setKnowledgeForm({
+          title: "",
+          content: conversationText,
+          categoryId: "",
+        })
+        setKnowledgeStep("review")
+      }
+    } catch (error) {
+      console.error("Error generating summary:", error)
+      setKnowledgeForm({
+        title: "",
+        content: conversationText,
+        categoryId: "",
+      })
+      setKnowledgeStep("review")
+    }
   }
 
   const handleSaveKnowledge = async () => {
     if (!knowledgeForm.content || !knowledgeForm.categoryId) return
 
-    setKnowledgeSaving(true)
+    setKnowledgeStep("saving")
     try {
       // Use the merge endpoint for intelligent update
       const res = await fetch("/api/knowledge/merge", {
@@ -396,29 +470,36 @@ export default function AIPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: knowledgeForm.title || "Notatka z rozmowy AI",
-          content: knowledgeForm.content,
+          newInfo: knowledgeForm.content,
           categoryId: knowledgeForm.categoryId,
-          workspaceType: "WORK",
+          workspace: "WORK",
         }),
       })
 
       if (res.ok) {
-        setKnowledgeSaved(true)
+        setKnowledgeStep("saved")
         setTimeout(() => {
-          setSavingKnowledge(false)
-          setKnowledgeSaved(false)
+          setKnowledgeStep("idle")
           setKnowledgeForm({
             title: "",
             content: "",
             categoryId: "",
           })
-        }, 1500)
+          setKnowledgeSummary("")
+        }, 2000)
+      } else {
+        setKnowledgeStep("review")
       }
     } catch (error) {
       console.error("Error saving knowledge:", error)
-    } finally {
-      setKnowledgeSaving(false)
+      setKnowledgeStep("review")
     }
+  }
+
+  const handleCancelKnowledge = () => {
+    setKnowledgeStep("idle")
+    setKnowledgeForm({ title: "", content: "", categoryId: "" })
+    setKnowledgeSummary("")
   }
 
   const getQuickPrompts = () => {
@@ -456,17 +537,6 @@ export default function AIPage() {
             Pomogę Ci zaplanować cele i zadania
           </p>
         </div>
-        {messages.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleStartSaveKnowledge}
-            className="flex items-center gap-2"
-          >
-            <BookOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">Zapisz do wiedzy</span>
-          </Button>
-        )}
       </div>
 
       {/* Mode Tabs */}
@@ -652,6 +722,102 @@ export default function AIPage() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Knowledge save prompt - appears after conversation */}
+              {messages.length > 0 && knowledgeStep === "idle" && (
+                <button
+                  onClick={handleStartSaveKnowledge}
+                  className="w-full p-2 mb-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Chcę zapisać te informacje do bazy wiedzy
+                </button>
+              )}
+
+              {/* Knowledge generating/review state */}
+              {knowledgeStep === "generating" && (
+                <div className="mb-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                  <div className="flex items-center gap-2 text-sm text-primary">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Tworzę podsumowanie rozmowy...
+                  </div>
+                </div>
+              )}
+
+              {knowledgeStep === "review" && (
+                <div className="mb-2 p-3 bg-primary/5 rounded-lg border border-primary/20 space-y-3">
+                  <div className="text-sm font-medium">Proponowane podsumowanie:</div>
+                  <Textarea
+                    value={knowledgeForm.content}
+                    onChange={(e) => setKnowledgeForm({ ...knowledgeForm, content: e.target.value })}
+                    rows={4}
+                    className="text-sm"
+                  />
+                  <div>
+                    <Label className="text-xs">Tytuł (opcjonalnie)</Label>
+                    <Input
+                      value={knowledgeForm.title}
+                      onChange={(e) => setKnowledgeForm({ ...knowledgeForm, title: e.target.value })}
+                      placeholder="Automatyczny tytuł..."
+                      className="text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Kategoria</Label>
+                    <Select
+                      value={knowledgeForm.categoryId || "none"}
+                      onValueChange={(v) => setKnowledgeForm({ ...knowledgeForm, categoryId: v === "none" ? "" : v })}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Wybierz kategorię..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Wybierz kategorię</SelectItem>
+                        {knowledgeCategories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                              {cat.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleSaveKnowledge}
+                      disabled={!knowledgeForm.content || !knowledgeForm.categoryId}
+                      size="sm"
+                      className="flex-1"
+                    >
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Zapisz do bazy wiedzy
+                    </Button>
+                    <Button onClick={handleCancelKnowledge} variant="outline" size="sm">
+                      Anuluj
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {knowledgeStep === "saving" && (
+                <div className="mb-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                  <div className="flex items-center gap-2 text-sm text-primary">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Zapisuję do bazy wiedzy...
+                  </div>
+                </div>
+              )}
+
+              {knowledgeStep === "saved" && (
+                <div className="mb-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                    <Check className="h-4 w-4" />
+                    Zapisano do bazy wiedzy!
+                  </div>
+                </div>
+              )}
+
               {/* Input */}
               <div className="flex gap-2">
                 <Input
@@ -666,12 +832,12 @@ export default function AIPage() {
                       ? "Zapytaj o cele sprintu..."
                       : "Zapytaj o zadania na dziś..."
                   }
-                  disabled={isLoading}
+                  disabled={isLoading || knowledgeStep !== "idle"}
                   className="text-sm md:text-base"
                 />
                 <Button
                   onClick={handleSend}
-                  disabled={isLoading || !input.trim()}
+                  disabled={isLoading || !input.trim() || knowledgeStep !== "idle"}
                   size="icon"
                   className="flex-shrink-0 touch-manipulation h-10 w-10"
                 >
@@ -866,86 +1032,6 @@ export default function AIPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Save Knowledge Dialog */}
-      <Dialog open={savingKnowledge} onOpenChange={(open) => !open && setSavingKnowledge(false)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5" />
-              Zapisz do bazy wiedzy
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div>
-              <Label>Tytuł (opcjonalnie)</Label>
-              <Input
-                value={knowledgeForm.title}
-                onChange={(e) => setKnowledgeForm({ ...knowledgeForm, title: e.target.value })}
-                placeholder="Zostaw puste dla automatycznego tytułu"
-              />
-            </div>
-            <div>
-              <Label>Kategoria wiedzy</Label>
-              <Select
-                value={knowledgeForm.categoryId || "none"}
-                onValueChange={(v) => setKnowledgeForm({ ...knowledgeForm, categoryId: v === "none" ? "" : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Wybierz kategorię..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Wybierz kategorię</SelectItem>
-                  {knowledgeCategories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: cat.color }}
-                        />
-                        {cat.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Treść do zapisania</Label>
-              <Textarea
-                value={knowledgeForm.content}
-                onChange={(e) => setKnowledgeForm({ ...knowledgeForm, content: e.target.value })}
-                rows={10}
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                AI inteligentnie połączy te informacje z istniejącą wiedzą w wybranej kategorii.
-              </p>
-            </div>
-            <Button
-              onClick={handleSaveKnowledge}
-              className="w-full"
-              disabled={!knowledgeForm.content || !knowledgeForm.categoryId || knowledgeSaving}
-            >
-              {knowledgeSaved ? (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Zapisano!
-                </>
-              ) : knowledgeSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Zapisywanie...
-                </>
-              ) : (
-                <>
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  Zapisz wiedzę
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
