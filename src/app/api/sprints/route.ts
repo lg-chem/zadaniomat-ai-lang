@@ -42,13 +42,37 @@ export async function GET(req: Request) {
           },
         },
         _count: {
-          select: { tasks: true, goals: true },
+          select: { goals: true },
         },
       },
       orderBy: { startDate: "desc" },
     })
 
-    return NextResponse.json(sprints)
+    // Calculate task counts based on scheduledDate within sprint date range
+    const sprintsWithTaskCounts = await Promise.all(
+      sprints.map(async (sprint) => {
+        const taskCount = await prisma.task.count({
+          where: {
+            userId: session.user.id,
+            workspaceType: workspace as "WORK" | "PRIVATE",
+            scheduledDate: {
+              gte: sprint.startDate,
+              lte: sprint.endDate,
+            },
+          },
+        })
+
+        return {
+          ...sprint,
+          _count: {
+            ...sprint._count,
+            tasks: taskCount,
+          },
+        }
+      })
+    )
+
+    return NextResponse.json(sprintsWithTaskCounts)
   } catch (error) {
     console.error("Error fetching sprints:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

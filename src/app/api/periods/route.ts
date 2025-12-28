@@ -30,7 +30,7 @@ export async function GET(req: Request) {
               },
             },
             _count: {
-              select: { tasks: true, goals: true },
+              select: { goals: true },
             },
           },
         },
@@ -48,7 +48,41 @@ export async function GET(req: Request) {
       orderBy: { startDate: "desc" },
     })
 
-    return NextResponse.json(periods)
+    // Calculate task counts for each sprint based on scheduledDate within date range
+    const periodsWithTaskCounts = await Promise.all(
+      periods.map(async (period) => {
+        const sprintsWithTaskCounts = await Promise.all(
+          period.sprints.map(async (sprint) => {
+            // Count tasks where scheduledDate is within sprint date range
+            const taskCount = await prisma.task.count({
+              where: {
+                userId: session.user.id,
+                workspaceType: workspace as "WORK" | "PRIVATE",
+                scheduledDate: {
+                  gte: sprint.startDate,
+                  lte: sprint.endDate,
+                },
+              },
+            })
+
+            return {
+              ...sprint,
+              _count: {
+                ...sprint._count,
+                tasks: taskCount,
+              },
+            }
+          })
+        )
+
+        return {
+          ...period,
+          sprints: sprintsWithTaskCounts,
+        }
+      })
+    )
+
+    return NextResponse.json(periodsWithTaskCounts)
   } catch (error) {
     console.error("Error fetching periods:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
