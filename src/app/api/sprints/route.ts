@@ -36,7 +36,11 @@ export async function GET(req: Request) {
         period: {
           select: { id: true, name: true },
         },
-        goals: true,
+        goals: {
+          include: {
+            category: true,
+          },
+        },
         _count: {
           select: { tasks: true, goals: true },
         },
