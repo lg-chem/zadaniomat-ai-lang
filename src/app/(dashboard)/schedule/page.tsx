@@ -417,72 +417,85 @@ export default function SchedulePage() {
         </CardContent>
       </Card>
 
-      {/* Sprint Goals - WORK only */}
-      {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <CardTitle className="text-base md:text-lg flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Cele sprintu: {activeSprint.name}
-              </CardTitle>
-              <Badge variant="secondary">
-                {format(new Date(activeSprint.startDate), "d MMM", { locale: pl })} -{" "}
-                {format(new Date(activeSprint.endDate), "d MMM", { locale: pl })}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-              {activeSprint.goals.map((goal) => {
-                const progress = goal.targetValue
-                  ? Math.min(100, (goal.currentValue / goal.targetValue) * 100)
-                  : 0
+      {/* Sprint Goals - WORK only, grouped by category */}
+      {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (() => {
+        // Group goals by category
+        const goalsByCategory = activeSprint.goals.reduce((acc, goal) => {
+          const categoryName = goal.category?.name || "Bez kategorii"
+          const categoryColor = goal.category?.color || "#6b7280"
+          const key = goal.category?.id || "none"
+          if (!acc[key]) {
+            acc[key] = { name: categoryName, color: categoryColor, goals: [] }
+          }
+          acc[key].goals.push(goal)
+          return acc
+        }, {} as Record<string, { name: string; color: string; goals: typeof activeSprint.goals }>)
 
-                return (
-                  <div
-                    key={goal.id}
-                    className={`p-3 rounded-lg border ${
-                      goal.isCompleted ? "bg-green-50 border-green-200" : "bg-muted/30"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex flex-col gap-1">
-                        {goal.category && (
-                          <div className="flex items-center gap-1.5">
-                            <div
-                              className="h-2 w-2 rounded-full"
-                              style={{ backgroundColor: goal.category.color }}
-                            />
-                            <span className="text-[10px] text-muted-foreground">
-                              {goal.category.name}
-                            </span>
-                          </div>
-                        )}
-                        <span className={`font-medium text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-                          {goal.title}
-                        </span>
-                      </div>
-                      {goal.isCompleted && (
-                        <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      )}
-                    </div>
-                    {goal.targetValue && (
-                      <>
-                        <Progress value={progress} className="h-1.5 mb-1" />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>{goal.currentValue} / {goal.targetValue} {goal.unit}</span>
-                          <span>{Math.round(progress)}%</span>
-                        </div>
-                      </>
-                    )}
+        return (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="text-base md:text-lg flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Cele sprintu: {activeSprint.name}
+                </CardTitle>
+                <Badge variant="secondary">
+                  {format(new Date(activeSprint.startDate), "d MMM", { locale: pl })} -{" "}
+                  {format(new Date(activeSprint.endDate), "d MMM", { locale: pl })}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Object.entries(goalsByCategory).map(([categoryId, { name, color, goals }]) => (
+                <div key={categoryId}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="text-sm font-medium">{name}</span>
+                    <span className="text-xs text-muted-foreground">({goals.length})</span>
                   </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  <div className="grid gap-2 md:gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 pl-5">
+                    {goals.map((goal) => {
+                      const progress = goal.targetValue
+                        ? Math.min(100, (goal.currentValue / goal.targetValue) * 100)
+                        : 0
+
+                      return (
+                        <div
+                          key={goal.id}
+                          className={`p-3 rounded-lg border ${
+                            goal.isCompleted ? "bg-green-50 border-green-200" : "bg-muted/30"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <span className={`font-medium text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                              {goal.title}
+                            </span>
+                            {goal.isCompleted && (
+                              <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            )}
+                          </div>
+                          {goal.targetValue && (
+                            <>
+                              <Progress value={progress} className="h-1.5 mb-1" />
+                              <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>{goal.currentValue} / {goal.targetValue} {goal.unit}</span>
+                                <span>{Math.round(progress)}%</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Task Table - Spreadsheet style */}
       <Card>
