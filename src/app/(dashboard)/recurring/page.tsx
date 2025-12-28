@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
-import { format, addDays, addWeeks, addMonths, startOfWeek, getDay, isBefore, isAfter } from "date-fns"
+import { useEffect, useState, useCallback } from "react"
+import { format, addDays, addWeeks, addMonths, getDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Plus,
@@ -31,11 +31,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
