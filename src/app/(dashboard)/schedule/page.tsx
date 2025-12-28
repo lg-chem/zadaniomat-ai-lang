@@ -357,6 +357,19 @@ export default function SchedulePage() {
           <p className="text-sm md:text-base text-muted-foreground">
             Planuj i śledź zadania na każdy dzień
           </p>
+          {/* Sprint info in header */}
+          {workspace === "WORK" && activeSprint && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="outline" className="bg-primary/5">
+                <Target className="h-3 w-3 mr-1" />
+                Sprint: {activeSprint.name}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {format(new Date(activeSprint.startDate), "d MMM", { locale: pl })} -{" "}
+                {format(new Date(activeSprint.endDate), "d MMM yyyy", { locale: pl })}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

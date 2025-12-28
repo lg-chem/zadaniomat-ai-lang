@@ -14,6 +14,7 @@ import {
   Sparkles,
   BookOpen,
   Check,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -122,6 +123,7 @@ export default function AIPage() {
     categoryId: "",
   })
   const [knowledgeSummary, setKnowledgeSummary] = useState("")
+  const [knowledgeError, setKnowledgeError] = useState("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -463,6 +465,7 @@ export default function AIPage() {
     if (!knowledgeForm.content || !knowledgeForm.categoryId) return
 
     setKnowledgeStep("saving")
+    setKnowledgeError("")
     try {
       // Use the merge endpoint for intelligent update
       const res = await fetch("/api/knowledge/merge", {
@@ -486,12 +489,16 @@ export default function AIPage() {
             categoryId: "",
           })
           setKnowledgeSummary("")
+          setKnowledgeError("")
         }, 2000)
       } else {
+        const errorData = await res.json().catch(() => ({}))
+        setKnowledgeError(errorData.error || "Nie udało się zapisać do bazy wiedzy. Spróbuj ponownie.")
         setKnowledgeStep("review")
       }
     } catch (error) {
       console.error("Error saving knowledge:", error)
+      setKnowledgeError("Wystąpił błąd podczas zapisywania. Sprawdź połączenie z siecią.")
       setKnowledgeStep("review")
     }
   }
@@ -500,6 +507,7 @@ export default function AIPage() {
     setKnowledgeStep("idle")
     setKnowledgeForm({ title: "", content: "", categoryId: "" })
     setKnowledgeSummary("")
+    setKnowledgeError("")
   }
 
   const getQuickPrompts = () => {
@@ -783,6 +791,12 @@ export default function AIPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {knowledgeError && (
+                    <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                      {knowledgeError}
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <Button
                       onClick={handleSaveKnowledge}

@@ -2,6 +2,7 @@
 
 import { useCallback } from "react"
 import { FloatingTimer } from "@/components/timer/floating-timer"
+import { BacklogQuickAddBubble } from "@/components/backlog/quick-add-bubble"
 
 interface DashboardClientProps {
   children: React.ReactNode
@@ -72,6 +73,7 @@ export function DashboardClient({ children }: DashboardClientProps) {
         onComplete={handleTimerComplete}
         onStop={handleTimerStop}
       />
+      <BacklogQuickAddBubble />
     </>
   )
 }
