@@ -19,7 +19,7 @@ interface ChatRequest {
 async function getMinimalContext(userId: string) {
   const today = new Date()
 
-  const [categories, activePeriod, activeSprint, knowledgeBase] = await Promise.all([
+  const [categories, activePeriod, activeSprint, knowledgeBase, importantKnowledge] = await Promise.all([
     prisma.category.findMany({
       where: { userId, workspaceType: "WORK" },
       select: { name: true, isStrategic: true },
@@ -42,6 +42,12 @@ async function getMinimalContext(userId: string) {
       where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
       select: { chatInstructions: true, companyInfo: true, systemPrompts: true, metaPrompt: true },
     }),
+    // Fetch important knowledge entries
+    prisma.knowledgeEntry.findMany({
+      where: { userId, workspaceType: "WORK", isImportant: true },
+      select: { title: true, content: true, category: { select: { name: true } } },
+      take: 10,
+    }),
   ])
 
   const categoryNames = categories.map((c: { name: string; isStrategic: boolean }) => c.name + (c.isStrategic ? " ★" : "")).join(", ")
@@ -58,6 +64,13 @@ async function getMinimalContext(userId: string) {
       `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
 
+  // Format important knowledge
+  const knowledgeSummary = importantKnowledge.length > 0
+    ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null }) =>
+        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}: ${k.content?.substring(0, 200) || ""}${(k.content?.length || 0) > 200 ? "..." : ""}`
+      ).join("\n")
+    : null
+
   return {
     today: format(today, "EEEE, d MMMM yyyy", { locale: pl }),
     categories: categoryNames,
@@ -66,6 +79,7 @@ async function getMinimalContext(userId: string) {
     currentSprint: activeSprint ? `${activeSprint.name} (${format(activeSprint.startDate, "d.MM")} - ${format(activeSprint.endDate, "d.MM")})` : null,
     sprintGoals: sprintGoalsList,
     knowledgeBase,
+    importantKnowledge: knowledgeSummary,
   }
 }
 
@@ -215,11 +229,15 @@ function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getM
     ? `\n[Kontekst firmy]: ${context.knowledgeBase.companyInfo}`
     : ""
 
+  const knowledgeContext = context.importantKnowledge
+    ? `\n[Baza wiedzy - ważne wpisy]:\n${context.importantKnowledge}`
+    : ""
+
   const baseContext = `
 [Data]: ${context.today}
 [Kategorie]: ${context.categories || "brak"}
 [Okres]: ${context.currentPeriod || "brak aktywnego"} → Cele: ${context.periodGoals || "brak"}
-[Sprint]: ${context.currentSprint || "brak aktywnego"} → Cele: ${context.sprintGoals || "brak"}${companyContext}${customInstructions}`
+[Sprint]: ${context.currentSprint || "brak aktywnego"} → Cele: ${context.sprintGoals || "brak"}${companyContext}${knowledgeContext}${customInstructions}`
 
   const jsonInstructions = `
 
