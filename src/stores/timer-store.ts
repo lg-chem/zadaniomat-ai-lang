@@ -46,8 +46,8 @@ interface TimerState {
   pauseTimer: () => void
   resumeTimer: () => void
   extendTimer: (minutes: number) => void
-  stopTimer: () => { taskId: string; duration: number } | null
-  completeTask: () => { taskId: string; duration: number } | null
+  stopTimer: () => { taskId: string; durationSeconds: number } | null
+  completeTask: () => { taskId: string; durationSeconds: number } | null
   tick: () => void
   dismissNotification: () => void
   reset: () => void
@@ -236,7 +236,8 @@ export const useTimerStore = create<TimerState>()(
         const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates } = get()
         if (!isRunning || !taskId) return null
 
-        const duration = Math.ceil(elapsedSeconds / 60) // zaokrąglenie w górę do minut
+        // Return seconds - rounding should happen only once at final save
+        const durationSeconds = elapsedSeconds
 
         // Save state for this task so we can resume later
         const newTaskTimeStates = {
@@ -263,7 +264,7 @@ export const useTimerStore = create<TimerState>()(
           taskTimeStates: newTaskTimeStates,
         })
 
-        return { taskId, duration }
+        return { taskId, durationSeconds }
       },
 
       completeTask: () => {

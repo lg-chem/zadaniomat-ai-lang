@@ -36,7 +36,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
       // Stop current timer first
       const result = stopTimer()
       if (result && onStop) {
-        onStop(result.duration)
+        onStop(result.durationSeconds)
       }
     }
     startTimer(taskId, taskTitle || "Zadanie", plannedMinutes)
@@ -53,7 +53,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
   const handleStop = () => {
     const result = stopTimer()
     if (result && onStop) {
-      onStop(result.duration)
+      onStop(result.durationSeconds)
     }
   }
 

@@ -13,60 +13,65 @@ export function DashboardClient({ children }: DashboardClientProps) {
   // Prefetch common data in background when dashboard loads
   usePrefetchData()
 
-  const handleTimerComplete = useCallback(async (taskId: string, duration: number) => {
+  const handleTimerComplete = useCallback(async (taskId: string, durationSeconds: number) => {
+    // Round only once at final save
+    const durationMinutes = Math.ceil(durationSeconds / 60)
+
     // Zapisz czas i ustaw status na COMPLETED
     try {
+      // Pobierz aktualny czas zadania i dodaj nowy
+      const res = await fetch(`/api/tasks/${taskId}`)
+      let totalMinutes = durationMinutes
+      if (res.ok) {
+        const task = await res.json()
+        totalMinutes = (task.actualMinutes || 0) + durationMinutes
+      }
+
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
-          actualMinutes: duration,
+          actualMinutes: totalMinutes,
           completedAt: new Date().toISOString(),
         }),
       })
       // Zapisz time entry
-      await fetch("/api/time-entries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId,
-          duration,
-        }),
-      })
+      if (durationMinutes > 0) {
+        await fetch("/api/time-entries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskId,
+            duration: durationMinutes,
+          }),
+        })
+      }
     } catch (error) {
       console.error("Error completing task:", error)
     }
   }, [])
 
-  const handleTimerStop = useCallback(async (taskId: string, duration: number) => {
-    // Zapisz czas ale nie zmieniaj statusu
-    try {
-      // Pobierz aktualny czas zadania
-      const res = await fetch(`/api/tasks/${taskId}`)
-      if (res.ok) {
-        const task = await res.json()
-        const newActualMinutes = (task.actualMinutes || 0) + duration
+  const handleTimerStop = useCallback(async (taskId: string, durationSeconds: number) => {
+    // Don't update actualMinutes on stop - only on complete
+    // This prevents rounding multiple times (e.g., 3x10sec = 3min instead of 1min)
+    // Time is saved in localStorage (taskTimeStates) and will be counted when task is completed
 
-        await fetch(`/api/tasks/${taskId}`, {
-          method: "PATCH",
+    // Only save time entry if significant time passed (at least 1 minute)
+    const durationMinutes = Math.ceil(durationSeconds / 60)
+    if (durationMinutes > 0) {
+      try {
+        await fetch("/api/time-entries", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            actualMinutes: newActualMinutes,
+            taskId,
+            duration: durationMinutes,
           }),
         })
+      } catch (error) {
+        console.error("Error saving time entry:", error)
       }
-      // Zapisz time entry
-      await fetch("/api/time-entries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId,
-          duration,
-        }),
-      })
-    } catch (error) {
-      console.error("Error saving time:", error)
     }
   }, [])
 
