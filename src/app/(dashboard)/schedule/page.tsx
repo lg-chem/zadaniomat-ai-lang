@@ -565,7 +565,7 @@ export default function SchedulePage() {
         </CardHeader>
         <CardContent>
           {/* Mobile View - Cards */}
-          <div className="space-y-2 md:hidden">
+          <div className="space-y-2 md:hidden animate-stagger">
             {tasks.map((task) => (
               <Card key={task.id} className={task.status === "COMPLETED" ? "opacity-60" : ""}>
                 <CardContent className="p-3">
