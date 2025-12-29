@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { UserRole } from "@prisma/client"
 
 export async function PATCH(
   request: Request,
@@ -40,12 +41,12 @@ export async function PATCH(
       )
     }
 
-    const updateData: { isApproved?: boolean; role?: string } = {}
+    const updateData: { isApproved?: boolean; role?: UserRole } = {}
     if (typeof isApproved === "boolean") {
       updateData.isApproved = isApproved
     }
-    if (role) {
-      updateData.role = role
+    if (role && Object.values(UserRole).includes(role)) {
+      updateData.role = role as UserRole
     }
 
     const user = await prisma.user.update({
