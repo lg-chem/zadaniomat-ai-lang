@@ -394,6 +394,13 @@ export default function SchedulePage() {
 
   const strategicCategories = categories.filter((c) => c.isStrategic)
 
+  // Group tasks by status
+  const taskGroups = {
+    NEW: tasks.filter(t => t.status === "NEW"),
+    IN_PROGRESS: tasks.filter(t => t.status === "IN_PROGRESS"),
+    COMPLETED: tasks.filter(t => t.status === "COMPLETED" || t.status === "CANCELLED"),
+  }
+
   // Calculate stats
   const totalPlanned = tasks.reduce((sum, t) => sum + (t.plannedMinutes || 0), 0)
   const totalActual = tasks.reduce((sum, t) => sum + t.actualMinutes, 0)
@@ -639,85 +646,156 @@ export default function SchedulePage() {
           <CardTitle className="text-base md:text-lg">Zadania na dziś</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Mobile View - Cards */}
-          <div className="space-y-2 md:hidden animate-stagger">
-            {tasks.map((task) => (
-              <Card key={task.id} className={task.status === "COMPLETED" ? "opacity-60" : ""}>
-                <CardContent className="p-3">
-                  <div className="space-y-2">
-                    {/* Title and Status */}
-                    <div className="flex items-start gap-2">
-                      {editingTaskId === task.id ? (
-                        <Input
-                          value={editingTitle}
-                          onChange={(e) => setEditingTitle(e.target.value)}
-                          onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))}
-                          onBlur={() => handleUpdateTaskTitle(task.id)}
-                          className="h-8 text-sm"
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          className="flex-1 flex items-center gap-2"
-                          onClick={() => handleStartEdit(task)}
-                        >
-                          {task.isRecurring && (
-                            <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+          {/* Mobile View - Cards grouped by status */}
+          <div className="space-y-4 md:hidden animate-stagger">
+            {/* In Progress Tasks */}
+            {taskGroups.IN_PROGRESS.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <div className="h-2 w-2 rounded-full bg-blue-500" />
+                  <span className="text-sm font-medium text-blue-700">W trakcie ({taskGroups.IN_PROGRESS.length})</span>
+                </div>
+                {taskGroups.IN_PROGRESS.map((task) => (
+                  <Card key={task.id} className="border-l-2 border-l-blue-500">
+                    <CardContent className="p-3">
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          {editingTaskId === task.id ? (
+                            <Input
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))}
+                              onBlur={() => handleUpdateTaskTitle(task.id)}
+                              className="h-8 text-sm"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="flex-1 flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                              {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                              <span className="text-sm font-medium">{task.title}</span>
+                            </div>
                           )}
-                          <span className={`text-sm font-medium ${task.status === "COMPLETED" ? "line-through" : ""}`}>
-                            {task.title}
-                          </span>
                         </div>
-                      )}
-                      <Badge className={`${STATUS_COLORS[task.status]} text-[10px]`}>
-                        {STATUS_LABELS[task.status]}
-                      </Badge>
-                    </div>
-
-                    {/* Category and Time */}
-                    <div className="flex items-center gap-2 text-xs">
-                      {task.category && (
-                        <div className="flex items-center gap-1.5">
-                          <div
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: task.category.color }}
-                          />
-                          <span>{task.category.name}</span>
+                        <div className="flex items-center gap-2 text-xs">
+                          {task.category && (
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                              <span>{task.category.name}</span>
+                            </div>
+                          )}
+                          {task.plannedMinutes && <span className="text-muted-foreground">• {task.plannedMinutes} min</span>}
                         </div>
-                      )}
-                      {task.plannedMinutes && (
-                        <span className="text-muted-foreground">• {task.plannedMinutes} min</span>
-                      )}
-                    </div>
+                        <div className="flex items-center gap-1 pt-1">
+                          <Button size="sm" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} className="h-7 text-xs">
+                            Zakończ
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 pt-1">
-                      <Button
-                        size="sm"
-                        variant={task.status === "COMPLETED" ? "outline" : "default"}
-                        onClick={() =>
-                          handleUpdateTaskStatus(
-                            task.id,
-                            task.status === "COMPLETED" ? "NEW" : "COMPLETED"
-                          )
-                        }
-                        className="h-7 text-xs"
-                      >
-                        {task.status === "COMPLETED" ? "Cofnij" : "Zakończ"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeleteTask(task.id)}
-                        className="h-7 text-xs"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {/* New Tasks */}
+            {taskGroups.NEW.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <div className="h-2 w-2 rounded-full bg-slate-400" />
+                  <span className="text-sm font-medium text-slate-600">Nowe ({taskGroups.NEW.length})</span>
+                </div>
+                {taskGroups.NEW.map((task) => (
+                  <Card key={task.id}>
+                    <CardContent className="p-3">
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          {editingTaskId === task.id ? (
+                            <Input
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))}
+                              onBlur={() => handleUpdateTaskTitle(task.id)}
+                              className="h-8 text-sm"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="flex-1 flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                              {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                              <span className="text-sm font-medium">{task.title}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {task.category && (
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                              <span>{task.category.name}</span>
+                            </div>
+                          )}
+                          {task.plannedMinutes && <span className="text-muted-foreground">• {task.plannedMinutes} min</span>}
+                        </div>
+                        <div className="flex items-center gap-1 pt-1">
+                          <Button size="sm" variant="outline" onClick={() => handleStartTimer(task)} className="h-7 text-xs">
+                            <Play className="h-3 w-3 mr-1" />
+                            Start
+                          </Button>
+                          <Button size="sm" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} className="h-7 text-xs">
+                            Zakończ
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Completed Tasks */}
+            {taskGroups.COMPLETED.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                  <span className="text-sm font-medium text-green-700">Zakończone ({taskGroups.COMPLETED.length})</span>
+                </div>
+                {taskGroups.COMPLETED.map((task) => (
+                  <Card key={task.id} className="opacity-60">
+                    <CardContent className="p-3">
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                            {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                            <span className="text-sm font-medium line-through">{task.title}</span>
+                          </div>
+                          <Check className="h-4 w-4 text-green-500" />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {task.category && (
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                              <span>{task.category.name}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 pt-1">
+                          <Button size="sm" variant="outline" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} className="h-7 text-xs">
+                            Cofnij
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
 
             {/* Mobile Add Task Button/Form */}
             {isAddingTask ? (
@@ -893,188 +971,169 @@ export default function SchedulePage() {
               )
             })}
 
-            {/* Existing Tasks */}
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b last:border-b-0 items-center transition-colors ${
-                  task.status === "COMPLETED"
-                    ? "bg-muted/30 opacity-60"
-                    : task.status === "IN_PROGRESS"
-                    ? "bg-primary/5 border-l-2 border-l-primary"
-                    : "hover:bg-muted/20"
-                }`}
-              >
-                {/* Category Select */}
-                <div>
-                  <Select
-                    value={task.categoryId || "none"}
-                    onValueChange={(value) =>
-                      handleUpdateTaskCategory(task.id, value === "none" ? "" : value)
-                    }
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue>
-                        {task.category ? (
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: task.category.color }}
-                            />
-                            <span className="truncate">{task.category.name}</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Brak</span>
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        <span className="text-muted-foreground">Brak kategorii</span>
-                      </SelectItem>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: category.color }}
-                            />
-                            {category.name}
-                            {category.isStrategic && (
-                              <Badge variant="secondary" className="text-[10px] px-1">
-                                S
-                              </Badge>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {/* Task Groups */}
+            {/* In Progress Section */}
+            {taskGroups.IN_PROGRESS.length > 0 && (
+              <>
+                <div className="px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b border-l-2 border-l-blue-500">
+                  <div className="flex items-center gap-2">
+                    <Play className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-400">W trakcie ({taskGroups.IN_PROGRESS.length})</span>
+                  </div>
                 </div>
-
-                {/* Title */}
-                <div>
-                  {editingTaskId === task.id ? (
-                    <Input
-                      value={editingTitle}
-                      onChange={(e) => setEditingTitle(e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))}
-                      onBlur={() => handleUpdateTaskTitle(task.id)}
-                      className="h-8"
-                      autoFocus
-                    />
-                  ) : (
-                    <div
-                      className={`cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 ${
-                        task.status === "COMPLETED" ? "line-through" : ""
-                      }`}
-                      onClick={() => handleStartEdit(task)}
-                    >
-                      {task.isRecurring && (
-                        <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                      )}
-                      <span className="truncate">{task.title}</span>
-                      <Badge className={`${STATUS_COLORS[task.status]} text-[10px] flex-shrink-0`}>
-                        {STATUS_LABELS[task.status]}
-                      </Badge>
+                {taskGroups.IN_PROGRESS.map((task) => (
+                  <div key={task.id} className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center bg-primary/5 border-l-2 border-l-blue-500">
+                    <div>
+                      <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue>
+                            {task.category ? (
+                              <div className="flex items-center gap-2">
+                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                                <span className="truncate">{task.category.name}</span>
+                              </div>
+                            ) : (<span className="text-muted-foreground">Brak</span>)}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
+                          {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
+                    <div>
+                      {editingTaskId === task.id ? (
+                        <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
+                      ) : (
+                        <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                          {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                          <span className="truncate">{task.title}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div><Input type="number" min="5" step="5" value={task.plannedMinutes || 25} onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)} className="h-8 text-center text-xs" /></div>
+                    <div>
+                      <Select value={task.recurrenceRule || "none"} onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{RECURRENCE_OPTIONS.map((opt) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} title="Zakończ"><Check className="h-3.5 w-3.5 text-green-500" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTransferTask(task.id)} title="Przenieś na jutro"><ArrowRight className="h-3.5 w-3.5" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* New Tasks Section */}
+            {taskGroups.NEW.length > 0 && (
+              <>
+                <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/30 border-b">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-slate-400" />
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Nowe ({taskGroups.NEW.length})</span>
+                  </div>
                 </div>
+                {taskGroups.NEW.map((task) => (
+                  <div key={task.id} className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center hover:bg-muted/20 transition-colors">
+                    <div>
+                      <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue>
+                            {task.category ? (
+                              <div className="flex items-center gap-2">
+                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                                <span className="truncate">{task.category.name}</span>
+                              </div>
+                            ) : (<span className="text-muted-foreground">Brak</span>)}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
+                          {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      {editingTaskId === task.id ? (
+                        <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
+                      ) : (
+                        <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                          {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                          <span className="truncate">{task.title}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div><Input type="number" min="5" step="5" value={task.plannedMinutes || 25} onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)} className="h-8 text-center text-xs" /></div>
+                    <div>
+                      <Select value={task.recurrenceRule || "none"} onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{RECURRENCE_OPTIONS.map((opt) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant={timerStore.taskId === task.id ? "default" : "ghost"} className="h-7 w-7" onClick={() => handleStartTimer(task)} disabled={timerStore.taskId === task.id} title="Start timer">
+                        {timerStore.taskId === task.id ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} title="Zakończ"><Check className="h-3.5 w-3.5 text-green-500" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTransferTask(task.id)} title="Przenieś na jutro"><ArrowRight className="h-3.5 w-3.5" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")} title="Anuluj"><X className="h-3.5 w-3.5 text-red-500" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
 
-                {/* Time */}
-                <div>
-                  <Input
-                    type="number"
-                    min="5"
-                    step="5"
-                    value={task.plannedMinutes || 25}
-                    onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)}
-                    className="h-8 text-center text-xs"
-                  />
+            {/* Completed Tasks Section */}
+            {taskGroups.COMPLETED.length > 0 && (
+              <>
+                <div className="px-3 py-2 bg-green-50 dark:bg-green-950/30 border-b">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-green-600" />
+                    <span className="text-sm font-medium text-green-700 dark:text-green-400">Zakończone ({taskGroups.COMPLETED.length})</span>
+                  </div>
                 </div>
-
-                {/* Recurrence */}
-                <div>
-                  <Select
-                    value={task.recurrenceRule || "none"}
-                    onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RECURRENCE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1">
-                  {task.status !== "COMPLETED" && task.status !== "CANCELLED" && (
-                    <>
-                      <Button
-                        size="icon"
-                        variant={timerStore.taskId === task.id ? "default" : "ghost"}
-                        className="h-7 w-7"
-                        onClick={() => handleStartTimer(task)}
-                        disabled={timerStore.taskId === task.id}
-                        title="Start timer"
-                      >
-                        {timerStore.taskId === task.id ? (
-                          <Pause className="h-3.5 w-3.5" />
-                        ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}
-                        title="Zakończ"
-                      >
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      </Button>
-
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => handleTransferTask(task.id)}
-                        title="Przenieś na jutro"
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Button>
-
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")}
-                        title="Anuluj"
-                      >
-                        <X className="h-3.5 w-3.5 text-red-500" />
-                      </Button>
-                    </>
-                  )}
-
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={() => handleDeleteTask(task.id)}
-                    title="Usuń"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+                {taskGroups.COMPLETED.map((task) => (
+                  <div key={task.id} className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
+                    <div>
+                      <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue>
+                            {task.category ? (
+                              <div className="flex items-center gap-2">
+                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                                <span className="truncate">{task.category.name}</span>
+                              </div>
+                            ) : (<span className="text-muted-foreground">Brak</span>)}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
+                          {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <div className="px-2 py-1 flex items-center gap-2 line-through text-muted-foreground">
+                        {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                        <span className="truncate">{task.title}</span>
+                        <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                      </div>
+                    </div>
+                    <div><span className="text-xs text-muted-foreground px-2">{task.plannedMinutes} min</span></div>
+                    <div><span className="text-xs text-muted-foreground px-2">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "Brak"}</span></div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} title="Cofnij"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
 
             {/* Add New Task Row */}
             {isAddingTask ? (
