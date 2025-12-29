@@ -35,6 +35,10 @@ import { useTimerStore, formatMinutes } from "@/stores/timer-store"
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
+import { useTaskCounts } from "@/hooks/use-task-counts"
+import { WeekStrip } from "@/components/schedule/week-strip"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
 
@@ -91,6 +95,7 @@ export default function SchedulePage() {
   const { tasks, isLoading: tasksLoading, mutate: mutateTasks, optimisticAdd, optimisticDelete, optimisticUpdate } = useTasks({ date: dateString })
   const { categories, isLoading: categoriesLoading } = useCategories()
   const { activeSprint } = useSprints()
+  const { taskCounts } = useTaskCounts(selectedDate, 30)
 
   const isLoading = tasksLoading || categoriesLoading
 
@@ -443,42 +448,88 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-4 md:space-y-6 animate-fade-in">
-      {/* Header with date navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Harmonogram dnia</h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Planuj i śledź zadania na każdy dzień
-          </p>
-          {/* Sprint info in header */}
-          {workspace === "WORK" && activeSprint && (
-            <div className="flex items-center gap-2 mt-2">
-              <Badge variant="outline" className="bg-primary/5">
-                <Target className="h-3 w-3 mr-1" />
-                Sprint: {activeSprint.name}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {format(new Date(activeSprint.startDate), "d MMM", { locale: pl })} -{" "}
-                {format(new Date(activeSprint.endDate), "d MMM yyyy", { locale: pl })}
-              </span>
-            </div>
-          )}
+      {/* Header */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">Harmonogram dnia</h1>
+            <p className="text-sm md:text-base text-muted-foreground">
+              Planuj i śledź zadania na każdy dzień
+            </p>
+            {/* Sprint info in header */}
+            {workspace === "WORK" && activeSprint && (
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="outline" className="bg-primary/5">
+                  <Target className="h-3 w-3 mr-1" />
+                  Sprint: {activeSprint.name}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {format(new Date(activeSprint.startDate), "d MMM", { locale: pl })} -{" "}
+                  {format(new Date(activeSprint.endDate), "d MMM yyyy", { locale: pl })}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Date controls - desktop */}
+          <div className="hidden md:flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={handlePrevDay}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" onClick={handleToday}>
+              Dziś
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="min-w-[200px]">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {format(selectedDate, "d MMMM yyyy", { locale: pl })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="icon" onClick={handleNextDay}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handlePrevDay}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={handleToday}>
-            <Calendar className="h-4 w-4 mr-2" />
-            Dziś
-          </Button>
-          <div className="px-4 py-2 font-medium min-w-[180px] text-center">
-            {format(selectedDate, "EEEE, d MMMM yyyy", { locale: pl })}
+        {/* Week strip with task counts */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <WeekStrip
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+            taskCounts={taskCounts}
+          />
+
+          {/* Mobile date controls */}
+          <div className="flex md:hidden items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleToday}>
+              Dziś
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Calendar className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
           </div>
-          <Button variant="outline" size="icon" onClick={handleNextDay}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
