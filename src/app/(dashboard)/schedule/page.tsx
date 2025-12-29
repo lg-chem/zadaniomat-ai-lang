@@ -135,6 +135,9 @@ export default function SchedulePage() {
   // Copy task state
   const [copyTaskId, setCopyTaskId] = useState<string | null>(null)
 
+  // Transfer overdue task state (separate from copy)
+  const [transferTaskId, setTransferTaskId] = useState<string | null>(null)
+
   // Generate recurring tasks on date change and reset hidden templates
   useEffect(() => {
     const generateRecurringTasks = async () => {
@@ -504,7 +507,7 @@ export default function SchedulePage() {
 
       mutateTasks()
       mutateOverdue()
-      setCopyTaskId(null)
+      setTransferTaskId(null)
     } catch (error) {
       console.error("Error transferring overdue task:", error)
     }
@@ -534,7 +537,8 @@ export default function SchedulePage() {
   const taskGroups = {
     NEW: tasks.filter(t => t.status === "NEW"),
     IN_PROGRESS: tasks.filter(t => t.status === "IN_PROGRESS"),
-    COMPLETED: tasks.filter(t => t.status === "COMPLETED" || t.status === "CANCELLED"),
+    COMPLETED: tasks.filter(t => t.status === "COMPLETED"),
+    CANCELLED: tasks.filter(t => t.status === "CANCELLED"),
   }
 
   // Calculate stats
@@ -811,7 +815,7 @@ export default function SchedulePage() {
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {/* Transfer to another day */}
-                  <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
+                  <Popover open={transferTaskId === task.id} onOpenChange={(open) => setTransferTaskId(open ? task.id : null)}>
                     <PopoverTrigger asChild>
                       <Button size="sm" variant="outline" className="h-8 text-xs">
                         <ArrowRight className="h-3 w-3 mr-1" />
@@ -987,6 +991,47 @@ export default function SchedulePage() {
                         <div className="flex items-center gap-1 pt-1">
                           <Button size="sm" variant="outline" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} className="h-7 text-xs">
                             Cofnij
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Cancelled Tasks */}
+            {taskGroups.CANCELLED.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <div className="h-2 w-2 rounded-full bg-red-500" />
+                  <span className="text-sm font-medium text-red-700">Anulowane ({taskGroups.CANCELLED.length})</span>
+                </div>
+                {taskGroups.CANCELLED.map((task) => (
+                  <Card key={task.id} className="opacity-50 border-red-200">
+                    <CardContent className="p-3">
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 flex items-center gap-2">
+                            {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                            <span className="text-sm font-medium line-through text-red-400">{task.title}</span>
+                          </div>
+                          <X className="h-4 w-4 text-red-500" />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {task.category && (
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                              <span>{task.category.name}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 pt-1">
+                          <Button size="sm" variant="outline" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} className="h-7 text-xs">
+                            Przywróć
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
@@ -1363,6 +1408,44 @@ export default function SchedulePage() {
                     <div className="text-xs text-muted-foreground">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "-"}</div>
                     <div className="flex items-center gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} title="Cofnij"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Cancelled Tasks Section */}
+            {taskGroups.CANCELLED.length > 0 && (
+              <>
+                <div className="px-3 py-2 bg-red-50 dark:bg-red-950/30 border-b">
+                  <div className="flex items-center gap-2">
+                    <X className="h-3.5 w-3.5 text-red-600" />
+                    <span className="text-sm font-medium text-red-700 dark:text-red-400">Anulowane ({taskGroups.CANCELLED.length})</span>
+                  </div>
+                </div>
+                {taskGroups.CANCELLED.map((task) => (
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-red-50/30 dark:bg-red-950/10 opacity-50">
+                    <div>
+                      {task.category ? (
+                        <div className="flex items-center gap-2 px-2">
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                          <span className="text-xs truncate">{task.category.name}</span>
+                        </div>
+                      ) : (<span className="text-xs text-muted-foreground px-2">Brak</span>)}
+                    </div>
+                    <div>
+                      <div className="px-2 py-1 flex items-center gap-2 line-through text-red-400">
+                        {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                        <span className="truncate">{task.title}</span>
+                        <X className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                      </div>
+                    </div>
+                    <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
+                    <div className="text-center text-xs text-muted-foreground">{task.actualMinutes || 0}</div>
+                    <div className="text-xs text-muted-foreground">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "-"}</div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} title="Przywróć"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                     </div>
                   </div>
