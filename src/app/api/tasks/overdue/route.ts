@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { startOfDay } from "date-fns"
+import type { WorkspaceType } from "@prisma/client"
 
 export async function GET(req: Request) {
   try {
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const workspace = searchParams.get("workspace") || "WORK"
+    const workspace = (searchParams.get("workspace") || "WORK") as WorkspaceType
 
     // Get tasks from past days that are not completed or cancelled
     const today = startOfDay(new Date())
