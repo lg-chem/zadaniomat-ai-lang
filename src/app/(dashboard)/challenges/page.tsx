@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, KeyboardEvent } from "react"
+import { useState, KeyboardEvent } from "react"
 import {
   format,
   differenceInDays,
@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import useSWR from "swr"
 
 interface ChallengeEntry {
   id: string
@@ -93,10 +95,13 @@ const COLORS = [
 ]
 
 export default function ChallengesPage() {
-  const [challenges, setChallenges] = useState<Challenge[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [showCompleted, setShowCompleted] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  // Use SWR for data fetching with cache
+  const { data: challenges = [], isLoading, mutate: mutateChallenges } = useSWR<Challenge[]>(
+    `/api/challenges?showCompleted=${showCompleted}`
+  )
 
   // New challenge form
   const [newChallenge, setNewChallenge] = useState({
@@ -141,25 +146,6 @@ export default function ChallengesPage() {
   const [editingEntry, setEditingEntry] = useState<{ challengeId: string; entry: ChallengeEntry } | null>(null)
   const [editEntryValue, setEditEntryValue] = useState("")
 
-  const fetchChallenges = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/challenges?showCompleted=${showCompleted}`)
-      if (res.ok) {
-        const data = await res.json()
-        setChallenges(data)
-      }
-    } catch (error) {
-      console.error("Error fetching challenges:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [showCompleted])
-
-  useEffect(() => {
-    setIsLoading(true)
-    fetchChallenges()
-  }, [fetchChallenges])
-
   const handleCreateChallenge = async () => {
     if (!newChallenge.name || !newChallenge.endDate) {
       return
@@ -195,7 +181,7 @@ export default function ChallengesPage() {
         body: JSON.stringify({ ...newChallenge, targetValue }),
       })
       if (res.ok) {
-        fetchChallenges()
+        mutateChallenges()
         setNewChallenge({
           name: "",
           description: "",
@@ -223,7 +209,7 @@ export default function ChallengesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: progressValue }),
       })
-      fetchChallenges()
+      mutateChallenges()
       setAddingProgressId(null)
       setProgressValue("")
     } catch (error) {
@@ -235,7 +221,7 @@ export default function ChallengesPage() {
     if (!confirm("Czy na pewno chcesz usunąć to wyzwanie?")) return
     try {
       await fetch(`/api/challenges/${id}`, { method: "DELETE" })
-      fetchChallenges()
+      mutateChallenges()
     } catch (error) {
       console.error("Error deleting challenge:", error)
     }
@@ -249,7 +235,7 @@ export default function ChallengesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: 1, date: dateStr, toggle: true }),
       })
-      fetchChallenges()
+      mutateChallenges()
     } catch (error) {
       console.error("Error toggling day:", error)
     }
@@ -277,7 +263,7 @@ export default function ChallengesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
       })
-      fetchChallenges()
+      mutateChallenges()
       setEditingChallenge(null)
     } catch (error) {
       console.error("Error updating challenge:", error)
@@ -302,7 +288,7 @@ export default function ChallengesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(copyForm),
       })
-      fetchChallenges()
+      mutateChallenges()
       setCopyingChallenge(null)
     } catch (error) {
       console.error("Error copying challenge:", error)
@@ -322,7 +308,7 @@ export default function ChallengesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entryId: editingEntry.entry.id, value: editEntryValue }),
       })
-      fetchChallenges()
+      mutateChallenges()
       setEditingEntry(null)
       setEditEntryValue("")
     } catch (error) {
@@ -335,7 +321,7 @@ export default function ChallengesPage() {
       await fetch(`/api/challenges/${challengeId}/entry?entryId=${entryId}`, {
         method: "DELETE",
       })
-      fetchChallenges()
+      mutateChallenges()
     } catch (error) {
       console.error("Error deleting entry:", error)
     }
@@ -383,14 +369,36 @@ export default function ChallengesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-32 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-10 w-32" />
+            <Skeleton className="h-10 w-36" />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-6 w-3/4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-8 w-1/2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>

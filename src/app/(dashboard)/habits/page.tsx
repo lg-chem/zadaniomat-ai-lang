@@ -187,8 +187,20 @@ export default function HabitsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div className="h-8 w-32 bg-muted rounded animate-pulse mb-2" />
+            <div className="h-4 w-48 bg-muted rounded animate-pulse" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 bg-muted rounded animate-pulse" />
+            <div className="h-10 w-24 bg-muted rounded animate-pulse" />
+            <div className="h-10 w-10 bg-muted rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="h-24 bg-muted rounded animate-pulse" />
+        <div className="h-64 bg-muted rounded animate-pulse" />
       </div>
     )
   }
@@ -204,7 +216,7 @@ export default function HabitsPage() {
   }, 0)
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>

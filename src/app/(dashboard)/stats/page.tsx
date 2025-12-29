@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   CheckSquare,
   Target,
@@ -17,6 +18,7 @@ import {
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { format, startOfWeek, startOfMonth, subDays } from "date-fns"
 import { pl } from "date-fns/locale"
+import useSWR from "swr"
 
 interface Stats {
   tasks: {
@@ -47,103 +49,87 @@ interface Stats {
 
 export default function StatsPage() {
   const { workspace } = useWorkspaceStore()
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
   const [period, setPeriod] = useState<"week" | "month">("week")
 
-  useEffect(() => {
-    fetchStats()
-  }, [workspace, period])
-
-  const fetchStats = async () => {
-    setIsLoading(true)
-    try {
-      const startDate =
-        period === "week"
-          ? startOfWeek(new Date(), { weekStartsOn: 1 })
-          : startOfMonth(new Date())
-
-      // Fetch tasks
-      const tasksRes = await fetch(
-        `/api/tasks?workspace=${workspace}&from=${format(startDate, "yyyy-MM-dd")}&to=${format(new Date(), "yyyy-MM-dd")}`
-      )
-      const tasks = tasksRes.ok ? await tasksRes.json() : []
-
-      // Fetch goals
-      const goalsRes = await fetch(`/api/goals?workspace=${workspace}`)
-      const goals = goalsRes.ok ? await goalsRes.json() : []
-
-      // Calculate stats
-      const completedTasks = tasks.filter((t: any) => t.status === "COMPLETED")
-      const cancelledTasks = tasks.filter((t: any) => t.status === "CANCELLED")
-      const totalMinutes = tasks.reduce((sum: number, t: any) => sum + (t.actualMinutes || 0), 0)
-      const daysInPeriod = period === "week" ? 7 : 30
-
-      const statsData: Stats = {
-        tasks: {
-          total: tasks.length,
-          completed: completedTasks.length,
-          cancelled: cancelledTasks.length,
-          completionRate: tasks.length > 0 ? (completedTasks.length / tasks.length) * 100 : 0,
-        },
-        goals: {
-          total: goals.length,
-          completed: goals.filter((g: any) => g.isCompleted).length,
-          active: goals.filter((g: any) => !g.isCompleted).length,
-        },
-        time: {
-          totalMinutes,
-          averagePerDay: totalMinutes / daysInPeriod,
-        },
-      }
-
-      // Fetch workspace-specific stats
-      if (workspace === "PRIVATE") {
-        // Habits
-        const habitsRes = await fetch("/api/habits")
-        const habits = habitsRes.ok ? await habitsRes.json() : []
-
-        const habitEntries = await Promise.all(
-          habits.map(async (habit: any) => {
-            const entriesRes = await fetch(`/api/habits/${habit.id}/entries`)
-            return entriesRes.ok ? await entriesRes.json() : []
-          })
-        )
-
-        const totalHabitEntries = habitEntries.flat()
-        const completedHabitEntries = totalHabitEntries.filter((e: any) => e.completed)
-
-        // Sport
-        const sportRes = await fetch(
-          `/api/sport/activities?from=${format(startDate, "yyyy-MM-dd")}&to=${format(new Date(), "yyyy-MM-dd")}`
-        )
-        const activities = sportRes.ok ? await sportRes.json() : []
-
-        const stepsRes = await fetch(
-          `/api/sport/steps?from=${format(startDate, "yyyy-MM-dd")}&to=${format(new Date(), "yyyy-MM-dd")}`
-        )
-        const steps = stepsRes.ok ? await stepsRes.json() : []
-        const totalSteps = steps.reduce((sum: number, s: any) => sum + s.count, 0)
-
-        statsData.habits = {
-          total: totalHabitEntries.length,
-          completed: completedHabitEntries.length,
-          streak: 0, // TODO: Calculate streak
-        }
-
-        statsData.sport = {
-          activitiesCount: activities.length,
-          totalSteps,
-        }
-      }
-
-      setStats(statsData)
-    } catch (error) {
-      console.error("Error fetching stats:", error)
-    } finally {
-      setIsLoading(false)
+  // Calculate date range
+  const dateRange = useMemo(() => {
+    const startDate =
+      period === "week"
+        ? startOfWeek(new Date(), { weekStartsOn: 1 })
+        : startOfMonth(new Date())
+    return {
+      from: format(startDate, "yyyy-MM-dd"),
+      to: format(new Date(), "yyyy-MM-dd"),
     }
-  }
+  }, [period])
+
+  // Fetch tasks with SWR
+  const { data: tasks = [], isLoading: tasksLoading } = useSWR<any[]>(
+    `/api/tasks?workspace=${workspace}&from=${dateRange.from}&to=${dateRange.to}`
+  )
+
+  // Fetch goals with SWR
+  const { data: goals = [], isLoading: goalsLoading } = useSWR<any[]>(
+    `/api/goals?workspace=${workspace}`
+  )
+
+  // Fetch private workspace data
+  const { data: habits = [] } = useSWR<any[]>(
+    workspace === "PRIVATE" ? "/api/habits" : null
+  )
+  const { data: sportActivities = [] } = useSWR<any[]>(
+    workspace === "PRIVATE" ? `/api/sport/activities?from=${dateRange.from}&to=${dateRange.to}` : null
+  )
+  const { data: steps = [] } = useSWR<any[]>(
+    workspace === "PRIVATE" ? `/api/sport/steps?from=${dateRange.from}&to=${dateRange.to}` : null
+  )
+
+  const isLoading = tasksLoading || goalsLoading
+
+  // Calculate stats from fetched data
+  const stats = useMemo<Stats | null>(() => {
+    if (isLoading) return null
+
+    const completedTasks = tasks.filter((t) => t.status === "COMPLETED")
+    const cancelledTasks = tasks.filter((t) => t.status === "CANCELLED")
+    const totalMinutes = tasks.reduce((sum, t) => sum + (t.actualMinutes || 0), 0)
+    const daysInPeriod = period === "week" ? 7 : 30
+
+    const statsData: Stats = {
+      tasks: {
+        total: tasks.length,
+        completed: completedTasks.length,
+        cancelled: cancelledTasks.length,
+        completionRate: tasks.length > 0 ? (completedTasks.length / tasks.length) * 100 : 0,
+      },
+      goals: {
+        total: goals.length,
+        completed: goals.filter((g) => g.isCompleted).length,
+        active: goals.filter((g) => !g.isCompleted).length,
+      },
+      time: {
+        totalMinutes,
+        averagePerDay: totalMinutes / daysInPeriod,
+      },
+    }
+
+    if (workspace === "PRIVATE") {
+      const totalSteps = steps.reduce((sum, s) => sum + s.count, 0)
+
+      statsData.habits = {
+        total: habits.length,
+        completed: 0,
+        streak: 0,
+      }
+
+      statsData.sport = {
+        activitiesCount: sportActivities.length,
+        totalSteps,
+      }
+    }
+
+    return statsData
+  }, [tasks, goals, habits, sportActivities, steps, period, workspace, isLoading])
 
   const formatMinutes = (minutes: number) => {
     if (minutes < 60) return `${Math.round(minutes)}m`
@@ -152,24 +138,38 @@ export default function StatsPage() {
     return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
   }
 
-  if (isLoading) {
+  if (isLoading || !stats) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
-      </div>
-    )
-  }
-
-  if (!stats) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Brak danych</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-40 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-6 w-20" />
+          </div>
+        </div>
+        <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-20" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16 mb-1" />
+                <Skeleton className="h-3 w-24" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
