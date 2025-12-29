@@ -535,23 +535,23 @@ export default function AIPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] md:h-[calc(100vh-8rem)]">
+    <div className="flex flex-col" style={{ height: 'calc(100dvh - 8rem)', minHeight: '400px' }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3 md:mb-4">
+      <div className="flex items-center justify-between mb-2 md:mb-4 flex-shrink-0">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <Sparkles className="h-6 w-6 md:h-8 md:w-8 text-primary" />
+          <h1 className="text-xl md:text-3xl font-bold flex items-center gap-2">
+            <Sparkles className="h-5 w-5 md:h-8 md:w-8 text-primary" />
             Asystent AI
           </h1>
-          <p className="text-sm md:text-base text-muted-foreground">
+          <p className="text-xs md:text-base text-muted-foreground">
             Pomogę Ci zaplanować cele i zadania
           </p>
         </div>
       </div>
 
       {/* Mode Tabs */}
-      <Tabs value={mode} onValueChange={(v) => setMode(v as ChatMode)} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+      <Tabs value={mode} onValueChange={(v) => setMode(v as ChatMode)} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3 flex-shrink-0">
           <TabsTrigger value="daily_tasks" className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4" />
             <span className="hidden sm:inline">Zadania na dziś</span>
@@ -569,12 +569,12 @@ export default function AIPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value={mode} className="flex-1 flex flex-col mt-4">
+        <TabsContent value={mode} className="flex-1 flex flex-col mt-2 md:mt-4 min-h-0">
           {/* Chat Area */}
-          <Card className="flex-1 flex flex-col">
-            <CardContent className="flex-1 flex flex-col p-3 md:p-4 overflow-hidden">
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardContent className="flex-1 flex flex-col p-3 md:p-4 min-h-0">
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+              <div className="flex-1 overflow-y-auto space-y-4 mb-2 md:mb-4 min-h-0">
                 {messages.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -835,7 +835,7 @@ export default function AIPage() {
               )}
 
               {/* Input */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-shrink-0 pt-2 border-t mt-auto">
                 <Input
                   ref={inputRef}
                   value={input}
