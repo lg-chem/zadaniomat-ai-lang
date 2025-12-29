@@ -40,8 +40,8 @@ export async function GET(req: Request) {
 
     // Transform to simpler format
     const result = counts
-      .filter(c => c.scheduledDate !== null)
-      .map(c => ({
+      .filter((c: { scheduledDate: Date | null }) => c.scheduledDate !== null)
+      .map((c: { scheduledDate: Date | null; _count: { id: number } }) => ({
         date: c.scheduledDate!.toISOString().split('T')[0],
         count: c._count.id,
       }))
