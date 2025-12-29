@@ -3,20 +3,6 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
-// Default knowledge categories
-const DEFAULT_CATEGORIES = [
-  { name: "Ogólne", description: "Ogólne informacje", color: "#6366f1", icon: "info" },
-  { name: "O mnie", description: "Informacje osobiste", color: "#10b981", icon: "user" },
-  { name: "Preferencje", description: "Preferencje i ustawienia", color: "#f59e0b", icon: "settings" },
-]
-
-const DEFAULT_WORK_CATEGORIES = [
-  { name: "Firma", description: "Informacje o firmie", color: "#3b82f6", icon: "building" },
-  { name: "Produkty", description: "Informacje o produktach", color: "#ef4444", icon: "package" },
-  { name: "Klienci", description: "Informacje o klientach", color: "#8b5cf6", icon: "users" },
-  { name: "Procesy", description: "Procesy biznesowe", color: "#06b6d4", icon: "workflow" },
-]
-
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -27,36 +13,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
 
-    // Get categories with entry count and children (for hierarchy)
-    const categories = await prisma.knowledgeCategory.findMany({
-      where: {
-        userId: session.user.id,
-        workspaceType: workspace as "WORK" | "PRIVATE",
-        parentId: null, // Only top-level categories
-      },
-      include: {
-        linkedCategory: true,
-        children: {
-          include: {
-            linkedCategory: true,
-            children: {
-              include: {
-                linkedCategory: true,
-                _count: { select: { entries: true } },
-              },
-            },
-            _count: { select: { entries: true } },
-          },
-          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        },
-        _count: {
-          select: { entries: true },
-        },
-      },
-      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-    })
-
-    // Also get strategic categories for linking
+    // Get strategic categories
     const strategicCategories = await prisma.category.findMany({
       where: {
         userId: session.user.id,
@@ -71,34 +28,55 @@ export async function GET(req: Request) {
       orderBy: { name: "asc" },
     })
 
-    // If no categories exist, create defaults
-    if (categories.length === 0) {
-      const defaults = workspace === "WORK"
-        ? [...DEFAULT_CATEGORIES, ...DEFAULT_WORK_CATEGORIES]
-        : DEFAULT_CATEGORIES
+    // Auto-sync: create KnowledgeCategory for each strategic category if not exists
+    for (const stratCat of strategicCategories) {
+      const existing = await prisma.knowledgeCategory.findFirst({
+        where: {
+          userId: session.user.id,
+          workspaceType: workspace as "WORK" | "PRIVATE",
+          linkedCategoryId: stratCat.id,
+        },
+      })
 
-      const createdCategories = await Promise.all(
-        defaults.map((cat, idx) =>
-          prisma.knowledgeCategory.create({
-            data: {
-              ...cat,
-              workspaceType: workspace as "WORK" | "PRIVATE",
-              userId: session.user.id,
-              isDefault: true,
-              order: idx,
-            },
-            include: {
-              linkedCategory: true,
-              _count: {
-                select: { entries: true },
-              },
-            },
-          })
-        )
-      )
-
-      return NextResponse.json({ categories: createdCategories, strategicCategories })
+      if (!existing) {
+        await prisma.knowledgeCategory.create({
+          data: {
+            name: stratCat.name,
+            color: stratCat.color,
+            workspaceType: workspace as "WORK" | "PRIVATE",
+            userId: session.user.id,
+            linkedCategoryId: stratCat.id,
+            isDefault: false,
+            order: 0,
+          },
+        })
+      } else if (existing.name !== stratCat.name || existing.color !== stratCat.color) {
+        // Update if name or color changed
+        await prisma.knowledgeCategory.update({
+          where: { id: existing.id },
+          data: {
+            name: stratCat.name,
+            color: stratCat.color,
+          },
+        })
+      }
     }
+
+    // Get knowledge categories linked to strategic categories (with entry counts)
+    const categories = await prisma.knowledgeCategory.findMany({
+      where: {
+        userId: session.user.id,
+        workspaceType: workspace as "WORK" | "PRIVATE",
+        linkedCategoryId: { not: null },
+      },
+      include: {
+        linkedCategory: true,
+        _count: {
+          select: { entries: true },
+        },
+      },
+      orderBy: { name: "asc" },
+    })
 
     return NextResponse.json({ categories, strategicCategories })
   } catch (error) {
