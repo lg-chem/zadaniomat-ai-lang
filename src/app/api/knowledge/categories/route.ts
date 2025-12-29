@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
 
-    // Get strategic categories
+    // Get strategic categories from main categories
     const strategicCategories = await prisma.category.findMany({
       where: {
         userId: session.user.id,
@@ -35,6 +35,7 @@ export async function GET(req: Request) {
           userId: session.user.id,
           workspaceType: workspace as "WORK" | "PRIVATE",
           linkedCategoryId: stratCat.id,
+          parentId: null, // Only top-level
         },
       })
 
@@ -62,12 +63,21 @@ export async function GET(req: Request) {
       }
     }
 
-    // Get knowledge categories linked to strategic categories (with entry counts)
-    const categories = await prisma.knowledgeCategory.findMany({
+    // Helper function to build category tree
+    const buildCategoryTree = (categories: any[], parentId: string | null = null): any[] => {
+      return categories
+        .filter(cat => cat.parentId === parentId)
+        .map(cat => ({
+          ...cat,
+          children: buildCategoryTree(categories, cat.id),
+        }))
+    }
+
+    // Get all knowledge categories (flat)
+    const allCategories = await prisma.knowledgeCategory.findMany({
       where: {
         userId: session.user.id,
         workspaceType: workspace as "WORK" | "PRIVATE",
-        linkedCategoryId: { not: null },
       },
       include: {
         linkedCategory: true,
@@ -75,10 +85,22 @@ export async function GET(req: Request) {
           select: { entries: true },
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
     })
 
-    return NextResponse.json({ categories, strategicCategories })
+    // Build trees
+    const strategicCats = buildCategoryTree(
+      allCategories.filter(c => c.linkedCategoryId !== null)
+    )
+    const customCats = buildCategoryTree(
+      allCategories.filter(c => c.linkedCategoryId === null)
+    )
+
+    return NextResponse.json({
+      strategicCategories: strategicCats,
+      customCategories: customCats,
+      allCategories, // Flat list for selects
+    })
   } catch (error) {
     console.error("Error fetching knowledge categories:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
@@ -93,7 +115,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, color, icon, workspace, linkedCategoryId, parentId } = body
+    const { name, description, color, workspace, parentId } = body
 
     if (!name) {
       return NextResponse.json({ error: "Nazwa jest wymagana" }, { status: 400 })
@@ -128,16 +150,14 @@ export async function POST(req: Request) {
         name,
         description,
         color: color || "#6366f1",
-        icon,
         workspaceType: workspace || "WORK",
         userId: session.user.id,
-        linkedCategoryId,
-        parentId,
+        parentId: parentId || null,
+        linkedCategoryId: null, // Custom categories are not linked
         order: (maxOrder?.order ?? -1) + 1,
       },
       include: {
         linkedCategory: true,
-        children: true,
         _count: {
           select: { entries: true },
         },
