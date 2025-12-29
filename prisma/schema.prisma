@@ -520,7 +520,8 @@ model AIKnowledgeBase {
   workspaceType   WorkspaceType // WORK or PRIVATE context
   personalInfo    String?       @db.Text // Personal info, fitness data, preferences
   companyInfo     String?       @db.Text // Company info for WORK workspace
-  chatInstructions String?      @db.Text // How the chat should behave
+  chatInstructions String?      @db.Text // Additional instructions per mode (JSON)
+  systemPrompts   String?       @db.Text // Base system prompts per mode (JSON) - editable
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

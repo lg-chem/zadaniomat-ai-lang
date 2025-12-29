@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma"
 import { generateAIResponse } from "@/lib/gemini"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
+import { DEFAULT_SYSTEM_PROMPTS } from "../settings/route"
 
 type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
@@ -39,7 +40,7 @@ async function getMinimalContext(userId: string) {
     }),
     prisma.aIKnowledgeBase.findUnique({
       where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
-      select: { chatInstructions: true, companyInfo: true },
+      select: { chatInstructions: true, companyInfo: true, systemPrompts: true },
     }),
   ])
 
@@ -180,7 +181,7 @@ async function fetchContext(userId: string, contextType: string, params?: string
 }
 
 function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getMinimalContext>>) {
-  // Parse custom instructions
+  // Parse custom instructions (additional per-mode instructions)
   let customInstructions = ""
   if (context.knowledgeBase?.chatInstructions) {
     try {
@@ -189,6 +190,19 @@ function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getM
       if (modeInstruction) customInstructions = `\n\n[Dodatkowe wytyczne]: ${modeInstruction}`
     } catch {
       customInstructions = `\n\n[Dodatkowe wytyczne]: ${context.knowledgeBase.chatInstructions}`
+    }
+  }
+
+  // Get base system prompt - custom or default
+  let basePrompt = DEFAULT_SYSTEM_PROMPTS[mode] || DEFAULT_SYSTEM_PROMPTS.general
+  if (context.knowledgeBase?.systemPrompts) {
+    try {
+      const customPrompts = JSON.parse(context.knowledgeBase.systemPrompts)
+      if (customPrompts[mode]) {
+        basePrompt = customPrompts[mode]
+      }
+    } catch {
+      // Use default if parsing fails
     }
   }
 
@@ -212,39 +226,7 @@ ODPOWIADAJ W JSON:
 
 ZAWSZE odpowiadaj TYLKO poprawnym JSON.`
 
-  if (mode === "general") {
-    return `Jesteś moim asystentem i partnerem biznesowym. Rozmawiamy po polsku, bezpośrednio i konkretnie.
-
-Nie jesteś sztywnym botem - jesteś pomocnikiem który zna mój kontekst pracy. Możesz pytać, sugerować, kwestionować. Mów jak kolega z zespołu, nie jak robot. Bądź zwięzły.
-
-Jeśli potrzebujesz szczegółowych danych (co mam dziś, co robiłem ostatnio, backlog, notatki), poproś o nie przez "need_context".
-${baseContext}${jsonInstructions}`
-  }
-
-  if (mode === "sprint_goals") {
-    return `Pomagasz mi planować cele na sprint (2 tygodnie). Znasz moje cele okresowe i możesz zaproponować jak je rozbić.
-
-Nie dawaj od razu listy celów - najpierw pogadajmy. Zapytaj co chcę osiągnąć, co mi nie wyszło w poprzednim sprincie. Bądź partnerem, nie generatorem list.
-
-Jeśli potrzebujesz kontekstu (co robiłem, backlog), poproś przez "need_context".
-${baseContext}${jsonInstructions}`
-  }
-
-  if (mode === "period_goals") {
-    return `Pomagasz mi planować cele na okres (zwykle 3 miesiące). To strategiczne planowanie.
-
-Zanim cokolwiek zaproponujesz - porozmawiaj. Zapytaj o priorytety, o to co mnie blokuje, gdzie chcę być za 3 miesiące. Możesz kwestionować moje pomysły jeśli widzisz że są nierealne.
-
-Jeśli potrzebujesz więcej kontekstu, poproś przez "need_context".
-${baseContext}${jsonInstructions}`
-  }
-
-  // daily_tasks mode
-  return `Pomagasz mi planować dzień. Znasz moje cele sprintu i możesz sugerować zadania.
-
-NIE dawaj od razu listy zadań. Zapytaj najpierw: ile mam czasu? co jest pilne? jak się czuję? Planuj ze mną, nie za mnie.
-
-Możesz poprosić o kontekst (dzisiejsze zadania, backlog, ostatnie zrobione) przez "need_context".
+  return `${basePrompt}
 ${baseContext}${jsonInstructions}`
 }
 

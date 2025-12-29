@@ -219,8 +219,10 @@ export default function AIPage() {
   // Settings
   const [showSettings, setShowSettings] = useState(false)
   const [chatInstructions, setChatInstructions] = useState<Record<string, string>>({})
+  const [systemPrompts, setSystemPrompts] = useState<Record<string, string>>({})
   const [companyInfo, setCompanyInfo] = useState("")
   const [savingSettings, setSavingSettings] = useState(false)
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
 
   // Add goal dialog
   const [addingGoal, setAddingGoal] = useState<GoalProposal | null>(null)
@@ -317,6 +319,7 @@ export default function AIPage() {
       if (res.ok) {
         const data = await res.json()
         setChatInstructions(data.instructions || {})
+        setSystemPrompts(data.systemPrompts || {})
         setCompanyInfo(data.companyInfo || "")
       }
     } catch (error) {
@@ -393,9 +396,10 @@ export default function AIPage() {
       await fetch("/api/ai/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions, companyInfo }),
+        body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions, systemPrompts, companyInfo }),
       })
       setShowSettings(false)
+      setShowAdvancedSettings(false)
     } catch (error) {
       console.error("Error saving settings:", error)
     } finally {
@@ -1011,14 +1015,51 @@ export default function AIPage() {
               />
             </div>
 
+            {/* Advanced: System Prompts */}
             <div className="border-t pt-4">
-              <Label className="text-sm font-medium mb-2 block">Instrukcje per tryb chatu</Label>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+                {showAdvancedSettings ? "Ukryj" : "Pokaż"} zaawansowane ustawienia (prompty systemowe)
+              </button>
+
+              {showAdvancedSettings && (
+                <div className="mt-4 space-y-4">
+                  <p className="text-xs text-muted-foreground">
+                    Tutaj możesz edytować bazowe prompty systemowe dla każdego trybu chatu. To jest "osobowość" AI.
+                    Zmieniaj ostrożnie - to wpływa na całe zachowanie asystenta.
+                  </p>
+                  {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (
+                    <div key={`prompt-${key}`} className="space-y-1">
+                      <Label className="text-sm font-medium flex items-center gap-2">
+                        {config.icon}
+                        Prompt systemowy: {config.label}
+                      </Label>
+                      <Textarea
+                        value={systemPrompts[key] || ""}
+                        onChange={(e) => setSystemPrompts({ ...systemPrompts, [key]: e.target.value })}
+                        placeholder={`Bazowy prompt dla trybu "${config.label}"...`}
+                        rows={6}
+                        className="mt-1 text-xs font-mono"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Additional Instructions per mode */}
+            <div className="border-t pt-4">
+              <Label className="text-sm font-medium mb-2 block">Dodatkowe instrukcje per tryb</Label>
               <p className="text-xs text-muted-foreground mb-4">
-                Dodatkowe wytyczne dla AI w każdym trybie. Np. "Mów krótko", "Nie proponuj od razu, najpierw pytaj".
+                Krótkie wytyczne dodawane do promptu. Np. "Mów krótko", "Nie proponuj od razu".
               </p>
               <div className="space-y-4">
                 {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (
-                  <div key={key}>
+                  <div key={`instr-${key}`}>
                     <Label className="text-sm font-medium flex items-center gap-2">
                       {config.icon}
                       {config.label}
@@ -1026,7 +1067,7 @@ export default function AIPage() {
                     <Textarea
                       value={chatInstructions[key] || ""}
                       onChange={(e) => setChatInstructions({ ...chatInstructions, [key]: e.target.value })}
-                      placeholder={`Instrukcje dla trybu "${config.label}"...`}
+                      placeholder={`Dodatkowe instrukcje dla "${config.label}"...`}
                       rows={2}
                       className="mt-1 text-sm"
                     />
