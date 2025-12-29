@@ -14,7 +14,6 @@ import {
   X,
   ArrowRight,
   Trash2,
-  Sparkles,
   Repeat,
   Target,
 } from "lucide-react"
@@ -104,6 +103,13 @@ export default function SchedulePage() {
   const [isAddingTask, setIsAddingTask] = useState(false)
   const newTaskRef = useRef<HTMLInputElement>(null)
 
+  // Template inputs for strategic categories - keyed by categoryId
+  const [templateInputs, setTemplateInputs] = useState<Record<string, {
+    title: string
+    plannedMinutes: string
+    recurrenceRule: string
+  }>>({})
+
   // Inline edit task state
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
@@ -161,29 +167,51 @@ export default function SchedulePage() {
     }
   }
 
-  const handleGenerateTemplates = async () => {
-    const strategicCategories = categories.filter((c) => c.isStrategic)
+  // Handle template input change
+  const handleTemplateInputChange = (categoryId: string, field: string, value: string) => {
+    setTemplateInputs((prev) => ({
+      ...prev,
+      [categoryId]: {
+        ...prev[categoryId] || { title: "", plannedMinutes: "25", recurrenceRule: "none" },
+        [field]: value,
+      },
+    }))
+  }
 
-    for (const category of strategicCategories) {
-      const existingTask = tasks.find((t) => t.categoryId === category.id)
-      if (!existingTask) {
-        await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: `${category.name} - `,
-            categoryId: category.id,
-            plannedMinutes: 25,
-            scheduledDate: dateString,
-            orderInDay: tasks.length,
-            workspaceType: workspace,
-            status: "NEW",
-          }),
-        })
+  // Create task from template
+  const handleCreateFromTemplate = async (categoryId: string) => {
+    const input = templateInputs[categoryId]
+    if (!input?.title?.trim()) return
+
+    const isRecurring = input.recurrenceRule !== "none"
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: input.title,
+          categoryId,
+          plannedMinutes: parseInt(input.plannedMinutes) || 25,
+          scheduledDate: dateString,
+          orderInDay: tasks.length,
+          workspaceType: workspace,
+          status: "NEW",
+          isRecurring,
+          recurrenceRule: isRecurring ? input.recurrenceRule : null,
+        }),
+      })
+      if (res.ok) {
+        mutateTasks()
+        // Clear input
+        setTemplateInputs((prev) => ({
+          ...prev,
+          [categoryId]: { title: "", plannedMinutes: "25", recurrenceRule: "none" },
+        }))
       }
+    } catch (error) {
+      console.error("Error creating task from template:", error)
     }
-
-    mutateTasks()
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
@@ -335,10 +363,10 @@ export default function SchedulePage() {
   const totalActual = tasks.reduce((sum, t) => sum + t.actualMinutes, 0)
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
 
-  // Count how many strategic categories don't have tasks yet
-  const missingStrategicCount = strategicCategories.filter(
-    (c) => !tasks.find((t) => t.categoryId === c.id)
-  ).length
+  // Get tasks by category for templates
+  const getTasksForCategory = (categoryId: string) => {
+    return tasks.filter((t) => t.categoryId === categoryId)
+  }
 
   if (isLoading) {
     return (
@@ -391,31 +419,113 @@ export default function SchedulePage() {
 
       {/* Stats bar */}
       <Card>
-        <CardContent className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-8">
-            <div>
-              <div className="text-sm text-muted-foreground">Zadania</div>
-              <div className="text-2xl font-bold">
-                {completedTasks}/{tasks.length}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Planowany czas</div>
-              <div className="text-2xl font-bold">{formatMinutes(totalPlanned)}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Rzeczywisty czas</div>
-              <div className="text-2xl font-bold">{formatMinutes(totalActual)}</div>
+        <CardContent className="flex items-center gap-8 py-4">
+          <div>
+            <div className="text-sm text-muted-foreground">Zadania</div>
+            <div className="text-2xl font-bold">
+              {completedTasks}/{tasks.length}
             </div>
           </div>
-          {missingStrategicCount > 0 && (
-            <Button variant="outline" onClick={handleGenerateTemplates}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generuj szablony ({missingStrategicCount})
-            </Button>
-          )}
+          <div>
+            <div className="text-sm text-muted-foreground">Planowany czas</div>
+            <div className="text-2xl font-bold">{formatMinutes(totalPlanned)}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Rzeczywisty czas</div>
+            <div className="text-2xl font-bold">{formatMinutes(totalActual)}</div>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Strategic Category Templates */}
+      {strategicCategories.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base md:text-lg flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Kategorie strategiczne
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {strategicCategories.map((category) => {
+                const categoryTasks = getTasksForCategory(category.id)
+                const input = templateInputs[category.id] || { title: "", plannedMinutes: "25", recurrenceRule: "none" }
+
+                return (
+                  <div key={category.id} className="border rounded-lg p-3 bg-muted/20">
+                    {/* Category header */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: category.color }}
+                      />
+                      <span className="font-medium text-sm">{category.name}</span>
+                      {categoryTasks.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">{categoryTasks.length}</Badge>
+                      )}
+                    </div>
+
+                    {/* Existing tasks for this category */}
+                    {categoryTasks.length > 0 && (
+                      <div className="space-y-1 mb-2">
+                        {categoryTasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className={`text-xs p-1.5 rounded flex items-center justify-between ${
+                              task.status === "COMPLETED"
+                                ? "bg-green-50 text-green-700 line-through"
+                                : "bg-background"
+                            }`}
+                          >
+                            <span className="truncate">{task.title}</span>
+                            <Badge className={`${STATUS_COLORS[task.status]} text-[9px] ml-1`}>
+                              {task.plannedMinutes}m
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Input row */}
+                    <div className="flex gap-1">
+                      <Input
+                        placeholder="Nazwa zadania..."
+                        value={input.title}
+                        onChange={(e) => handleTemplateInputChange(category.id, "title", e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleCreateFromTemplate(category.id)
+                          }
+                        }}
+                        className="h-7 text-xs flex-1"
+                      />
+                      <Input
+                        type="number"
+                        min="5"
+                        step="5"
+                        placeholder="min"
+                        value={input.plannedMinutes}
+                        onChange={(e) => handleTemplateInputChange(category.id, "plannedMinutes", e.target.value)}
+                        className="h-7 text-xs w-14 text-center"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 px-2"
+                        onClick={() => handleCreateFromTemplate(category.id)}
+                        disabled={!input.title.trim()}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sprint Goals - WORK only, grouped by category */}
       {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (() => {
