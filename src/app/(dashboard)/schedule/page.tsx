@@ -1118,7 +1118,7 @@ export default function SchedulePage() {
           {/* Desktop View - Table */}
           <div className="border rounded-lg overflow-hidden hidden md:block">
             {/* Table Header */}
-            <div className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+            <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Kategoria</div>
               <div>Nazwa zadania</div>
               <div className="text-center flex items-center gap-1">
@@ -1126,9 +1126,6 @@ export default function SchedulePage() {
                 Plan
               </div>
               <div className="text-center">Real</div>
-              <div className="flex items-center gap-1">
-                <Repeat className="h-3 w-3" />
-              </div>
               <div>Akcje</div>
             </div>
 
@@ -1138,7 +1135,7 @@ export default function SchedulePage() {
               return (
                 <div
                   key={`template-${category.id}`}
-                  className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
+                  className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
                 >
                   {/* Category - fixed */}
                   <div className="flex items-center gap-2">
@@ -1179,45 +1176,25 @@ export default function SchedulePage() {
                   {/* Actual Time - empty for new */}
                   <div className="text-center text-xs text-muted-foreground">-</div>
 
-                  {/* Recurrence */}
-                  <div>
-                    <Select
-                      value={input.recurrenceRule}
-                      onValueChange={(value) => handleTemplateInputChange(category.id, "recurrenceRule", value)}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RECURRENCE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
                   {/* Actions */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 px-3"
                       onClick={() => handleCreateFromTemplate(category.id)}
                       disabled={!input.title.trim()}
-                      title="Dodaj zadanie"
                     >
-                      <Check className="h-3.5 w-3.5 text-green-500" />
+                      <Check className="h-4 w-4 mr-1" />
+                      Dodaj
                     </Button>
                     <Button
-                      size="icon"
+                      size="sm"
                       variant="ghost"
-                      className="h-7 w-7"
+                      className="h-9 px-2"
                       onClick={() => handleHideTemplate(category.id)}
-                      title="Ukryj szablon"
                     >
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -1235,7 +1212,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.IN_PROGRESS.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-primary/5 border-l-2 border-l-blue-500">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-primary/5 border-l-2 border-l-blue-500">
                     <div>
                       <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
                         <SelectTrigger className="h-8 text-xs">
@@ -1274,28 +1251,25 @@ export default function SchedulePage() {
                     </div>
                     {/* Actual Time */}
                     <div className="text-center text-xs font-medium text-blue-600">{task.actualMinutes || 0}</div>
-                    <div>
-                      <Select value={task.recurrenceRule || "none"} onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>{RECURRENCE_OPTIONS.map((opt) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {/* Timer toggle */}
-                      <Button size="icon" variant={timerStore.taskId === task.id ? "default" : "outline"} className="h-7 w-7" onClick={() => handleTimerToggle(task)} title={timerStore.taskId === task.id ? (timerStore.isPaused ? "Wznów" : "Pauza") : "Start"}>
-                        {timerStore.taskId === task.id ? (timerStore.isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />) : <Play className="h-3.5 w-3.5" />}
+                    {/* Actions - bigger buttons */}
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant={timerStore.taskId === task.id ? "default" : "outline"} className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
+                        {timerStore.taskId === task.id ? (timerStore.isPaused ? <Play className="h-4 w-4 mr-1" /> : <Pause className="h-4 w-4 mr-1" />) : <Play className="h-4 w-4 mr-1" />}
+                        {timerStore.taskId === task.id ? (timerStore.isPaused ? "Wznów" : "Pauza") : "Start"}
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} title="Zakończ"><Check className="h-3.5 w-3.5 text-green-500" /></Button>
-                      {/* Copy to day */}
+                      <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}>
+                        <Check className="h-4 w-4 mr-1 text-green-500" />
+                        Gotowe
+                      </Button>
                       <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
                         <PopoverTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Kopiuj na dzień"><Copy className="h-3.5 w-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="end">
                           <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
                         </PopoverContent>
                       </Popover>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </div>
                 ))}
@@ -1312,7 +1286,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.NEW.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center hover:bg-muted/20 transition-colors">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center hover:bg-muted/20 transition-colors">
                     <div>
                       <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
                         <SelectTrigger className="h-8 text-xs">
@@ -1351,26 +1325,26 @@ export default function SchedulePage() {
                     </div>
                     {/* Actual Time */}
                     <div className="text-center text-xs text-muted-foreground">{task.actualMinutes || 0}</div>
-                    <div>
-                      <Select value={task.recurrenceRule || "none"} onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>{RECURRENCE_OPTIONS.map((opt) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTimerToggle(task)} title="Start timer"><Play className="h-3.5 w-3.5" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} title="Zakończ"><Check className="h-3.5 w-3.5 text-green-500" /></Button>
-                      {/* Copy to day */}
+                    {/* Actions - bigger buttons */}
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
+                        <Play className="h-4 w-4 mr-1" />
+                        Start
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}>
+                        <Check className="h-4 w-4 mr-1 text-green-500" />
+                        Gotowe
+                      </Button>
                       <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
                         <PopoverTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Kopiuj na dzień"><Copy className="h-3.5 w-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="end">
                           <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
                         </PopoverContent>
                       </Popover>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")} title="Anuluj"><X className="h-3.5 w-3.5 text-red-500" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")}><X className="h-4 w-4 text-red-500" /></Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </div>
                 ))}
@@ -1387,7 +1361,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.COMPLETED.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
                     <div>
                       {task.category ? (
                         <div className="flex items-center gap-2 px-2">
@@ -1405,10 +1379,9 @@ export default function SchedulePage() {
                     </div>
                     <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
                     <div className="text-center text-xs text-green-600">{task.actualMinutes || 0}</div>
-                    <div className="text-xs text-muted-foreground">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "-"}</div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} title="Cofnij"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "NEW")}><ArrowRight className="h-4 w-4 rotate-180" /></Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </div>
                 ))}
@@ -1425,7 +1398,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.CANCELLED.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-red-50/30 dark:bg-red-950/10 opacity-50">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-red-50/30 dark:bg-red-950/10 opacity-50">
                     <div>
                       {task.category ? (
                         <div className="flex items-center gap-2 px-2">
@@ -1443,10 +1416,9 @@ export default function SchedulePage() {
                     </div>
                     <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
                     <div className="text-center text-xs text-muted-foreground">{task.actualMinutes || 0}</div>
-                    <div className="text-xs text-muted-foreground">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "-"}</div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} title="Przywróć"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "NEW")}><ArrowRight className="h-4 w-4 rotate-180" /></Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </div>
                 ))}
@@ -1455,7 +1427,7 @@ export default function SchedulePage() {
 
             {/* Add New Task Row */}
             {isAddingTask ? (
-              <div className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 items-center bg-primary/5">
+              <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
                 {/* Category Select */}
                 <div>
                   <Select
@@ -1514,46 +1486,28 @@ export default function SchedulePage() {
                 {/* Actual Time - empty for new */}
                 <div className="text-center text-xs text-muted-foreground">-</div>
 
-                {/* Recurrence Select */}
-                <div>
-                  <Select
-                    value={newTask.recurrenceRule}
-                    onValueChange={(value) => setNewTask({ ...newTask, recurrenceRule: value })}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RECURRENCE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Save Button */}
-                <div className="flex items-center gap-1">
+                {/* Actions */}
+                <div className="flex items-center gap-2">
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-3"
                     onClick={handleCreateTask}
                     disabled={!newTask.title.trim()}
                   >
-                    <Check className="h-3.5 w-3.5 text-green-500" />
+                    <Check className="h-4 w-4 mr-1 text-green-500" />
+                    Dodaj
                   </Button>
                   <Button
-                    size="icon"
+                    size="sm"
                     variant="ghost"
-                    className="h-7 w-7"
+                    className="h-9 px-2"
                     onClick={() => {
                       setIsAddingTask(false)
                       setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
                     }}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
