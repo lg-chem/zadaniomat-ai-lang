@@ -14,339 +14,238 @@ interface ChatRequest {
   history?: { role: "user" | "assistant"; content: string }[]
 }
 
-async function getUserContext(userId: string, mode: ChatMode) {
+// Minimal context - just essentials
+async function getMinimalContext(userId: string) {
   const today = new Date()
-  const todayStr = format(today, "yyyy-MM-dd")
 
-  // Get AI knowledge base for WORK workspace
-  const knowledgeBase = await prisma.aIKnowledgeBase.findUnique({
-    where: {
-      userId_workspaceType: {
-        userId,
-        workspaceType: "WORK",
+  const [categories, activePeriod, activeSprint, knowledgeBase] = await Promise.all([
+    prisma.category.findMany({
+      where: { userId, workspaceType: "WORK" },
+      select: { name: true, isStrategic: true },
+      orderBy: { order: "asc" },
+    }),
+    prisma.period.findFirst({
+      where: { userId, workspaceType: "WORK", isActive: true },
+      select: {
+        name: true,
+        startDate: true,
+        endDate: true,
+        goals: { select: { title: true, currentValue: true, targetValue: true, unit: true, isCompleted: true } }
       },
-    },
-  })
+    }),
+    prisma.sprint.findFirst({
+      where: { isActive: true, period: { userId, workspaceType: "WORK", isActive: true } },
+      include: { goals: { include: { category: { select: { name: true } } } } },
+    }),
+    prisma.aIKnowledgeBase.findUnique({
+      where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
+      select: { chatInstructions: true, companyInfo: true },
+    }),
+  ])
 
-  // Get knowledge entries (important ones first)
-  const knowledgeEntries = await prisma.knowledgeEntry.findMany({
+  const categoryNames = categories.map((c: { name: string; isStrategic: boolean }) => c.name + (c.isStrategic ? " ★" : "")).join(", ")
+
+  const periodGoalsList = activePeriod?.goals
+    .filter((g: { isCompleted: boolean }) => !g.isCompleted)
+    .map((g: { title: string; currentValue: number; targetValue: number; unit: string | null }) =>
+      `${g.title}: ${g.currentValue}/${g.targetValue} ${g.unit}`
+    ).join("; ") || null
+
+  const sprintGoalsList = activeSprint?.goals
+    .filter((g: { isCompleted: boolean }) => !g.isCompleted)
+    .map((g: { title: string; currentValue: number; targetValue: number; unit: string | null }) =>
+      `${g.title}: ${g.currentValue}/${g.targetValue} ${g.unit}`
+    ).join("; ") || null
+
+  return {
+    today: format(today, "EEEE, d MMMM yyyy", { locale: pl }),
+    categories: categoryNames,
+    currentPeriod: activePeriod ? `${activePeriod.name} (${format(activePeriod.startDate, "d.MM")} - ${format(activePeriod.endDate, "d.MM")})` : null,
+    periodGoals: periodGoalsList,
+    currentSprint: activeSprint ? `${activeSprint.name} (${format(activeSprint.startDate, "d.MM")} - ${format(activeSprint.endDate, "d.MM")})` : null,
+    sprintGoals: sprintGoalsList,
+    knowledgeBase,
+  }
+}
+
+// On-demand context fetchers
+async function getTodayTasks(userId: string) {
+  const today = new Date()
+  const tasks = await prisma.task.findMany({
     where: {
       userId,
       workspaceType: "WORK",
-    },
-    include: {
-      category: true,
-    },
-    orderBy: [{ isImportant: "desc" }, { updatedAt: "desc" }],
-    take: 30, // Limit to avoid too much context
-  })
-
-  // Get active fitness goals
-  const activeFitnessGoals = await prisma.fitnessGoal.findMany({
-    where: {
-      userId,
-      endDate: {
-        gte: today,
-      },
-      isCompleted: false,
-    },
-    orderBy: { startDate: "desc" },
-  })
-
-  // Get backlog items
-  const backlogItems = await prisma.backlogItem.findMany({
-    where: {
-      userId,
-      workspaceType: "WORK",
-    },
-    orderBy: { createdAt: "desc" },
-    take: 20, // Limit to last 20 items
-  })
-
-  // Get active period and sprint for WORK workspace
-  const activePeriod = await prisma.period.findFirst({
-    where: {
-      userId,
-      workspaceType: "WORK",
-      isActive: true,
-    },
-    include: {
-      goals: true,
-    },
-  })
-
-  const activeSprint = await prisma.sprint.findFirst({
-    where: {
-      isActive: true,
-      period: {
-        userId,
-        workspaceType: "WORK",
-        isActive: true,
-      },
-    },
-    include: {
-      goals: {
-        include: { category: true },
-      },
-    },
-  })
-
-  // Get today's tasks
-  const todayTasks = await prisma.task.findMany({
-    where: {
-      userId,
-      workspaceType: "WORK",
-      scheduledDate: {
-        gte: startOfDay(today),
-        lte: endOfDay(today),
-      },
+      scheduledDate: { gte: startOfDay(today), lte: endOfDay(today) },
     },
     include: { category: true },
     orderBy: { orderInDay: "asc" },
   })
+  return tasks.map((t: { title: string; status: string; plannedMinutes: number | null; category: { name: string } | null }) => ({
+    title: t.title,
+    status: t.status,
+    category: t.category?.name,
+    minutes: t.plannedMinutes,
+  }))
+}
 
-  // Get recent completed tasks (last 7 days)
-  const recentTasks = await prisma.task.findMany({
+async function getRecentTasks(userId: string, days: number = 7) {
+  const tasks = await prisma.task.findMany({
     where: {
       userId,
       workspaceType: "WORK",
       status: "COMPLETED",
-      completedAt: {
-        gte: addDays(today, -7),
-      },
+      completedAt: { gte: addDays(new Date(), -days) },
     },
     include: { category: true },
     orderBy: { completedAt: "desc" },
-    take: 20,
+    take: 15,
   })
+  return tasks.map((t: { title: string; completedAt: Date | null; category: { name: string } | null }) => ({
+    title: t.title,
+    category: t.category?.name,
+    date: t.completedAt ? format(t.completedAt, "d.MM", { locale: pl }) : null,
+  }))
+}
 
-  // Get categories
-  const categories = await prisma.category.findMany({
+async function getBacklog(userId: string) {
+  const items = await prisma.backlogItem.findMany({
+    where: { userId, workspaceType: "WORK", isProcessed: false },
+    orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+    take: 10,
+  })
+  return items.map((i: { content: string; priority: number }) => ({ content: i.content, priority: i.priority }))
+}
+
+async function getKnowledgeEntries(userId: string, query?: string) {
+  const items = await prisma.knowledgeEntry.findMany({
     where: {
       userId,
       workspaceType: "WORK",
+      ...(query ? {
+        OR: [
+          { title: { contains: query, mode: "insensitive" as const } },
+          { content: { contains: query, mode: "insensitive" as const } },
+        ]
+      } : { isImportant: true }),
     },
-    orderBy: { order: "asc" },
+    include: { category: true },
+    take: 10,
   })
+  return items.map((e: { title: string; content: string | null; category: { name: string } | null }) => ({
+    title: e.title,
+    content: e.content?.substring(0, 200),
+    category: e.category?.name,
+  }))
+}
 
-  return {
-    today: format(today, "EEEE, d MMMM yyyy", { locale: pl }),
-    knowledgeBase: knowledgeBase
-      ? {
-          personalInfo: knowledgeBase.personalInfo,
-          companyInfo: knowledgeBase.companyInfo,
-          chatInstructions: knowledgeBase.chatInstructions,
-        }
-      : null,
-    fitnessGoals: activeFitnessGoals.map((g) => ({
-      name: g.name,
-      goalType: g.goalType,
-      currentValue: g.currentValue,
-      targetValue: g.targetValue,
-      unit: g.unit,
-      startDate: format(g.startDate, "d MMM yyyy", { locale: pl }),
-      endDate: format(g.endDate, "d MMM yyyy", { locale: pl }),
-    })),
-    activePeriod: activePeriod
-      ? {
-          name: activePeriod.name,
-          startDate: format(activePeriod.startDate, "d MMM yyyy", { locale: pl }),
-          endDate: format(activePeriod.endDate, "d MMM yyyy", { locale: pl }),
-          goals: activePeriod.goals.map((g) => ({
-            title: g.title,
-            currentValue: g.currentValue,
-            targetValue: g.targetValue,
-            unit: g.unit,
-            isCompleted: g.isCompleted,
-          })),
-        }
-      : null,
-    activeSprint: activeSprint
-      ? {
-          name: activeSprint.name,
-          startDate: format(activeSprint.startDate, "d MMM yyyy", { locale: pl }),
-          endDate: format(activeSprint.endDate, "d MMM yyyy", { locale: pl }),
-          goals: activeSprint.goals.map((g) => ({
-            title: g.title,
-            category: g.category?.name,
-            currentValue: g.currentValue,
-            targetValue: g.targetValue,
-            unit: g.unit,
-            isCompleted: g.isCompleted,
-          })),
-        }
-      : null,
-    todayTasks: todayTasks.map((t) => ({
-      title: t.title,
-      status: t.status,
-      category: t.category?.name,
-      plannedMinutes: t.plannedMinutes,
-    })),
-    recentCompletedTasks: recentTasks.map((t) => ({
-      title: t.title,
-      category: t.category?.name,
-      completedAt: t.completedAt ? format(t.completedAt, "d MMM", { locale: pl }) : null,
-    })),
-    categories: categories.map((c) => ({
-      name: c.name,
-      isStrategic: c.isStrategic,
-    })),
-    backlog: backlogItems.map((item) => ({
-      content: item.content,
-      priority: item.priority,
-      isProcessed: item.isProcessed,
-    })),
-    knowledgeEntries: knowledgeEntries.map((entry) => ({
-      title: entry.title,
-      content: entry.content,
-      category: entry.category?.name,
-      isImportant: entry.isImportant,
-    })),
+async function getUpcomingTasks(userId: string, days: number = 7) {
+  const today = new Date()
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId,
+      workspaceType: "WORK",
+      scheduledDate: {
+        gt: endOfDay(today),
+        lte: endOfDay(addDays(today, days))
+      },
+      status: { not: "COMPLETED" },
+    },
+    include: { category: true },
+    orderBy: { scheduledDate: "asc" },
+    take: 20,
+  })
+  return tasks.map((t: { title: string; scheduledDate: Date | null; category: { name: string } | null }) => ({
+    title: t.title,
+    date: t.scheduledDate ? format(t.scheduledDate, "EEEE d.MM", { locale: pl }) : null,
+    category: t.category?.name,
+  }))
+}
+
+// Context fetcher dispatcher
+async function fetchContext(userId: string, contextType: string, params?: string) {
+  switch (contextType) {
+    case "today_tasks":
+      return { todayTasks: await getTodayTasks(userId) }
+    case "recent_tasks":
+      return { recentTasks: await getRecentTasks(userId, params ? parseInt(params) : 7) }
+    case "backlog":
+      return { backlog: await getBacklog(userId) }
+    case "knowledge":
+      return { knowledge: await getKnowledgeEntries(userId, params) }
+    case "upcoming_tasks":
+      return { upcomingTasks: await getUpcomingTasks(userId, params ? parseInt(params) : 7) }
+    default:
+      return null
   }
 }
 
-function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getUserContext>>) {
-  const contextJson = JSON.stringify(context, null, 2)
-
-  // Parse per-type instructions
+function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getMinimalContext>>) {
+  // Parse custom instructions
   let customInstructions = ""
   if (context.knowledgeBase?.chatInstructions) {
     try {
       const instructionsObj = JSON.parse(context.knowledgeBase.chatInstructions)
       const modeInstruction = instructionsObj[mode] || instructionsObj.general || ""
-      if (modeInstruction) {
-        customInstructions = `\n\nINSTRUKCJE OD UŻYTKOWNIKA:\n${modeInstruction}`
-      }
+      if (modeInstruction) customInstructions = `\n\n[Dodatkowe wytyczne]: ${modeInstruction}`
     } catch {
-      // Legacy: single string for all types
-      customInstructions = `\n\nINSTRUKCJE OD UŻYTKOWNIKA:\n${context.knowledgeBase.chatInstructions}`
+      customInstructions = `\n\n[Dodatkowe wytyczne]: ${context.knowledgeBase.chatInstructions}`
     }
   }
 
+  const companyContext = context.knowledgeBase?.companyInfo
+    ? `\n[Kontekst firmy]: ${context.knowledgeBase.companyInfo}`
+    : ""
+
+  const baseContext = `
+[Data]: ${context.today}
+[Kategorie]: ${context.categories || "brak"}
+[Okres]: ${context.currentPeriod || "brak aktywnego"} → Cele: ${context.periodGoals || "brak"}
+[Sprint]: ${context.currentSprint || "brak aktywnego"} → Cele: ${context.sprintGoals || "brak"}${companyContext}${customInstructions}`
+
+  const jsonInstructions = `
+
+ODPOWIADAJ W JSON:
+- Zwykła rozmowa: {"type": "message", "message": "..."}
+- Propozycja celów: {"type": "goals_proposal", "goals": [{"title": "...", "targetValue": N, "unit": "...", "category": "...lub null"}], "message": "..."}
+- Propozycja zadań: {"type": "tasks_proposal", "tasks": [{"title": "...", "category": "...lub null", "plannedMinutes": N}], "message": "..."}
+- Potrzebujesz więcej danych: {"type": "need_context", "contextType": "today_tasks|recent_tasks|backlog|knowledge|upcoming_tasks", "params": "opcjonalne", "message": "Co sprawdzam..."}
+
+ZAWSZE odpowiadaj TYLKO poprawnym JSON.`
+
   if (mode === "general") {
-    return `Jesteś pomocnym asystentem AI. Rozmawiasz po polsku. Pomagasz użytkownikowi w różnych sprawach - możesz odpowiadać na pytania, pomagać w planowaniu, analizować problemy, doradzać.${customInstructions}
+    return `Jesteś moim asystentem i partnerem biznesowym. Rozmawiamy po polsku, bezpośrednio i konkretnie.
 
-KONTEKST UŻYTKOWNIKA (możesz używać tych informacji jeśli to pomocne):
-${contextJson}
+Nie jesteś sztywnym botem - jesteś pomocnikiem który zna mój kontekst pracy. Możesz pytać, sugerować, kwestionować. Mów jak kolega z zespołu, nie jak robot. Bądź zwięzły.
 
-Odpowiadaj w formacie JSON:
-{
-  "type": "message",
-  "message": "Twoja odpowiedź"
-}
-
-Zawsze odpowiadaj w formacie JSON.`
+Jeśli potrzebujesz szczegółowych danych (co mam dziś, co robiłem ostatnio, backlog, notatki), poproś o nie przez "need_context".
+${baseContext}${jsonInstructions}`
   }
 
   if (mode === "sprint_goals") {
-    return `Jesteś asystentem do planowania celów sprintowych. Rozmawiasz po polsku.${customInstructions}
+    return `Pomagasz mi planować cele na sprint (2 tygodnie). Znasz moje cele okresowe i możesz zaproponować jak je rozbić.
 
-KONTEKST UŻYTKOWNIKA:
-${contextJson}
+Nie dawaj od razu listy celów - najpierw pogadajmy. Zapytaj co chcę osiągnąć, co mi nie wyszło w poprzednim sprincie. Bądź partnerem, nie generatorem list.
 
-TWOJE ZADANIE:
-1. Pomagasz użytkownikowi tworzyć cele na sprint
-2. Bazujesz na celach okresu (period goals) i proponujesz jak je rozbić na mniejsze cele sprintowe
-3. Sugerujesz konkretne, mierzalne cele z wartościami docelowymi
-4. Możesz proponować kategorie dla celów
-
-WAŻNE:
-- Gdy użytkownik poprosi o zaproponowanie celów, odpowiedz w formacie JSON:
-{
-  "type": "goals_proposal",
-  "goals": [
-    {
-      "title": "Tytuł celu",
-      "description": "Opis",
-      "targetValue": 10,
-      "unit": "zadań",
-      "category": "Nazwa kategorii lub null"
-    }
-  ],
-  "message": "Twój komentarz do propozycji"
-}
-
-- Gdy prowadzisz normalną rozmowę, odpowiedz w formacie:
-{
-  "type": "message",
-  "message": "Twoja odpowiedź"
-}
-
-Zawsze odpowiadaj w formacie JSON.`
+Jeśli potrzebujesz kontekstu (co robiłem, backlog), poproś przez "need_context".
+${baseContext}${jsonInstructions}`
   }
 
   if (mode === "period_goals") {
-    return `Jesteś asystentem do planowania celów na okres (Period). Rozmawiasz po polsku.${customInstructions}
+    return `Pomagasz mi planować cele na okres (zwykle 3 miesiące). To strategiczne planowanie.
 
-KONTEKST UŻYTKOWNIKA:
-${contextJson}
+Zanim cokolwiek zaproponujesz - porozmawiaj. Zapytaj o priorytety, o to co mnie blokuje, gdzie chcę być za 3 miesiące. Możesz kwestionować moje pomysły jeśli widzisz że są nierealne.
 
-TWOJE ZADANIE:
-1. Pomagasz użytkownikowi tworzyć długoterminowe cele na okres (zwykle 3 miesiące)
-2. Cele okresowe są strategiczne i skupiają się na rozwoju w kategoriach
-3. Cele okresowe są później dzielone na cele sprintowe (2 tygodnie)
-4. Sugerujesz konkretne, mierzalne cele z wartościami docelowymi
-5. Możesz proponować kategorie dla celów (szczególnie strategiczne)
-
-WAŻNE:
-- Gdy użytkownik poprosi o zaproponowanie celów na okres, odpowiedz w formacie JSON:
-{
-  "type": "goals_proposal",
-  "goals": [
-    {
-      "title": "Tytuł celu okresowego",
-      "description": "Szczegółowy opis dlaczego ten cel jest ważny",
-      "targetValue": 50,
-      "unit": "zadań/godzin/projektów",
-      "category": "Nazwa kategorii lub null"
-    }
-  ],
-  "message": "Twój komentarz do propozycji celów okresowych"
-}
-
-- Gdy prowadzisz normalną rozmowę, odpowiedz w formacie:
-{
-  "type": "message",
-  "message": "Twoja odpowiedź"
-}
-
-Zawsze odpowiadaj w formacie JSON.`
+Jeśli potrzebujesz więcej kontekstu, poproś przez "need_context".
+${baseContext}${jsonInstructions}`
   }
 
   // daily_tasks mode
-  return `Jesteś asystentem do planowania zadań na dzień. Rozmawiasz po polsku.${customInstructions}
+  return `Pomagasz mi planować dzień. Znasz moje cele sprintu i możesz sugerować zadania.
 
-KONTEKST UŻYTKOWNIKA:
-${contextJson}
+NIE dawaj od razu listy zadań. Zapytaj najpierw: ile mam czasu? co jest pilne? jak się czuję? Planuj ze mną, nie za mnie.
 
-TWOJE ZADANIE:
-1. Pomagasz użytkownikowi zaplanować zadania na dziś
-2. Bierzesz pod uwagę cele sprintu i okresu
-3. Proponujesz zadania, które przybliżą użytkownika do osiągnięcia celów
-4. Dbasz o równowagę między kategoriami (szczególnie strategicznymi)
-5. Sugerujesz realistyczny czas na zadania (w minutach)
-
-WAŻNE:
-- Gdy użytkownik poprosi o zaproponowanie zadań, odpowiedz w formacie JSON:
-{
-  "type": "tasks_proposal",
-  "tasks": [
-    {
-      "title": "Tytuł zadania",
-      "category": "Nazwa kategorii lub null",
-      "plannedMinutes": 25
-    }
-  ],
-  "message": "Twój komentarz do propozycji"
-}
-
-- Gdy prowadzisz normalną rozmowę, odpowiedz w formacie:
-{
-  "type": "message",
-  "message": "Twoja odpowiedź"
-}
-
-Zawsze odpowiadaj w formacie JSON.`
+Możesz poprosić o kontekst (dzisiejsze zadania, backlog, ostatnie zrobione) przez "need_context".
+${baseContext}${jsonInstructions}`
 }
 
 export async function POST(req: Request) {
@@ -363,27 +262,47 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message and mode are required" }, { status: 400 })
     }
 
-    // Get user context
-    const context = await getUserContext(session.user.id, mode)
+    const userId = session.user.id
 
-    // Build prompt with history
+    // Get minimal context
+    const context = await getMinimalContext(userId)
+
+    // Build conversation
     const conversationHistory = history
-      .map((h) => `${h.role === "user" ? "Użytkownik" : "Asystent"}: ${h.content}`)
+      .map((h) => `${h.role === "user" ? "Ty" : "Ja"}: ${h.content}`)
       .join("\n")
 
     const fullPrompt = conversationHistory
-      ? `${conversationHistory}\n\nUżytkownik: ${message}`
+      ? `${conversationHistory}\n\nTy: ${message}`
       : message
 
     // Get system prompt
     const systemPrompt = getSystemPrompt(mode, context)
 
     // Generate response
-    const response = await generateAIResponse(fullPrompt, systemPrompt)
+    let response = await generateAIResponse(fullPrompt, systemPrompt)
 
     // Try to parse JSON response
     try {
-      const parsed = JSON.parse(response)
+      let parsed = JSON.parse(response)
+
+      // Handle context request - fetch data and regenerate response
+      if (parsed.type === "need_context") {
+        const additionalContext = await fetchContext(userId, parsed.contextType, parsed.params)
+
+        if (additionalContext) {
+          // Re-generate with additional context
+          const enrichedPrompt = `${fullPrompt}\n\n[Dodatkowy kontekst - ${parsed.contextType}]:\n${JSON.stringify(additionalContext, null, 2)}\n\nTeraz odpowiedz na podstawie tego kontekstu.`
+          response = await generateAIResponse(enrichedPrompt, systemPrompt)
+
+          try {
+            parsed = JSON.parse(response)
+          } catch {
+            parsed = { type: "message", message: response }
+          }
+        }
+      }
+
       return NextResponse.json(parsed)
     } catch {
       // If not JSON, wrap in message format
