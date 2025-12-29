@@ -614,8 +614,66 @@ export default function SchedulePage() {
               </Card>
             ))}
 
-            {/* Mobile Add Task Button */}
-            {!isAddingTask && (
+            {/* Mobile Add Task Button/Form */}
+            {isAddingTask ? (
+              <Card className="border-primary">
+                <CardContent className="p-3 space-y-3">
+                  <Input
+                    ref={newTaskRef}
+                    placeholder="Nazwa zadania..."
+                    value={newTask.title}
+                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                    onKeyDown={(e) => handleKeyDown(e, handleCreateTask)}
+                    autoFocus
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select
+                      value={newTask.categoryId || "none"}
+                      onValueChange={(value) => setNewTask({ ...newTask, categoryId: value === "none" ? "" : value })}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Kategoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Brak kategorii</SelectItem>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                              {cat.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="5"
+                      step="5"
+                      value={newTask.plannedMinutes}
+                      onChange={(e) => setNewTask({ ...newTask, plannedMinutes: e.target.value })}
+                      placeholder="min"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleCreateTask} disabled={!newTask.title.trim()} className="flex-1">
+                      <Check className="h-4 w-4 mr-2" />
+                      Dodaj
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsAddingTask(false)
+                        setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
               <Button
                 onClick={handleAddRowClick}
                 variant="outline"
