@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save } from "lucide-react"
+import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
@@ -53,6 +53,217 @@ interface Period {
   sprints: Sprint[]
 }
 
+// Goal card component - moved outside to prevent re-renders
+function GoalCard({
+  goal,
+  onToggleComplete,
+  onDelete,
+  onEdit,
+  editingGoalId,
+  editingTitle,
+  setEditingTitle,
+  onSaveEdit,
+  onCancelEdit,
+}: {
+  goal: Goal
+  onToggleComplete: (goal: Goal) => void
+  onDelete: (id: string) => void
+  onEdit: (goal: Goal) => void
+  editingGoalId: string | null
+  editingTitle: string
+  setEditingTitle: (title: string) => void
+  onSaveEdit: (id: string) => void
+  onCancelEdit: () => void
+}) {
+  const isEditing = editingGoalId === goal.id
+  const getProgress = (g: Goal) => {
+    if (!g.targetValue) return g.isCompleted ? 100 : 0
+    return Math.min(100, (g.currentValue / g.targetValue) * 100)
+  }
+
+  return (
+    <div
+      className={`p-2 rounded border ${
+        goal.isCompleted ? "bg-green-50 border-green-200 dark:bg-green-950/20" : "bg-background"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        {isEditing ? (
+          <div className="flex-1 flex gap-1">
+            <Input
+              value={editingTitle}
+              onChange={(e) => setEditingTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  onSaveEdit(goal.id)
+                } else if (e.key === "Escape") {
+                  onCancelEdit()
+                }
+              }}
+              className="h-7 text-sm"
+              autoFocus
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onSaveEdit(goal.id)}
+            >
+              <Save className="h-3 w-3 text-green-500" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onCancelEdit}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : (
+          <>
+            <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+              {goal.title}
+            </span>
+            <div className="flex gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => onEdit(goal)}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => onToggleComplete(goal)}
+              >
+                <Check className={`h-3 w-3 ${goal.isCompleted ? "text-green-500" : ""}`} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => onDelete(goal.id)}
+              >
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+      {goal.targetValue ? (
+        <div className="mt-1">
+          <Progress value={getProgress(goal)} className="h-1" />
+          <span className="text-[10px] text-muted-foreground">
+            {goal.currentValue}/{goal.targetValue} {goal.unit}
+          </span>
+        </div>
+      ) : (
+        <Badge variant="secondary" className="text-[10px] mt-1">Cel jakościowy</Badge>
+      )}
+    </div>
+  )
+}
+
+// Category template component - moved outside to prevent re-renders
+function CategoryTemplate({
+  category,
+  periodId,
+  sprintId,
+  categoryGoals,
+  inputValue,
+  onInputChange,
+  onSave,
+  onToggleComplete,
+  onDelete,
+  onEdit,
+  editingGoalId,
+  editingTitle,
+  setEditingTitle,
+  onSaveEdit,
+  onCancelEdit,
+}: {
+  category: Category
+  periodId?: string
+  sprintId?: string
+  categoryGoals: Goal[]
+  inputValue: string
+  onInputChange: (key: string, value: string) => void
+  onSave: (categoryId: string, periodId?: string, sprintId?: string) => void
+  onToggleComplete: (goal: Goal) => void
+  onDelete: (id: string) => void
+  onEdit: (goal: Goal) => void
+  editingGoalId: string | null
+  editingTitle: string
+  setEditingTitle: (title: string) => void
+  onSaveEdit: (id: string) => void
+  onCancelEdit: () => void
+}) {
+  const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
+
+  return (
+    <div className="border rounded-lg p-3 bg-muted/20">
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="h-3 w-3 rounded-full"
+          style={{ backgroundColor: category.color }}
+        />
+        <span className="font-medium text-sm">{category.name}</span>
+        {categoryGoals.length > 0 && (
+          <Badge variant="secondary" className="text-[10px]">{categoryGoals.length}</Badge>
+        )}
+      </div>
+
+      {/* Existing goals */}
+      {categoryGoals.length > 0 && (
+        <div className="space-y-2 mb-2">
+          {categoryGoals.map((goal) => (
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              onToggleComplete={onToggleComplete}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              editingGoalId={editingGoalId}
+              editingTitle={editingTitle}
+              setEditingTitle={setEditingTitle}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Input for new goal */}
+      <div className="flex gap-2">
+        <Input
+          placeholder="Wpisz cel..."
+          value={inputValue}
+          onChange={(e) => onInputChange(key, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              onSave(category.id, periodId, sprintId)
+            }
+          }}
+          className="h-8 text-sm"
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-2"
+          onClick={() => onSave(category.id, periodId, sprintId)}
+          disabled={!inputValue.trim()}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export default function GoalsPage() {
   const { workspace } = useWorkspaceStore()
   const [goals, setGoals] = useState<Goal[]>([])
@@ -66,6 +277,10 @@ export default function GoalsPage() {
 
   // Template input states - keyed by "periodId-categoryId" or "sprintId-categoryId"
   const [templateInputs, setTemplateInputs] = useState<Record<string, string>>({})
+
+  // Editing state
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState("")
 
   const fetchGoals = useCallback(async () => {
     try {
@@ -149,6 +364,32 @@ export default function GoalsPage() {
     }
   }
 
+  const handleEdit = (goal: Goal) => {
+    setEditingGoalId(goal.id)
+    setEditingTitle(goal.title)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingGoalId(null)
+    setEditingTitle("")
+  }
+
+  const handleSaveEdit = async (id: string) => {
+    if (!editingTitle.trim()) return
+    try {
+      await fetch(`/api/goals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editingTitle.trim() }),
+      })
+      setEditingGoalId(null)
+      setEditingTitle("")
+      fetchGoals()
+    } catch (error) {
+      console.error("Error updating goal:", error)
+    }
+  }
+
   // Save goal from template
   const handleSaveFromTemplate = async (
     categoryId: string,
@@ -182,6 +423,10 @@ export default function GoalsPage() {
     }
   }
 
+  const handleInputChange = (key: string, value: string) => {
+    setTemplateInputs((prev) => ({ ...prev, [key]: value }))
+  }
+
   const togglePeriod = (periodId: string) => {
     const newExpanded = new Set(expandedPeriods)
     if (newExpanded.has(periodId)) {
@@ -202,17 +447,12 @@ export default function GoalsPage() {
     setExpandedSprints(newExpanded)
   }
 
-  const getProgress = (goal: Goal) => {
-    if (!goal.targetValue) return goal.isCompleted ? 100 : 0
-    return Math.min(100, (goal.currentValue / goal.targetValue) * 100)
-  }
-
   const strategicCategories = categories.filter((c) => c.isStrategic)
 
   // Get goals for a specific context (period or sprint) and category
+  // Now includes completed goals too!
   const getGoalsForCategory = (categoryId: string, periodId?: string, sprintId?: string) => {
     return goals.filter((g) => {
-      if (g.isCompleted) return false
       if (g.category?.id !== categoryId) return false
       if (sprintId) {
         return g.sprint?.id === sprintId
@@ -220,112 +460,6 @@ export default function GoalsPage() {
       // Period goals (not assigned to any sprint)
       return g.period?.id === periodId && !g.sprint
     })
-  }
-
-  // Goal card component
-  const GoalCard = ({ goal }: { goal: Goal }) => (
-    <div
-      className={`p-2 rounded border ${
-        goal.isCompleted ? "bg-green-50 border-green-200 dark:bg-green-950/20" : "bg-background"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-          {goal.title}
-        </span>
-        <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => handleToggleComplete(goal)}
-          >
-            <Check className={`h-3 w-3 ${goal.isCompleted ? "text-green-500" : ""}`} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => handleDelete(goal.id)}
-          >
-            <Trash2 className="h-3 w-3 text-destructive" />
-          </Button>
-        </div>
-      </div>
-      {goal.targetValue ? (
-        <div className="mt-1">
-          <Progress value={getProgress(goal)} className="h-1" />
-          <span className="text-[10px] text-muted-foreground">
-            {goal.currentValue}/{goal.targetValue} {goal.unit}
-          </span>
-        </div>
-      ) : (
-        <Badge variant="secondary" className="text-[10px] mt-1">Cel jakościowy</Badge>
-      )}
-    </div>
-  )
-
-  // Category template component - shows category with goals and input
-  const CategoryTemplate = ({
-    category,
-    periodId,
-    sprintId,
-  }: {
-    category: Category
-    periodId?: string
-    sprintId?: string
-  }) => {
-    const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
-    const categoryGoals = getGoalsForCategory(category.id, periodId, sprintId)
-    const inputValue = templateInputs[key] || ""
-
-    return (
-      <div className="border rounded-lg p-3 bg-muted/20">
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="h-3 w-3 rounded-full"
-            style={{ backgroundColor: category.color }}
-          />
-          <span className="font-medium text-sm">{category.name}</span>
-          {categoryGoals.length > 0 && (
-            <Badge variant="secondary" className="text-[10px]">{categoryGoals.length}</Badge>
-          )}
-        </div>
-
-        {/* Existing goals */}
-        {categoryGoals.length > 0 && (
-          <div className="space-y-2 mb-2">
-            {categoryGoals.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} />
-            ))}
-          </div>
-        )}
-
-        {/* Input for new goal */}
-        <div className="flex gap-2">
-          <Input
-            placeholder="Wpisz cel..."
-            value={inputValue}
-            onChange={(e) => setTemplateInputs((prev) => ({ ...prev, [key]: e.target.value }))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSaveFromTemplate(category.id, periodId, sprintId)
-              }
-            }}
-            className="h-8 text-sm"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            className="h-8 px-2"
-            onClick={() => handleSaveFromTemplate(category.id, periodId, sprintId)}
-            disabled={!inputValue.trim()}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    )
   }
 
   if (isLoading) {
@@ -336,13 +470,13 @@ export default function GoalsPage() {
     )
   }
 
-  // Count total goals for a period (period goals + all sprint goals)
+  // Count total goals for a period (period goals + all sprint goals) - now includes completed
   const countPeriodGoals = (periodId: string, sprints: Sprint[]) => {
     const periodGoals = goals.filter(
-      (g) => g.period?.id === periodId && !g.sprint && !g.isCompleted
+      (g) => g.period?.id === periodId && !g.sprint
     ).length
     const sprintGoals = sprints.reduce((acc, s) => {
-      return acc + goals.filter((g) => g.sprint?.id === s.id && !g.isCompleted).length
+      return acc + goals.filter((g) => g.sprint?.id === s.id).length
     }, 0)
     return periodGoals + sprintGoals
   }
@@ -427,6 +561,18 @@ export default function GoalsPage() {
                           key={category.id}
                           category={category}
                           periodId={period.id}
+                          categoryGoals={getGoalsForCategory(category.id, period.id)}
+                          inputValue={templateInputs[`period-${period.id}-${category.id}`] || ""}
+                          onInputChange={handleInputChange}
+                          onSave={handleSaveFromTemplate}
+                          onToggleComplete={handleToggleComplete}
+                          onDelete={handleDelete}
+                          onEdit={handleEdit}
+                          editingGoalId={editingGoalId}
+                          editingTitle={editingTitle}
+                          setEditingTitle={setEditingTitle}
+                          onSaveEdit={handleSaveEdit}
+                          onCancelEdit={handleCancelEdit}
                         />
                       ))}
                     </div>
@@ -444,7 +590,7 @@ export default function GoalsPage() {
                         const isCurrentSprint =
                           new Date(sprint.startDate) <= today && today <= new Date(sprint.endDate)
                         const sprintGoalsCount = goals.filter(
-                          (g) => g.sprint?.id === sprint.id && !g.isCompleted
+                          (g) => g.sprint?.id === sprint.id
                         ).length
 
                         return (
@@ -489,6 +635,18 @@ export default function GoalsPage() {
                                         category={category}
                                         periodId={period.id}
                                         sprintId={sprint.id}
+                                        categoryGoals={getGoalsForCategory(category.id, period.id, sprint.id)}
+                                        inputValue={templateInputs[`sprint-${sprint.id}-${category.id}`] || ""}
+                                        onInputChange={handleInputChange}
+                                        onSave={handleSaveFromTemplate}
+                                        onToggleComplete={handleToggleComplete}
+                                        onDelete={handleDelete}
+                                        onEdit={handleEdit}
+                                        editingGoalId={editingGoalId}
+                                        editingTitle={editingTitle}
+                                        setEditingTitle={setEditingTitle}
+                                        onSaveEdit={handleSaveEdit}
+                                        onCancelEdit={handleCancelEdit}
                                       />
                                     ))}
                                   </div>
@@ -516,26 +674,6 @@ export default function GoalsPage() {
             <p className="text-muted-foreground text-center mb-4">
               Stwórz najpierw okres w zakładce Sprinty, aby móc dodawać cele
             </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Completed goals section */}
-      {goals.filter((g) => g.isCompleted).length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg text-muted-foreground">
-              Ukończone cele ({goals.filter((g) => g.isCompleted).length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {goals
-                .filter((g) => g.isCompleted)
-                .map((goal) => (
-                  <GoalCard key={goal.id} goal={goal} />
-                ))}
-            </div>
           </CardContent>
         </Card>
       )}
