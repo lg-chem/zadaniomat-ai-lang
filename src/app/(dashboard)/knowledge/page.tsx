@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useMemo } from "react"
 import {
   Plus,
   BookOpen,
@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -36,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import useSWR from "swr"
 
 interface KnowledgeCategory {
   id: string
@@ -210,16 +212,39 @@ function CategoryItem({
   )
 }
 
+interface CategoriesResponse {
+  strategicCategories: KnowledgeCategory[]
+  customCategories: KnowledgeCategory[]
+  allCategories: KnowledgeCategory[]
+}
+
 export default function KnowledgePage() {
   const { workspace } = useWorkspaceStore()
-  const [strategicCategories, setStrategicCategories] = useState<KnowledgeCategory[]>([])
-  const [customCategories, setCustomCategories] = useState<KnowledgeCategory[]>([])
-  const [allCategories, setAllCategories] = useState<KnowledgeCategory[]>([])
-  const [entries, setEntries] = useState<KnowledgeEntry[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  // SWR for categories
+  const { data: categoriesData, isLoading: categoriesLoading, mutate: mutateCategories } = useSWR<CategoriesResponse>(
+    `/api/knowledge/categories?workspace=${workspace}`
+  )
+
+  const strategicCategories = categoriesData?.strategicCategories || []
+  const customCategories = categoriesData?.customCategories || []
+  const allCategories = categoriesData?.allCategories || []
+
+  // Build entries URL
+  const entriesUrl = useMemo(() => {
+    const params = new URLSearchParams({ workspace })
+    if (selectedCategory) params.append("categoryId", selectedCategory)
+    if (searchQuery) params.append("search", searchQuery)
+    return `/api/knowledge/entries?${params}`
+  }, [workspace, selectedCategory, searchQuery])
+
+  // SWR for entries
+  const { data: entries = [], isLoading: entriesLoading, mutate: mutateEntries } = useSWR<KnowledgeEntry[]>(entriesUrl)
+
+  const isLoading = categoriesLoading || entriesLoading
 
   // Dialogs
   const [showEntryDialog, setShowEntryDialog] = useState(false)
@@ -240,44 +265,6 @@ export default function KnowledgePage() {
     color: "#6366f1",
     parentId: "",
   })
-
-  const fetchCategories = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/knowledge/categories?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        setStrategicCategories(data.strategicCategories || [])
-        setCustomCategories(data.customCategories || [])
-        setAllCategories(data.allCategories || [])
-      }
-    } catch (error) {
-      console.error("Error fetching categories:", error)
-    }
-  }, [workspace])
-
-  const fetchEntries = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ workspace })
-      if (selectedCategory) params.append("categoryId", selectedCategory)
-      if (searchQuery) params.append("search", searchQuery)
-
-      const res = await fetch(`/api/knowledge/entries?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setEntries(data)
-      }
-    } catch (error) {
-      console.error("Error fetching entries:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [workspace, selectedCategory, searchQuery])
-
-  useEffect(() => {
-    setIsLoading(true)
-    fetchCategories()
-    fetchEntries()
-  }, [fetchCategories, fetchEntries])
 
   const toggleExpanded = (categoryId: string) => {
     setExpandedCategories((prev) => {
@@ -305,8 +292,8 @@ export default function KnowledgePage() {
         }),
       })
       if (res.ok) {
-        fetchEntries()
-        fetchCategories()
+        mutateEntries()
+        mutateCategories()
         setShowEntryDialog(false)
         setEntryForm({ title: "", content: "", categoryId: "", isImportant: false })
       }
@@ -325,7 +312,7 @@ export default function KnowledgePage() {
         body: JSON.stringify(entryForm),
       })
       if (res.ok) {
-        fetchEntries()
+        mutateEntries()
         setEditingEntry(null)
         setShowEntryDialog(false)
         setEntryForm({ title: "", content: "", categoryId: "", isImportant: false })
@@ -340,8 +327,8 @@ export default function KnowledgePage() {
 
     try {
       await fetch(`/api/knowledge/entries/${id}`, { method: "DELETE" })
-      fetchEntries()
-      fetchCategories()
+      mutateEntries()
+      mutateCategories()
     } catch (error) {
       console.error("Error deleting entry:", error)
     }
@@ -354,7 +341,7 @@ export default function KnowledgePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isImportant: !entry.isImportant }),
       })
-      fetchEntries()
+      mutateEntries()
     } catch (error) {
       console.error("Error toggling important:", error)
     }
@@ -399,7 +386,7 @@ export default function KnowledgePage() {
         }),
       })
       if (res.ok) {
-        fetchCategories()
+        mutateCategories()
         setShowCategoryDialog(false)
         setCategoryForm({ name: "", description: "", color: "#6366f1", parentId: "" })
         setEditingCategory(null)
@@ -423,7 +410,7 @@ export default function KnowledgePage() {
         }),
       })
       if (res.ok) {
-        fetchCategories()
+        mutateCategories()
         setShowCategoryDialog(false)
         setCategoryForm({ name: "", description: "", color: "#6366f1", parentId: "" })
         setEditingCategory(null)
@@ -438,11 +425,11 @@ export default function KnowledgePage() {
 
     try {
       await fetch(`/api/knowledge/categories/${id}`, { method: "DELETE" })
-      fetchCategories()
+      mutateCategories()
       if (selectedCategory === id) {
         setSelectedCategory(null)
       }
-      fetchEntries()
+      mutateEntries()
     } catch (error) {
       console.error("Error deleting category:", error)
     }
@@ -484,14 +471,48 @@ export default function KnowledgePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-40 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-36" />
+            <Skeleton className="h-10 w-28" />
+          </div>
+        </div>
+
+        {/* Content skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <Card className="lg:col-span-1">
+            <CardHeader className="pb-2">
+              <Skeleton className="h-5 w-24" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+          <Card className="lg:col-span-3">
+            <CardHeader className="pb-2">
+              <Skeleton className="h-5 w-20" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
