@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useRef, useEffect, KeyboardEvent } from "react"
+import { useState, useRef, useEffect, KeyboardEvent, useCallback } from "react"
 import { format, formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
+import ReactMarkdown from "react-markdown"
 import {
   Send,
   Bot,
@@ -55,6 +56,69 @@ interface ChatMessage {
   content: string
   data?: GoalProposal[] | TaskProposal[]
   dataType?: "goals" | "tasks"
+  isTyping?: boolean
+}
+
+// Typing effect hook
+function useTypingEffect(text: string, speed: number = 15, enabled: boolean = true) {
+  const [displayText, setDisplayText] = useState("")
+  const [isComplete, setIsComplete] = useState(false)
+
+  useEffect(() => {
+    if (!enabled) {
+      setDisplayText(text)
+      setIsComplete(true)
+      return
+    }
+
+    setDisplayText("")
+    setIsComplete(false)
+
+    if (!text) return
+
+    let index = 0
+    const timer = setInterval(() => {
+      if (index < text.length) {
+        setDisplayText(text.slice(0, index + 1))
+        index++
+      } else {
+        setIsComplete(true)
+        clearInterval(timer)
+      }
+    }, speed)
+
+    return () => clearInterval(timer)
+  }, [text, speed, enabled])
+
+  return { displayText, isComplete }
+}
+
+// Typing message component with markdown
+function TypingMessage({ content, isNew }: { content: string; isNew: boolean }) {
+  const { displayText, isComplete } = useTypingEffect(content, 10, isNew)
+
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none">
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+          li: ({ children }) => <li className="text-sm">{children}</li>,
+          h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2">{children}</h3>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          code: ({ children }) => <code className="bg-muted px-1 py-0.5 rounded text-xs">{children}</code>,
+          blockquote: ({ children }) => <blockquote className="border-l-2 border-primary pl-3 italic my-2">{children}</blockquote>,
+        }}
+      >
+        {displayText}
+      </ReactMarkdown>
+      {!isComplete && <span className="animate-pulse">▊</span>}
+    </div>
+  )
 }
 
 interface GoalProposal {
@@ -145,6 +209,7 @@ export default function AIPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [periods, setPeriods] = useState<Period[]>([])
+  const [lastAssistantIndex, setLastAssistantIndex] = useState<number>(-1)
 
   // Conversation history
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -406,9 +471,12 @@ export default function AIPage() {
 
         const finalMessages = [...updatedMessages, assistantMessage]
         setMessages(finalMessages)
+        setLastAssistantIndex(finalMessages.length - 1)
         saveToConversation(finalMessages)
       } else {
-        setMessages([...updatedMessages, { role: "assistant", content: "Przepraszam, wystąpił błąd. Spróbuj ponownie." }])
+        const errorMessages = [...updatedMessages, { role: "assistant" as const, content: "Przepraszam, wystąpił błąd. Spróbuj ponownie." }]
+        setMessages(errorMessages)
+        setLastAssistantIndex(errorMessages.length - 1)
       }
     } catch (error) {
       console.error("Error sending message:", error)
@@ -442,8 +510,8 @@ export default function AIPage() {
 
   const handleAddGoal = async () => {
     if (!goalForm.title) return
-    if (mode === "period_goals" && !goalForm.periodId) return
-    if (mode === "sprint_goals" && !goalForm.sprintId) return
+    // Require either sprintId or periodId (works from any chat mode)
+    if (!goalForm.sprintId && !goalForm.periodId) return
 
     try {
       await fetch("/api/goals", {
@@ -455,8 +523,8 @@ export default function AIPage() {
           targetValue: goalForm.targetValue ? parseFloat(goalForm.targetValue) : undefined,
           unit: goalForm.unit || undefined,
           categoryId: goalForm.categoryId || undefined,
-          sprintId: mode === "sprint_goals" ? goalForm.sprintId : undefined,
-          periodId: mode === "period_goals" ? goalForm.periodId : undefined,
+          sprintId: goalForm.sprintId || undefined,
+          periodId: goalForm.periodId || undefined,
           workspaceType: "WORK",
         }),
       })
@@ -719,7 +787,11 @@ export default function AIPage() {
                       ? "bg-primary text-primary-foreground rounded-tr-sm"
                       : "bg-muted rounded-tl-sm"
                   )}>
-                    <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                    {message.role === "user" ? (
+                      <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                    ) : (
+                      <TypingMessage content={message.content} isNew={index === lastAssistantIndex} />
+                    )}
                   </div>
 
                   {/* Goals proposal */}
@@ -957,7 +1029,7 @@ export default function AIPage() {
       <Dialog open={!!addingGoal} onOpenChange={(open) => !open && setAddingGoal(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{mode === "period_goals" ? "Dodaj cel na okres" : "Dodaj cel do sprintu"}</DialogTitle>
+            <DialogTitle>Dodaj cel</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div>
@@ -991,28 +1063,43 @@ export default function AIPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>{mode === "period_goals" ? "Okres" : "Sprint"}</Label>
-              <Select
-                value={mode === "period_goals" ? (goalForm.periodId || "none") : (goalForm.sprintId || "none")}
-                onValueChange={(v) => mode === "period_goals"
-                  ? setGoalForm({ ...goalForm, periodId: v === "none" ? "" : v })
-                  : setGoalForm({ ...goalForm, sprintId: v === "none" ? "" : v })
-                }
-              >
-                <SelectTrigger><SelectValue placeholder="Wybierz..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Wybierz {mode === "period_goals" ? "okres" : "sprint"}</SelectItem>
-                  {(mode === "period_goals" ? periods : sprints).map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Sprint (opcjonalnie)</Label>
+                <Select
+                  value={goalForm.sprintId || "none"}
+                  onValueChange={(v) => setGoalForm({ ...goalForm, sprintId: v === "none" ? "" : v, periodId: "" })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Wybierz..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak</SelectItem>
+                    {sprints.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Okres (opcjonalnie)</Label>
+                <Select
+                  value={goalForm.periodId || "none"}
+                  onValueChange={(v) => setGoalForm({ ...goalForm, periodId: v === "none" ? "" : v, sprintId: "" })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Wybierz..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak</SelectItem>
+                    {periods.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground">Wybierz sprint lub okres, do którego chcesz dodać cel.</p>
             <Button
               onClick={handleAddGoal}
               className="w-full"
-              disabled={!goalForm.title || (mode === "period_goals" ? !goalForm.periodId : !goalForm.sprintId)}
+              disabled={!goalForm.title || (!goalForm.periodId && !goalForm.sprintId)}
             >
               <Plus className="h-4 w-4 mr-2" />
               Dodaj cel
