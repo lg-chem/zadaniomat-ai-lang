@@ -2,7 +2,9 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { UserRole } from "@prisma/client"
+
+type UserRole = "USER" | "ADMIN" | "SUPER_ADMIN"
+const UserRoleValues: UserRole[] = ["USER", "ADMIN", "SUPER_ADMIN"]
 
 export async function PATCH(
   request: Request,
