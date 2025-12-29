@@ -272,7 +272,7 @@ export default function SchedulePage() {
     if (status === "IN_PROGRESS" && !timerStore.isRunning) {
       const task = tasks.find((t) => t.id === taskId)
       if (task) {
-        timerStore.startTimer(taskId, task.title, task.plannedMinutes || undefined)
+        timerStore.startTimer(taskId, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
       }
     }
 
@@ -385,7 +385,7 @@ export default function SchedulePage() {
   }
 
   const handleStartTimer = (task: Task) => {
-    timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined)
+    timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
     handleUpdateTaskStatus(task.id, "IN_PROGRESS")
   }
 
@@ -472,7 +472,7 @@ export default function SchedulePage() {
       }
     } else {
       // Start new timer for this task
-      timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined)
+      timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
       handleUpdateTaskStatus(task.id, "IN_PROGRESS")
     }
   }

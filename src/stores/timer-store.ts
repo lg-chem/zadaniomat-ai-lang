@@ -4,6 +4,11 @@ import { useEffect, useState } from 'react'
 
 export type TimerMode = 'countdown' | 'stopwatch'
 
+interface TaskTimeState {
+  remainingSeconds: number
+  elapsedSeconds: number
+}
+
 interface TimerState {
   // Core state
   isRunning: boolean
@@ -25,8 +30,19 @@ interface TimerState {
   isTimeUp: boolean           // Czy czas się skończył
   showNotification: boolean   // Czy pokazać powiadomienie
 
+  // Per-task time tracking (remembers where user left off)
+  taskTimeStates: Record<string, TaskTimeState>
+
+  // Pending start (when we need to show extend dialog first)
+  pendingStart: {
+    taskId: string
+    taskTitle: string
+    plannedMinutes: number
+    alreadyWorkedMinutes: number
+  } | null
+
   // Actions
-  startTimer: (taskId: string, taskTitle: string, plannedMinutes?: number) => void
+  startTimer: (taskId: string, taskTitle: string, plannedMinutes?: number, alreadyWorkedMinutes?: number) => void
   pauseTimer: () => void
   resumeTimer: () => void
   extendTimer: (minutes: number) => void
@@ -35,6 +51,11 @@ interface TimerState {
   tick: () => void
   dismissNotification: () => void
   reset: () => void
+  // New actions
+  setPendingStart: (taskId: string, taskTitle: string, plannedMinutes: number, alreadyWorkedMinutes: number) => void
+  confirmPendingStart: (additionalMinutes: number) => void
+  cancelPendingStart: () => void
+  clearTaskTimeState: (taskId: string) => void
 }
 
 // Helper to request notification permission
@@ -73,11 +94,38 @@ export const useTimerStore = create<TimerState>()(
       accumulatedSeconds: 0,
       isTimeUp: false,
       showNotification: false,
+      taskTimeStates: {},
+      pendingStart: null,
 
-      startTimer: (taskId, taskTitle, plannedMinutes) => {
+      startTimer: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes = 0) => {
         requestNotificationPermission()
 
-        const plannedSeconds = plannedMinutes ? plannedMinutes * 60 : 0
+        const { taskTimeStates } = get()
+        const savedState = taskTimeStates[taskId]
+
+        // Check if task already exceeded planned time
+        if (plannedMinutes && alreadyWorkedMinutes >= plannedMinutes) {
+          // Need to ask user how much additional time
+          set({
+            pendingStart: {
+              taskId,
+              taskTitle,
+              plannedMinutes,
+              alreadyWorkedMinutes,
+            }
+          })
+          return
+        }
+
+        let initialElapsed = 0
+        let initialRemaining = plannedMinutes ? plannedMinutes * 60 : 0
+
+        // If we have saved state for this task, resume from there
+        if (savedState) {
+          initialElapsed = savedState.elapsedSeconds
+          initialRemaining = savedState.remainingSeconds
+        }
+
         const mode: TimerMode = plannedMinutes ? 'countdown' : 'stopwatch'
 
         set({
@@ -86,14 +134,67 @@ export const useTimerStore = create<TimerState>()(
           taskId,
           taskTitle,
           mode,
-          plannedSeconds,
+          plannedSeconds: plannedMinutes ? plannedMinutes * 60 : 0,
+          elapsedSeconds: initialElapsed,
+          remainingSeconds: initialRemaining,
+          sessionStartTime: new Date(),
+          accumulatedSeconds: initialElapsed,
+          isTimeUp: false,
+          showNotification: false,
+          pendingStart: null,
+        })
+      },
+
+      setPendingStart: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes) => {
+        set({
+          pendingStart: {
+            taskId,
+            taskTitle,
+            plannedMinutes,
+            alreadyWorkedMinutes,
+          }
+        })
+      },
+
+      confirmPendingStart: (additionalMinutes) => {
+        const { pendingStart, taskTimeStates } = get()
+        if (!pendingStart) return
+
+        requestNotificationPermission()
+
+        const totalPlannedSeconds = additionalMinutes * 60
+
+        // Clear any saved state for this task since we're starting fresh with new time
+        const newTaskTimeStates = { ...taskTimeStates }
+        delete newTaskTimeStates[pendingStart.taskId]
+
+        set({
+          isRunning: true,
+          isPaused: false,
+          taskId: pendingStart.taskId,
+          taskTitle: pendingStart.taskTitle,
+          mode: 'countdown',
+          plannedSeconds: totalPlannedSeconds,
           elapsedSeconds: 0,
-          remainingSeconds: plannedSeconds,
+          remainingSeconds: totalPlannedSeconds,
           sessionStartTime: new Date(),
           accumulatedSeconds: 0,
           isTimeUp: false,
           showNotification: false,
+          pendingStart: null,
+          taskTimeStates: newTaskTimeStates,
         })
+      },
+
+      cancelPendingStart: () => {
+        set({ pendingStart: null })
+      },
+
+      clearTaskTimeState: (taskId) => {
+        const { taskTimeStates } = get()
+        const newTaskTimeStates = { ...taskTimeStates }
+        delete newTaskTimeStates[taskId]
+        set({ taskTimeStates: newTaskTimeStates })
       },
 
       pauseTimer: () => {
@@ -132,10 +233,19 @@ export const useTimerStore = create<TimerState>()(
       },
 
       stopTimer: () => {
-        const { taskId, elapsedSeconds, isRunning } = get()
+        const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates } = get()
         if (!isRunning || !taskId) return null
 
         const duration = Math.ceil(elapsedSeconds / 60) // zaokrąglenie w górę do minut
+
+        // Save state for this task so we can resume later
+        const newTaskTimeStates = {
+          ...taskTimeStates,
+          [taskId]: {
+            elapsedSeconds,
+            remainingSeconds,
+          }
+        }
 
         set({
           isRunning: false,
@@ -150,14 +260,23 @@ export const useTimerStore = create<TimerState>()(
           accumulatedSeconds: 0,
           isTimeUp: false,
           showNotification: false,
+          taskTimeStates: newTaskTimeStates,
         })
 
         return { taskId, duration }
       },
 
       completeTask: () => {
+        const { taskId, taskTimeStates } = get()
         const result = get().stopTimer()
-        // Tutaj można dodać logikę zapisywania jako completed
+
+        // Clear saved state for completed task (no need to resume)
+        if (taskId) {
+          const newTaskTimeStates = { ...taskTimeStates }
+          delete newTaskTimeStates[taskId]
+          set({ taskTimeStates: newTaskTimeStates })
+        }
+
         return result
       },
 
@@ -231,6 +350,7 @@ export const useTimerStore = create<TimerState>()(
         remainingSeconds: state.remainingSeconds,
         accumulatedSeconds: state.accumulatedSeconds,
         isTimeUp: state.isTimeUp,
+        taskTimeStates: state.taskTimeStates,
       }),
     }
   )
