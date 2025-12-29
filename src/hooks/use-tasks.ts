@@ -100,6 +100,42 @@ export function useTasks(options: UseTasksOptions = {}) {
     [data, mutate]
   )
 
+  // Optimistic add helper
+  const optimisticAdd = useCallback(
+    async (tempTask: Partial<Task>, serverAdd: () => Promise<Task | null>) => {
+      const currentTasks = data ?? []
+
+      // Create a temporary task with a temp ID
+      const tempId = `temp-${Date.now()}`
+      const newTask: Task = {
+        id: tempId,
+        title: tempTask.title || '',
+        status: 'NEW',
+        priority: 0,
+        actualMinutes: 0,
+        orderInDay: currentTasks.length,
+        ...tempTask,
+      } as Task
+
+      // Optimistically add to UI
+      const optimisticData = [...currentTasks, newTask]
+      await mutate(optimisticData, false)
+
+      try {
+        // Perform the actual add
+        const createdTask = await serverAdd()
+        // Revalidate to get the real data
+        mutate()
+        return createdTask
+      } catch (error) {
+        // Rollback on error
+        mutate(currentTasks, false)
+        throw error
+      }
+    },
+    [data, mutate]
+  )
+
   return {
     tasks: data ?? [],
     isLoading,
@@ -107,5 +143,6 @@ export function useTasks(options: UseTasksOptions = {}) {
     mutate,
     optimisticUpdate,
     optimisticDelete,
+    optimisticAdd,
   }
 }

@@ -88,7 +88,7 @@ export default function SchedulePage() {
   const dateString = format(selectedDate, "yyyy-MM-dd")
 
   // Use SWR hooks for data fetching with cache
-  const { tasks, isLoading: tasksLoading, mutate: mutateTasks } = useTasks({ date: dateString })
+  const { tasks, isLoading: tasksLoading, mutate: mutateTasks, optimisticAdd, optimisticDelete, optimisticUpdate } = useTasks({ date: dateString })
   const { categories, isLoading: categoriesLoading } = useCategories()
   const { activeSprint } = useSprints()
 
@@ -147,28 +147,45 @@ export default function SchedulePage() {
     if (!newTask.title.trim()) return
 
     const isRecurring = newTask.recurrenceRule !== "none"
+    const category = categories.find(c => c.id === newTask.categoryId)
+
+    // Clear form immediately for instant feedback
+    const taskData = { ...newTask }
+    setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
+    setIsAddingTask(false)
 
     try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTask.title,
-          categoryId: newTask.categoryId || undefined,
-          plannedMinutes: parseInt(newTask.plannedMinutes) || 25,
+      await optimisticAdd(
+        {
+          title: taskData.title,
+          categoryId: taskData.categoryId || undefined,
+          plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
           scheduledDate: dateString,
-          orderInDay: tasks.length,
-          workspaceType: workspace,
-          status: "NEW",
+          status: "NEW" as const,
           isRecurring,
-          recurrenceRule: isRecurring ? newTask.recurrenceRule : null,
-        }),
-      })
-      if (res.ok) {
-        mutateTasks()
-        setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
-        setIsAddingTask(false)
-      }
+          recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+          category: category ? { id: category.id, name: category.name, color: category.color } : undefined,
+        },
+        async () => {
+          const res = await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: taskData.title,
+              categoryId: taskData.categoryId || undefined,
+              plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+              scheduledDate: dateString,
+              orderInDay: tasks.length,
+              workspaceType: workspace,
+              status: "NEW",
+              isRecurring,
+              recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+            }),
+          })
+          if (!res.ok) throw new Error('Failed to create task')
+          return res.json()
+        }
+      )
     } catch (error) {
       console.error("Error creating task:", error)
     }
@@ -222,26 +239,28 @@ export default function SchedulePage() {
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
+    const updateData: Record<string, unknown> = { status }
+
+    if (status === "COMPLETED") {
+      updateData.completedAt = new Date().toISOString()
+    }
+
+    if (status === "IN_PROGRESS" && !timerStore.isRunning) {
+      const task = tasks.find((t) => t.id === taskId)
+      if (task) {
+        timerStore.startTimer(taskId, task.title, task.plannedMinutes || undefined)
+      }
+    }
+
     try {
-      const updateData: Record<string, unknown> = { status }
-
-      if (status === "COMPLETED") {
-        updateData.completedAt = new Date().toISOString()
-      }
-
-      if (status === "IN_PROGRESS" && !timerStore.isRunning) {
-        const task = tasks.find((t) => t.id === taskId)
-        if (task) {
-          timerStore.startTimer(taskId, task.title, task.plannedMinutes || undefined)
-        }
-      }
-
-      await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
+      await optimisticUpdate(taskId, { status }, async () => {
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updateData),
+        })
+        if (!res.ok) throw new Error('Failed to update task')
       })
-      mutateTasks()
     } catch (error) {
       console.error("Error updating task:", error)
     }
@@ -312,8 +331,10 @@ export default function SchedulePage() {
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to zadanie?")) return
     try {
-      await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
-      mutateTasks()
+      await optimisticDelete(taskId, async () => {
+        const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+        if (!res.ok) throw new Error('Failed to delete task')
+      })
     } catch (error) {
       console.error("Error deleting task:", error)
     }
@@ -322,15 +343,18 @@ export default function SchedulePage() {
   const handleTransferTask = async (taskId: string) => {
     const nextDay = format(addDays(selectedDate, 1), "yyyy-MM-dd")
     try {
-      await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scheduledDate: nextDay,
-          status: "NEW",
-        }),
+      // Use optimistic delete since task will disappear from current day
+      await optimisticDelete(taskId, async () => {
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scheduledDate: nextDay,
+            status: "NEW",
+          }),
+        })
+        if (!res.ok) throw new Error('Failed to transfer task')
       })
-      mutateTasks()
     } catch (error) {
       console.error("Error transferring task:", error)
     }
