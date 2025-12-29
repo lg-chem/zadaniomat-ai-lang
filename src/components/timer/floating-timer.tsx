@@ -87,7 +87,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   return (
     <>
       {/* Floating Timer Widget */}
-      <Card className="fixed bottom-4 right-4 z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur">
+      <Card className="fixed top-20 right-4 z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur">
         <div className="space-y-3">
           {/* Task title */}
           <div className="flex items-center gap-2">

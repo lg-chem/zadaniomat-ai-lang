@@ -132,6 +132,10 @@ export default function SchedulePage() {
   const [editingTimeTaskId, setEditingTimeTaskId] = useState<string | null>(null)
   const [editingTime, setEditingTime] = useState("")
 
+  // Editing actual time state
+  const [editingActualTimeTaskId, setEditingActualTimeTaskId] = useState<string | null>(null)
+  const [editingActualTime, setEditingActualTime] = useState("")
+
   // Copy task state
   const [copyTaskId, setCopyTaskId] = useState<string | null>(null)
 
@@ -429,6 +433,31 @@ export default function SchedulePage() {
       setEditingTimeTaskId(null)
     } catch (error) {
       console.error("Error updating task time:", error)
+    }
+  }
+
+  // Start editing actual time
+  const handleStartEditActualTime = (task: Task) => {
+    setEditingActualTimeTaskId(task.id)
+    setEditingActualTime(String(task.actualMinutes || 0))
+  }
+
+  // Save edited actual time
+  const handleSaveActualTime = async (taskId: string) => {
+    if (editingActualTime === "") {
+      setEditingActualTimeTaskId(null)
+      return
+    }
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actualMinutes: parseInt(editingActualTime) || 0 }),
+      })
+      mutateTasks()
+      setEditingActualTimeTaskId(null)
+    } catch (error) {
+      console.error("Error updating actual time:", error)
     }
   }
 
@@ -1249,8 +1278,14 @@ export default function SchedulePage() {
                         <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
                       )}
                     </div>
-                    {/* Actual Time */}
-                    <div className="text-center text-xs font-medium text-blue-600">{task.actualMinutes || 0}</div>
+                    {/* Actual Time - click to edit */}
+                    <div>
+                      {editingActualTimeTaskId === task.id ? (
+                        <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                      ) : (
+                        <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{task.actualMinutes || 0}</div>
+                      )}
+                    </div>
                     {/* Actions - bigger buttons */}
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant={timerStore.taskId === task.id ? "default" : "outline"} className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
@@ -1323,8 +1358,14 @@ export default function SchedulePage() {
                         <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
                       )}
                     </div>
-                    {/* Actual Time */}
-                    <div className="text-center text-xs text-muted-foreground">{task.actualMinutes || 0}</div>
+                    {/* Actual Time - click to edit */}
+                    <div>
+                      {editingActualTimeTaskId === task.id ? (
+                        <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                      ) : (
+                        <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{task.actualMinutes || 0}</div>
+                      )}
+                    </div>
                     {/* Actions - bigger buttons */}
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
