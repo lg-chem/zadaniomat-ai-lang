@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { preload } from 'swr'
 import { fetcher } from '@/lib/swr-config'
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays } from 'date-fns'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
 /**
@@ -23,10 +23,16 @@ export function usePrefetchData() {
     const monthStart = format(startOfMonth(today), 'yyyy-MM-dd')
     const monthEnd = format(endOfMonth(today), 'yyyy-MM-dd')
 
+    // Task counts range (7 days back, 30 days forward)
+    const countsFrom = format(subDays(today, 7), 'yyyy-MM-dd')
+    const countsTo = format(addDays(today, 30), 'yyyy-MM-dd')
+
     // Prefetch common data for WORK workspace
     if (workspace === 'WORK') {
       // Schedule page - today's tasks
       preload(`/api/tasks?workspace=WORK&date=${todayStr}`, fetcher)
+      // Task counts for week strip
+      preload(`/api/tasks/counts?workspace=WORK&from=${countsFrom}&to=${countsTo}`, fetcher)
       // Categories
       preload(`/api/categories?workspace=WORK`, fetcher)
       // Goals
@@ -43,6 +49,8 @@ export function usePrefetchData() {
     if (workspace === 'PRIVATE') {
       // Schedule page - today's tasks
       preload(`/api/tasks?workspace=PRIVATE&date=${todayStr}`, fetcher)
+      // Task counts for week strip
+      preload(`/api/tasks/counts?workspace=PRIVATE&from=${countsFrom}&to=${countsTo}`, fetcher)
       // Categories
       preload(`/api/categories?workspace=PRIVATE`, fetcher)
       // Habits
