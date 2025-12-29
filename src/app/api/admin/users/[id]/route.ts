@@ -47,7 +47,7 @@ export async function PATCH(
     if (typeof isApproved === "boolean") {
       updateData.isApproved = isApproved
     }
-    if (role && Object.values(UserRole).includes(role)) {
+    if (role && UserRoleValues.includes(role)) {
       updateData.role = role as UserRole
     }
 
