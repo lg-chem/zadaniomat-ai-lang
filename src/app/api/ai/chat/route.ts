@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma"
 import { generateAIResponse } from "@/lib/gemini"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
-import { DEFAULT_SYSTEM_PROMPTS } from "../settings/route"
+import { DEFAULT_SYSTEM_PROMPTS } from "@/lib/ai-prompts"
 
 type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
