@@ -219,6 +219,7 @@ export default function AIPage() {
   // Settings
   const [showSettings, setShowSettings] = useState(false)
   const [chatInstructions, setChatInstructions] = useState<Record<string, string>>({})
+  const [companyInfo, setCompanyInfo] = useState("")
   const [savingSettings, setSavingSettings] = useState(false)
 
   // Add goal dialog
@@ -316,6 +317,7 @@ export default function AIPage() {
       if (res.ok) {
         const data = await res.json()
         setChatInstructions(data.instructions || {})
+        setCompanyInfo(data.companyInfo || "")
       }
     } catch (error) {
       console.error("Error fetching settings:", error)
@@ -391,7 +393,7 @@ export default function AIPage() {
       await fetch("/api/ai/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions }),
+        body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions, companyInfo }),
       })
       setShowSettings(false)
     } catch (error) {
@@ -986,33 +988,54 @@ export default function AIPage() {
 
       {/* Settings Dialog */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
-              Instrukcje dla AI
+              Ustawienia AI
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Określ jak AI ma się zachowywać. Np. "Mów krótko i konkretnie", "Traktuj mnie jak partnera biznesowego", "Zadawaj pytania zanim coś zaproponujesz".
-            </p>
-            {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (
-              <div key={key}>
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  {config.icon}
-                  {config.label}
-                </Label>
-                <Textarea
-                  value={chatInstructions[key] || ""}
-                  onChange={(e) => setChatInstructions({ ...chatInstructions, [key]: e.target.value })}
-                  placeholder={`Instrukcje dla trybu "${config.label}"...`}
-                  rows={2}
-                  className="mt-1 text-sm"
-                />
+          <div className="space-y-6 pt-2">
+            {/* Company/Project Context */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Kontekst firmy / projektu</Label>
+              <p className="text-xs text-muted-foreground">
+                Opisz czym się zajmujesz, jakie masz projekty, co znaczy u Ciebie "backlog", jakie masz role itp. AI będzie to wiedział w każdej rozmowie.
+              </p>
+              <Textarea
+                value={companyInfo}
+                onChange={(e) => setCompanyInfo(e.target.value)}
+                placeholder="Np. Prowadzę software house. Mam 3 główne projekty: Zadaniomat (aplikacja do zarządzania czasem), Klient X (e-commerce), Klient Y (SaaS). Backlog = lista funkcji do zrobienia w projekcie. Jestem CEO i głównym developerem..."
+                rows={4}
+                className="text-sm"
+              />
+            </div>
+
+            <div className="border-t pt-4">
+              <Label className="text-sm font-medium mb-2 block">Instrukcje per tryb chatu</Label>
+              <p className="text-xs text-muted-foreground mb-4">
+                Dodatkowe wytyczne dla AI w każdym trybie. Np. "Mów krótko", "Nie proponuj od razu, najpierw pytaj".
+              </p>
+              <div className="space-y-4">
+                {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (
+                  <div key={key}>
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      {config.icon}
+                      {config.label}
+                    </Label>
+                    <Textarea
+                      value={chatInstructions[key] || ""}
+                      onChange={(e) => setChatInstructions({ ...chatInstructions, [key]: e.target.value })}
+                      placeholder={`Instrukcje dla trybu "${config.label}"...`}
+                      rows={2}
+                      className="mt-1 text-sm"
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-            <div className="flex gap-2 pt-2">
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t">
               <Button onClick={saveSettings} disabled={savingSettings} className="flex-1">
                 {savingSettings && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Zapisz
