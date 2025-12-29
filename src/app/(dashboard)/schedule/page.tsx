@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { format, addDays, subDays } from "date-fns"
+import { format, addDays, subDays, isBefore, startOfDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Plus,
@@ -16,6 +16,9 @@ import {
   Trash2,
   Repeat,
   Target,
+  Copy,
+  AlertTriangle,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,6 +39,7 @@ import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
 import { useTaskCounts } from "@/hooks/use-task-counts"
+import { useOverdueTasks } from "@/hooks/use-overdue-tasks"
 import { WeekStrip } from "@/components/schedule/week-strip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
@@ -96,6 +100,7 @@ export default function SchedulePage() {
   const { categories, isLoading: categoriesLoading } = useCategories()
   const { activeSprint } = useSprints()
   const { taskCounts } = useTaskCounts(selectedDate, 30)
+  const { overdueTasks, mutate: mutateOverdue } = useOverdueTasks()
 
   const isLoading = tasksLoading || categoriesLoading
 
@@ -122,6 +127,13 @@ export default function SchedulePage() {
   // Inline edit task state
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
+
+  // Editing time state
+  const [editingTimeTaskId, setEditingTimeTaskId] = useState<string | null>(null)
+  const [editingTime, setEditingTime] = useState("")
+
+  // Copy task state
+  const [copyTaskId, setCopyTaskId] = useState<string | null>(null)
 
   // Generate recurring tasks on date change and reset hidden templates
   useEffect(() => {
@@ -392,6 +404,130 @@ export default function SchedulePage() {
     setEditingTitle(task.title)
   }
 
+  // Start editing time
+  const handleStartEditTime = (task: Task) => {
+    setEditingTimeTaskId(task.id)
+    setEditingTime(String(task.plannedMinutes || 25))
+  }
+
+  // Save edited time
+  const handleSaveTime = async (taskId: string) => {
+    if (!editingTime) {
+      setEditingTimeTaskId(null)
+      return
+    }
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plannedMinutes: parseInt(editingTime) || 25 }),
+      })
+      mutateTasks()
+      setEditingTimeTaskId(null)
+    } catch (error) {
+      console.error("Error updating task time:", error)
+    }
+  }
+
+  // Timer toggle (play/pause/resume)
+  const handleTimerToggle = (task: Task) => {
+    if (timerStore.taskId === task.id) {
+      // This task's timer is active
+      if (timerStore.isPaused) {
+        timerStore.resumeTimer()
+      } else {
+        timerStore.pauseTimer()
+      }
+    } else {
+      // Start new timer for this task
+      timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined)
+      handleUpdateTaskStatus(task.id, "IN_PROGRESS")
+    }
+  }
+
+  // Copy task to selected date
+  const handleCopyTask = async (taskId: string, targetDate: Date) => {
+    const task = tasks.find(t => t.id === taskId) || overdueTasks.find(t => t.id === taskId)
+    if (!task) return
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: task.title,
+          categoryId: task.categoryId,
+          plannedMinutes: task.plannedMinutes,
+          scheduledDate: format(targetDate, "yyyy-MM-dd"),
+          workspaceType: workspace,
+          status: "NEW",
+          isRecurring: false,
+        }),
+      })
+      if (res.ok) {
+        mutateTasks()
+        mutateOverdue()
+        setCopyTaskId(null)
+      }
+    } catch (error) {
+      console.error("Error copying task:", error)
+    }
+  }
+
+  // Transfer overdue task to a date and mark original as transferred
+  const handleTransferOverdue = async (taskId: string, targetDate: Date) => {
+    const task = overdueTasks.find(t => t.id === taskId)
+    if (!task) return
+
+    try {
+      // Create new task on target date
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: task.title,
+          categoryId: task.categoryId,
+          plannedMinutes: task.plannedMinutes,
+          scheduledDate: format(targetDate, "yyyy-MM-dd"),
+          workspaceType: workspace,
+          status: "NEW",
+          isRecurring: false,
+        }),
+      })
+
+      // Mark original as transferred
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "TO_TRANSFER" }),
+      })
+
+      mutateTasks()
+      mutateOverdue()
+      setCopyTaskId(null)
+    } catch (error) {
+      console.error("Error transferring overdue task:", error)
+    }
+  }
+
+  // Handle overdue task actions
+  const handleOverdueAction = async (taskId: string, action: "complete" | "cancel") => {
+    const status = action === "complete" ? "COMPLETED" : "CANCELLED"
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          ...(action === "complete" ? { completedAt: new Date().toISOString() } : {})
+        }),
+      })
+      mutateOverdue()
+    } catch (error) {
+      console.error("Error updating overdue task:", error)
+    }
+  }
+
   const strategicCategories = categories.filter((c) => c.isStrategic)
 
   // Group tasks by status
@@ -640,6 +776,72 @@ export default function SchedulePage() {
         )
       })()}
 
+      {/* Overdue Tasks - Must be resolved */}
+      {overdueTasks.length > 0 && (
+        <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base md:text-lg flex items-center gap-2 text-red-700 dark:text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              Zaległe zadania ({overdueTasks.length})
+            </CardTitle>
+            <p className="text-sm text-red-600/80 dark:text-red-400/80">
+              Te zadania mają termin z przeszłości. Przenieś je na inny dzień, oznacz jako zakończone lub anuluj.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {overdueTasks.map((task) => (
+              <div
+                key={task.id}
+                className="flex items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 rounded-lg border border-red-200"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    {task.category && (
+                      <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: task.category.color }} />
+                    )}
+                    <span className="font-medium truncate">{task.title}</span>
+                    <Badge variant="outline" className="text-[10px] text-red-600 border-red-300">
+                      {task.scheduledDate ? format(new Date(task.scheduledDate), "d MMM", { locale: pl }) : "?"}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {task.plannedMinutes && <span>{task.plannedMinutes} min</span>}
+                    {task.category && <span className="ml-2">• {task.category.name}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Transfer to another day */}
+                  <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-8 text-xs">
+                        <ArrowRight className="h-3 w-3 mr-1" />
+                        Przenieś
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <CalendarComponent
+                        mode="single"
+                        selected={undefined}
+                        onSelect={(date) => date && handleTransferOverdue(task.id, date)}
+                        disabled={(date) => isBefore(date, startOfDay(new Date()))}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Button size="sm" variant="outline" onClick={() => handleOverdueAction(task.id, "complete")} className="h-8 text-xs">
+                    <Check className="h-3 w-3 mr-1" />
+                    Gotowe
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => handleOverdueAction(task.id, "cancel")} className="h-8 text-xs text-muted-foreground">
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Task Table - Spreadsheet style */}
       <Card>
         <CardHeader className="pb-3">
@@ -871,13 +1073,16 @@ export default function SchedulePage() {
           {/* Desktop View - Table */}
           <div className="border rounded-lg overflow-hidden hidden md:block">
             {/* Table Header */}
-            <div className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+            <div className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Kategoria</div>
               <div>Nazwa zadania</div>
-              <div>Czas</div>
+              <div className="text-center flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Plan
+              </div>
+              <div className="text-center">Real</div>
               <div className="flex items-center gap-1">
                 <Repeat className="h-3 w-3" />
-                Powtarzaj
               </div>
               <div>Akcje</div>
             </div>
@@ -888,7 +1093,7 @@ export default function SchedulePage() {
               return (
                 <div
                   key={`template-${category.id}`}
-                  className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
+                  className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
                 >
                   {/* Category - fixed */}
                   <div className="flex items-center gap-2">
@@ -914,7 +1119,7 @@ export default function SchedulePage() {
                     />
                   </div>
 
-                  {/* Time */}
+                  {/* Planned Time */}
                   <div>
                     <Input
                       type="number"
@@ -925,6 +1130,9 @@ export default function SchedulePage() {
                       className="h-8 text-center text-xs"
                     />
                   </div>
+
+                  {/* Actual Time - empty for new */}
+                  <div className="text-center text-xs text-muted-foreground">-</div>
 
                   {/* Recurrence */}
                   <div>
@@ -982,7 +1190,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.IN_PROGRESS.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center bg-primary/5 border-l-2 border-l-blue-500">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-primary/5 border-l-2 border-l-blue-500">
                     <div>
                       <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
                         <SelectTrigger className="h-8 text-xs">
@@ -1011,7 +1219,16 @@ export default function SchedulePage() {
                         </div>
                       )}
                     </div>
-                    <div><Input type="number" min="5" step="5" value={task.plannedMinutes || 25} onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)} className="h-8 text-center text-xs" /></div>
+                    {/* Planned Time - click to edit */}
+                    <div>
+                      {editingTimeTaskId === task.id ? (
+                        <Input type="number" min="5" step="5" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} onBlur={() => handleSaveTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveTime(task.id); if (e.key === "Escape") setEditingTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                      ) : (
+                        <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
+                      )}
+                    </div>
+                    {/* Actual Time */}
+                    <div className="text-center text-xs font-medium text-blue-600">{task.actualMinutes || 0}</div>
                     <div>
                       <Select value={task.recurrenceRule || "none"} onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}>
                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -1019,8 +1236,20 @@ export default function SchedulePage() {
                       </Select>
                     </div>
                     <div className="flex items-center gap-1">
+                      {/* Timer toggle */}
+                      <Button size="icon" variant={timerStore.taskId === task.id ? "default" : "outline"} className="h-7 w-7" onClick={() => handleTimerToggle(task)} title={timerStore.taskId === task.id ? (timerStore.isPaused ? "Wznów" : "Pauza") : "Start"}>
+                        {timerStore.taskId === task.id ? (timerStore.isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />) : <Play className="h-3.5 w-3.5" />}
+                      </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} title="Zakończ"><Check className="h-3.5 w-3.5 text-green-500" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTransferTask(task.id)} title="Przenieś na jutro"><ArrowRight className="h-3.5 w-3.5" /></Button>
+                      {/* Copy to day */}
+                      <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
+                        <PopoverTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Kopiuj na dzień"><Copy className="h-3.5 w-3.5" /></Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                          <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
+                        </PopoverContent>
+                      </Popover>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                     </div>
                   </div>
@@ -1038,7 +1267,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.NEW.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center hover:bg-muted/20 transition-colors">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center hover:bg-muted/20 transition-colors">
                     <div>
                       <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
                         <SelectTrigger className="h-8 text-xs">
@@ -1067,7 +1296,16 @@ export default function SchedulePage() {
                         </div>
                       )}
                     </div>
-                    <div><Input type="number" min="5" step="5" value={task.plannedMinutes || 25} onChange={(e) => handleUpdateTaskTime(task.id, e.target.value)} className="h-8 text-center text-xs" /></div>
+                    {/* Planned Time - click to edit */}
+                    <div>
+                      {editingTimeTaskId === task.id ? (
+                        <Input type="number" min="5" step="5" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} onBlur={() => handleSaveTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveTime(task.id); if (e.key === "Escape") setEditingTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                      ) : (
+                        <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
+                      )}
+                    </div>
+                    {/* Actual Time */}
+                    <div className="text-center text-xs text-muted-foreground">{task.actualMinutes || 0}</div>
                     <div>
                       <Select value={task.recurrenceRule || "none"} onValueChange={(value) => handleUpdateTaskRecurrence(task.id, value)}>
                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -1075,11 +1313,17 @@ export default function SchedulePage() {
                       </Select>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant={timerStore.taskId === task.id ? "default" : "ghost"} className="h-7 w-7" onClick={() => handleStartTimer(task)} disabled={timerStore.taskId === task.id} title="Start timer">
-                        {timerStore.taskId === task.id ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTimerToggle(task)} title="Start timer"><Play className="h-3.5 w-3.5" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} title="Zakończ"><Check className="h-3.5 w-3.5 text-green-500" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTransferTask(task.id)} title="Przenieś na jutro"><ArrowRight className="h-3.5 w-3.5" /></Button>
+                      {/* Copy to day */}
+                      <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
+                        <PopoverTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Kopiuj na dzień"><Copy className="h-3.5 w-3.5" /></Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                          <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
+                        </PopoverContent>
+                      </Popover>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")} title="Anuluj"><X className="h-3.5 w-3.5 text-red-500" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                     </div>
@@ -1098,24 +1342,14 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.COMPLETED.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
+                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
                     <div>
-                      <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue>
-                            {task.category ? (
-                              <div className="flex items-center gap-2">
-                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
-                                <span className="truncate">{task.category.name}</span>
-                              </div>
-                            ) : (<span className="text-muted-foreground">Brak</span>)}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
-                          {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
-                        </SelectContent>
-                      </Select>
+                      {task.category ? (
+                        <div className="flex items-center gap-2 px-2">
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                          <span className="text-xs truncate">{task.category.name}</span>
+                        </div>
+                      ) : (<span className="text-xs text-muted-foreground px-2">Brak</span>)}
                     </div>
                     <div>
                       <div className="px-2 py-1 flex items-center gap-2 line-through text-muted-foreground">
@@ -1124,8 +1358,9 @@ export default function SchedulePage() {
                         <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
                       </div>
                     </div>
-                    <div><span className="text-xs text-muted-foreground px-2">{task.plannedMinutes} min</span></div>
-                    <div><span className="text-xs text-muted-foreground px-2">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "Brak"}</span></div>
+                    <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
+                    <div className="text-center text-xs text-green-600">{task.actualMinutes || 0}</div>
+                    <div className="text-xs text-muted-foreground">{task.recurrenceRule ? RECURRENCE_OPTIONS.find(o => o.value === task.recurrenceRule)?.label : "-"}</div>
                     <div className="flex items-center gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdateTaskStatus(task.id, "NEW")} title="Cofnij"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)} title="Usuń"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
@@ -1137,7 +1372,7 @@ export default function SchedulePage() {
 
             {/* Add New Task Row */}
             {isAddingTask ? (
-              <div className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 items-center bg-primary/5">
+              <div className="grid grid-cols-[140px_1fr_55px_55px_90px_200px] gap-2 p-3 items-center bg-primary/5">
                 {/* Category Select */}
                 <div>
                   <Select
@@ -1180,7 +1415,7 @@ export default function SchedulePage() {
                   />
                 </div>
 
-                {/* Time Input */}
+                {/* Planned Time Input */}
                 <div>
                   <Input
                     type="number"
@@ -1192,6 +1427,9 @@ export default function SchedulePage() {
                     className="h-8 text-center text-xs"
                   />
                 </div>
+
+                {/* Actual Time - empty for new */}
+                <div className="text-center text-xs text-muted-foreground">-</div>
 
                 {/* Recurrence Select */}
                 <div>
