@@ -1,68 +1,30 @@
 import { SWRConfiguration } from 'swr'
 
-// Cache for storing fetched data
-const cache = new Map<string, { data: unknown; timestamp: number }>()
-const CACHE_TTL = 60000 // 1 minute cache
-
-// Global fetcher function with request deduplication
-const pendingRequests = new Map<string, Promise<unknown>>()
-
+// Simple fetcher - let SWR handle caching
 export const fetcher = async (url: string) => {
-  // Check cache first
-  const cached = cache.get(url)
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error('An error occurred while fetching the data.')
   }
-
-  // Dedupe concurrent requests
-  if (pendingRequests.has(url)) {
-    return pendingRequests.get(url)
-  }
-
-  const fetchPromise = fetch(url).then(async (res) => {
-    if (!res.ok) {
-      throw new Error('An error occurred while fetching the data.')
-    }
-    const data = await res.json()
-    cache.set(url, { data, timestamp: Date.now() })
-    pendingRequests.delete(url)
-    return data
-  }).catch((err) => {
-    pendingRequests.delete(url)
-    throw err
-  })
-
-  pendingRequests.set(url, fetchPromise)
-  return fetchPromise
-}
-
-// Clear cache for a specific URL or all
-export const clearCache = (url?: string) => {
-  if (url) {
-    cache.delete(url)
-  } else {
-    cache.clear()
-  }
+  return res.json()
 }
 
 // Global SWR configuration - optimized for performance
 export const swrConfig: SWRConfiguration = {
   fetcher,
-  // Don't revalidate on focus - prevents unnecessary requests
+  // Don't revalidate on window focus - prevents unnecessary requests when switching tabs
   revalidateOnFocus: false,
   // Revalidate on reconnect
   revalidateOnReconnect: true,
-  // Dedupe requests within 60 seconds
-  dedupingInterval: 60000,
-  // Throttle focus revalidation
-  focusThrottleInterval: 60000,
+  // Dedupe requests within 5 seconds (prevents duplicate requests)
+  dedupingInterval: 5000,
   // Retry on error
   errorRetryCount: 2,
-  errorRetryInterval: 5000,
-  // Keep previous data while revalidating - smoother UX
+  errorRetryInterval: 3000,
+  // Keep previous data while revalidating - smoother UX (no loading flash)
   keepPreviousData: true,
-  // Don't revalidate on mount if data exists - faster initial render
-  revalidateIfStale: false,
+  // Revalidate stale data - ensures mutations work properly
+  revalidateIfStale: true,
   // Disable automatic revalidation interval
   refreshInterval: 0,
 }
