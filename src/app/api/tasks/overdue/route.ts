@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const workspace = searchParams.get("workspace") || "WORK"
+    const workspace = (searchParams.get("workspace") || "WORK") as "WORK" | "PRIVATE"
 
     // Get tasks from past days that are not completed or cancelled
     const today = startOfDay(new Date())
