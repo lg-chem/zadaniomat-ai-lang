@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState } from "react"
 import { format, differenceInDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -14,9 +14,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { CreatePeriodDialog } from "@/components/periods/create-period-dialog"
 import { CreateSprintDialog } from "@/components/sprints/create-sprint-dialog"
+import useSWR from "swr"
 
 interface Sprint {
   id: string
@@ -39,35 +41,22 @@ interface Period {
 
 export default function SprintsPage() {
   const { workspace } = useWorkspaceStore()
-  const [periods, setPeriods] = useState<Period[]>([])
-  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(new Set())
-  const [isLoading, setIsLoading] = useState(true)
+
+  // Use SWR for data fetching with cache
+  const { data: periods = [], isLoading, mutate: mutatePeriods } = useSWR<Period[]>(
+    `/api/periods?workspace=${workspace}`
+  )
+
+  // Auto-expand active periods on first render
+  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(() => {
+    const activePeriodIds = periods
+      .filter((p: Period) => p.isActive)
+      .map((p: Period) => p.id)
+    return new Set(activePeriodIds)
+  })
   const [showCreatePeriod, setShowCreatePeriod] = useState(false)
   const [showCreateSprint, setShowCreateSprint] = useState(false)
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
-
-  const fetchPeriods = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/periods?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        setPeriods(data)
-        // Auto-expand active periods
-        const activePeriodIds = data
-          .filter((p: Period) => p.isActive)
-          .map((p: Period) => p.id)
-        setExpandedPeriods(new Set(activePeriodIds))
-      }
-    } catch (error) {
-      console.error("Error fetching periods:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [workspace])
-
-  useEffect(() => {
-    fetchPeriods()
-  }, [fetchPeriods])
 
   const togglePeriod = (id: string) => {
     setExpandedPeriods((prev) => {
@@ -88,7 +77,7 @@ export default function SprintsPage() {
     try {
       const res = await fetch(`/api/periods/${id}`, { method: "DELETE" })
       if (res.ok) {
-        fetchPeriods()
+        mutatePeriods()
       }
     } catch (error) {
       console.error("Error deleting period:", error)
@@ -102,7 +91,7 @@ export default function SprintsPage() {
     try {
       const res = await fetch(`/api/sprints/${id}`, { method: "DELETE" })
       if (res.ok) {
-        fetchPeriods()
+        mutatePeriods()
       }
     } catch (error) {
       console.error("Error deleting sprint:", error)
@@ -135,14 +124,39 @@ export default function SprintsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+
+        {/* Periods skeleton */}
+        {[1, 2].map((i) => (
+          <Card key={i}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-5" />
+                  <div>
+                    <Skeleton className="h-6 w-40 mb-1" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                </div>
+                <Skeleton className="h-6 w-20" />
+              </div>
+            </CardHeader>
+          </Card>
+        ))}
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -290,13 +304,13 @@ export default function SprintsPage() {
       <CreatePeriodDialog
         open={showCreatePeriod}
         onOpenChange={setShowCreatePeriod}
-        onSuccess={fetchPeriods}
+        onSuccess={mutatePeriods}
       />
       <CreateSprintDialog
         open={showCreateSprint}
         onOpenChange={setShowCreateSprint}
         periodId={selectedPeriodId}
-        onSuccess={fetchPeriods}
+        onSuccess={mutatePeriods}
       />
     </div>
   )

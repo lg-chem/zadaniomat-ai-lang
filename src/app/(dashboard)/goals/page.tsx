@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useCallback } from "react"
 import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
@@ -9,12 +9,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
+import { Skeleton, SkeletonStats } from "@/components/ui/skeleton"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useGoals } from "@/hooks/use-goals"
+import { useCategories } from "@/hooks/use-categories"
+import useSWR from "swr"
 
 interface Goal {
   id: string
@@ -266,14 +270,36 @@ function CategoryTemplate({
 
 export default function GoalsPage() {
   const { workspace } = useWorkspaceStore()
-  const [goals, setGoals] = useState<Goal[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [periods, setPeriods] = useState<Period[]>([])
-  const [isLoading, setIsLoading] = useState(true)
 
-  // Expanded state
-  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(new Set())
-  const [expandedSprints, setExpandedSprints] = useState<Set<string>>(new Set())
+  // Use SWR hooks for data fetching with cache
+  const { goals, isLoading: goalsLoading, mutate: mutateGoals } = useGoals()
+  const { categories, isLoading: categoriesLoading } = useCategories()
+
+  // Fetch periods with sprints
+  const { data: periods = [], isLoading: periodsLoading } = useSWR<Period[]>(
+    `/api/periods?workspace=${workspace}`
+  )
+
+  const isLoading = goalsLoading || categoriesLoading || periodsLoading
+
+  // Expanded state - auto-expand active period/sprint on first load
+  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(() => {
+    const activePeriod = periods.find((p: Period) => p.isActive)
+    return activePeriod ? new Set([activePeriod.id]) : new Set()
+  })
+  const [expandedSprints, setExpandedSprints] = useState<Set<string>>(() => {
+    const activePeriod = periods.find((p: Period) => p.isActive)
+    if (activePeriod) {
+      const today = new Date()
+      const currentSprint = activePeriod.sprints.find((s: Sprint) => {
+        const start = new Date(s.startDate)
+        const end = new Date(s.endDate)
+        return today >= start && today <= end
+      })
+      return currentSprint ? new Set([currentSprint.id]) : new Set()
+    }
+    return new Set()
+  })
 
   // Template input states - keyed by "periodId-categoryId" or "sprintId-categoryId"
   const [templateInputs, setTemplateInputs] = useState<Record<string, string>>({})
@@ -282,65 +308,6 @@ export default function GoalsPage() {
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
 
-  const fetchGoals = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/goals?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        setGoals(data)
-      }
-    } catch (error) {
-      console.error("Error fetching goals:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [workspace])
-
-  const fetchCategories = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/categories?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        setCategories(data)
-      }
-    } catch (error) {
-      console.error("Error fetching categories:", error)
-    }
-  }, [workspace])
-
-  const fetchPeriods = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/periods?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        setPeriods(data)
-        // Auto-expand active period
-        const activePeriod = data.find((p: Period) => p.isActive)
-        if (activePeriod) {
-          setExpandedPeriods(new Set([activePeriod.id]))
-          // Auto-expand current sprint
-          const today = new Date()
-          const currentSprint = activePeriod.sprints.find((s: Sprint) => {
-            const start = new Date(s.startDate)
-            const end = new Date(s.endDate)
-            return today >= start && today <= end
-          })
-          if (currentSprint) {
-            setExpandedSprints(new Set([currentSprint.id]))
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching periods:", error)
-    }
-  }, [workspace])
-
-  useEffect(() => {
-    fetchGoals()
-    fetchCategories()
-    fetchPeriods()
-  }, [fetchGoals, fetchCategories, fetchPeriods])
-
   const handleToggleComplete = async (goal: Goal) => {
     try {
       await fetch(`/api/goals/${goal.id}`, {
@@ -348,7 +315,7 @@ export default function GoalsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isCompleted: !goal.isCompleted }),
       })
-      fetchGoals()
+      mutateGoals()
     } catch (error) {
       console.error("Error updating goal:", error)
     }
@@ -358,7 +325,7 @@ export default function GoalsPage() {
     if (!confirm("Czy na pewno chcesz usunąć ten cel?")) return
     try {
       await fetch(`/api/goals/${id}`, { method: "DELETE" })
-      fetchGoals()
+      mutateGoals()
     } catch (error) {
       console.error("Error deleting goal:", error)
     }
@@ -384,7 +351,7 @@ export default function GoalsPage() {
       })
       setEditingGoalId(null)
       setEditingTitle("")
-      fetchGoals()
+      mutateGoals()
     } catch (error) {
       console.error("Error updating goal:", error)
     }
@@ -416,7 +383,7 @@ export default function GoalsPage() {
       if (res.ok) {
         // Clear input and refresh
         setTemplateInputs((prev) => ({ ...prev, [key]: "" }))
-        fetchGoals()
+        mutateGoals()
       }
     } catch (error) {
       console.error("Error creating goal:", error)
@@ -464,8 +431,32 @@ export default function GoalsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-24 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+
+        {/* Periods skeleton */}
+        {[1, 2].map((i) => (
+          <Card key={i}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-5" />
+                  <div>
+                    <Skeleton className="h-6 w-32 mb-1" />
+                    <Skeleton className="h-4 w-48" />
+                  </div>
+                </div>
+                <Skeleton className="h-6 w-20" />
+              </div>
+            </CardHeader>
+          </Card>
+        ))}
       </div>
     )
   }
@@ -482,7 +473,7 @@ export default function GoalsPage() {
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>

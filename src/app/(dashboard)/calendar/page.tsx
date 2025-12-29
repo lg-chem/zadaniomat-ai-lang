@@ -19,6 +19,7 @@ import { ChevronLeft, ChevronRight, Calendar, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton, SkeletonStats } from "@/components/ui/skeleton"
 import { useRouter } from "next/navigation"
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 
@@ -106,14 +107,49 @@ export default function CalendarPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-32 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-10 w-10" />
+            <Skeleton className="h-10 w-20" />
+            <Skeleton className="h-10 w-40" />
+            <Skeleton className="h-10 w-10" />
+          </div>
+        </div>
+
+        {/* Stats skeleton */}
+        <Card>
+          <CardContent className="py-4">
+            <SkeletonStats />
+          </CardContent>
+        </Card>
+
+        {/* Calendar skeleton */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {[...Array(7)].map((_, i) => (
+                <Skeleton key={i} className="h-8" />
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {[...Array(35)].map((_, i) => (
+                <Skeleton key={i} className="min-h-[100px]" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
