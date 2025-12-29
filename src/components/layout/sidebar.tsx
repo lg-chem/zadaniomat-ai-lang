@@ -29,6 +29,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { WorkspaceSwitcher } from "./workspace-switcher"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { prefetchPage } from "@/hooks/use-prefetch"
 
 const workNavItems = [
   { href: "/backlog", label: "Backlog", icon: Inbox },
@@ -93,6 +94,7 @@ export function SidebarContent() {
             key={item.href}
             href={item.href}
             prefetch={false}
+            onMouseEnter={() => prefetchPage(item.href.slice(1), workspace)}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
               isActive(item.href)

@@ -3,12 +3,16 @@
 import { useCallback } from "react"
 import { FloatingTimer } from "@/components/timer/floating-timer"
 import { BacklogQuickAddBubble } from "@/components/backlog/quick-add-bubble"
+import { usePrefetchData } from "@/hooks/use-prefetch"
 
 interface DashboardClientProps {
   children: React.ReactNode
 }
 
 export function DashboardClient({ children }: DashboardClientProps) {
+  // Prefetch common data in background when dashboard loads
+  usePrefetchData()
+
   const handleTimerComplete = useCallback(async (taskId: string, duration: number) => {
     // Zapisz czas i ustaw status na COMPLETED
     try {
