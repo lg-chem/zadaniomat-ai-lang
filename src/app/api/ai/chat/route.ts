@@ -46,7 +46,7 @@ async function getMinimalContext(userId: string) {
     prisma.knowledgeEntry.findMany({
       where: { userId, workspaceType: "WORK", isImportant: true },
       select: { title: true, content: true, category: { select: { name: true } } },
-      take: 10,
+      take: 25,
     }),
   ])
 
@@ -67,7 +67,7 @@ async function getMinimalContext(userId: string) {
   // Format important knowledge
   const knowledgeSummary = importantKnowledge.length > 0
     ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null }) =>
-        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}: ${k.content?.substring(0, 200) || ""}${(k.content?.length || 0) > 200 ? "..." : ""}`
+        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}: ${k.content?.substring(0, 800) || ""}${(k.content?.length || 0) > 800 ? "..." : ""}`
       ).join("\n")
     : null
 
@@ -148,7 +148,7 @@ async function getKnowledgeEntries(userId: string, query?: string) {
   })
   return items.map((e: { title: string; content: string | null; category: { name: string } | null }) => ({
     title: e.title,
-    content: e.content?.substring(0, 200),
+    content: e.content?.substring(0, 800),
     category: e.category?.name,
   }))
 }
