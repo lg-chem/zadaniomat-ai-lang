@@ -14,29 +14,22 @@ export function DashboardClient({ children }: DashboardClientProps) {
   usePrefetchData()
 
   const handleTimerComplete = useCallback(async (taskId: string, durationSeconds: number) => {
+    // durationSeconds is the TOTAL elapsed time (accumulated across all sessions)
     // Round only once at final save
     const durationMinutes = Math.ceil(durationSeconds / 60)
 
-    // Zapisz czas i ustaw status na COMPLETED
     try {
-      // Pobierz aktualny czas zadania i dodaj nowy
-      const res = await fetch(`/api/tasks/${taskId}`)
-      let totalMinutes = durationMinutes
-      if (res.ok) {
-        const task = await res.json()
-        totalMinutes = (task.actualMinutes || 0) + durationMinutes
-      }
-
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
-          actualMinutes: totalMinutes,
+          actualMinutes: durationMinutes,
           completedAt: new Date().toISOString(),
         }),
       })
-      // Zapisz time entry
+
+      // Save time entry
       if (durationMinutes > 0) {
         await fetch("/api/time-entries", {
           method: "POST",
@@ -53,14 +46,22 @@ export function DashboardClient({ children }: DashboardClientProps) {
   }, [])
 
   const handleTimerStop = useCallback(async (taskId: string, durationSeconds: number) => {
-    // Don't update actualMinutes on stop - only on complete
-    // This prevents rounding multiple times (e.g., 3x10sec = 3min instead of 1min)
-    // Time is saved in localStorage (taskTimeStates) and will be counted when task is completed
-
-    // Only save time entry if significant time passed (at least 1 minute)
+    // durationSeconds is the TOTAL elapsed time (accumulated across all sessions)
+    // Round only once and save to actualMinutes
     const durationMinutes = Math.ceil(durationSeconds / 60)
-    if (durationMinutes > 0) {
-      try {
+
+    try {
+      // Update actualMinutes with total time (not adding to existing!)
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actualMinutes: durationMinutes,
+        }),
+      })
+
+      // Save time entry for this session
+      if (durationMinutes > 0) {
         await fetch("/api/time-entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -69,9 +70,9 @@ export function DashboardClient({ children }: DashboardClientProps) {
             duration: durationMinutes,
           }),
         })
-      } catch (error) {
-        console.error("Error saving time entry:", error)
       }
+    } catch (error) {
+      console.error("Error saving time:", error)
     }
   }, [])
 
