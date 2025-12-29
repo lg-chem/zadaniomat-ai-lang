@@ -220,6 +220,7 @@ export default function AIPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [chatInstructions, setChatInstructions] = useState<Record<string, string>>({})
   const [systemPrompts, setSystemPrompts] = useState<Record<string, string>>({})
+  const [metaPrompt, setMetaPrompt] = useState("")
   const [companyInfo, setCompanyInfo] = useState("")
   const [savingSettings, setSavingSettings] = useState(false)
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
@@ -320,6 +321,7 @@ export default function AIPage() {
         const data = await res.json()
         setChatInstructions(data.instructions || {})
         setSystemPrompts(data.systemPrompts || {})
+        setMetaPrompt(data.metaPrompt || "")
         setCompanyInfo(data.companyInfo || "")
       }
     } catch (error) {
@@ -396,7 +398,7 @@ export default function AIPage() {
       await fetch("/api/ai/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions, systemPrompts, companyInfo }),
+        body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions, systemPrompts, metaPrompt, companyInfo }),
       })
       setShowSettings(false)
       setShowAdvancedSettings(false)
@@ -1028,8 +1030,23 @@ export default function AIPage() {
 
               {showAdvancedSettings && (
                 <div className="mt-4 space-y-4">
+                  {/* Meta Prompt - FIRST */}
+                  <div className="space-y-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <Label className="text-sm font-medium">🔥 Nadrzędne instrukcje (czytane PIERWSZE)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Te zasady AI przeczyta PRZED wszystkim innym. Tutaj ustaw rzeczy typu "bądź elastyczny", "nie wracaj do poprzednich tematów" itp.
+                    </p>
+                    <Textarea
+                      value={metaPrompt}
+                      onChange={(e) => setMetaPrompt(e.target.value)}
+                      placeholder="Np. Bądź elastyczny. Jak zmieniam temat - idź za mną. Nie wracaj do sprintów/celów jeśli o nich nie mówię..."
+                      rows={5}
+                      className="text-xs font-mono"
+                    />
+                  </div>
+
                   <p className="text-xs text-muted-foreground">
-                    Tutaj możesz edytować bazowe prompty systemowe dla każdego trybu chatu. To jest "osobowość" AI.
+                    Poniżej możesz edytować bazowe prompty systemowe dla każdego trybu chatu. To jest "osobowość" AI.
                     Zmieniaj ostrożnie - to wpływa na całe zachowanie asystenta.
                   </p>
                   {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (

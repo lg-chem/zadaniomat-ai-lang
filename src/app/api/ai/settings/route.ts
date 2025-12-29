@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { DEFAULT_SYSTEM_PROMPTS } from "@/lib/ai-prompts"
+import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
 
 // GET - get AI settings (chat instructions per type)
 export async function GET(req: Request) {
@@ -50,6 +50,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       instructions,
       systemPrompts,
+      metaPrompt: knowledgeBase?.metaPrompt ?? DEFAULT_META_PROMPT,
       personalInfo: knowledgeBase?.personalInfo || "",
       companyInfo: knowledgeBase?.companyInfo || "",
     })
@@ -68,11 +69,12 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { workspace = "WORK", instructions, systemPrompts, personalInfo, companyInfo } = body
+    const { workspace = "WORK", instructions, systemPrompts, metaPrompt, personalInfo, companyInfo } = body
 
     const data: {
       chatInstructions?: string
       systemPrompts?: string
+      metaPrompt?: string
       personalInfo?: string
       companyInfo?: string
     } = {}
@@ -82,6 +84,9 @@ export async function POST(req: Request) {
     }
     if (systemPrompts) {
       data.systemPrompts = JSON.stringify(systemPrompts)
+    }
+    if (typeof metaPrompt === "string") {
+      data.metaPrompt = metaPrompt
     }
     if (typeof personalInfo === "string") {
       data.personalInfo = personalInfo

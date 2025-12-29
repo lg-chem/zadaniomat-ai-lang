@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma"
 import { generateAIResponse } from "@/lib/gemini"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
-import { DEFAULT_SYSTEM_PROMPTS } from "@/lib/ai-prompts"
+import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
 
 type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
@@ -40,7 +40,7 @@ async function getMinimalContext(userId: string) {
     }),
     prisma.aIKnowledgeBase.findUnique({
       where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
-      select: { chatInstructions: true, companyInfo: true, systemPrompts: true },
+      select: { chatInstructions: true, companyInfo: true, systemPrompts: true, metaPrompt: true },
     }),
   ])
 
@@ -181,6 +181,9 @@ async function fetchContext(userId: string, contextType: string, params?: string
 }
 
 function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getMinimalContext>>) {
+  // Get meta prompt (global instructions) - comes FIRST
+  const metaPrompt = context.knowledgeBase?.metaPrompt ?? DEFAULT_META_PROMPT
+
   // Parse custom instructions (additional per-mode instructions)
   let customInstructions = ""
   if (context.knowledgeBase?.chatInstructions) {
@@ -228,7 +231,8 @@ ODPOWIADAJ W JSON:
 
 ZAWSZE odpowiadaj TYLKO poprawnym JSON.`
 
-  return `${basePrompt}
+  // Meta prompt comes FIRST, then base prompt, then context, then JSON format
+  return `${metaPrompt}${basePrompt}
 ${baseContext}${jsonInstructions}`
 }
 

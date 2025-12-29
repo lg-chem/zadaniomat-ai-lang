@@ -522,6 +522,7 @@ model AIKnowledgeBase {
   companyInfo     String?       @db.Text // Company info for WORK workspace
   chatInstructions String?      @db.Text // Additional instructions per mode (JSON)
   systemPrompts   String?       @db.Text // Base system prompts per mode (JSON) - editable
+  metaPrompt      String?       @db.Text // Global instructions read BEFORE everything else
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
