@@ -6,7 +6,7 @@ import { generateAIResponse } from "@/lib/gemini"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
 
-type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals"
+type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
 interface ChatRequest {
   message: string
@@ -207,9 +207,36 @@ async function getUserContext(userId: string, mode: ChatMode) {
 
 function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getUserContext>>) {
   const contextJson = JSON.stringify(context, null, 2)
-  const customInstructions = context.knowledgeBase?.chatInstructions
-    ? `\n\nINSTRUKCJE OD UŻYTKOWNIKA:\n${context.knowledgeBase.chatInstructions}`
-    : ""
+
+  // Parse per-type instructions
+  let customInstructions = ""
+  if (context.knowledgeBase?.chatInstructions) {
+    try {
+      const instructionsObj = JSON.parse(context.knowledgeBase.chatInstructions)
+      const modeInstruction = instructionsObj[mode] || instructionsObj.general || ""
+      if (modeInstruction) {
+        customInstructions = `\n\nINSTRUKCJE OD UŻYTKOWNIKA:\n${modeInstruction}`
+      }
+    } catch {
+      // Legacy: single string for all types
+      customInstructions = `\n\nINSTRUKCJE OD UŻYTKOWNIKA:\n${context.knowledgeBase.chatInstructions}`
+    }
+  }
+
+  if (mode === "general") {
+    return `Jesteś pomocnym asystentem AI. Rozmawiasz po polsku. Pomagasz użytkownikowi w różnych sprawach - możesz odpowiadać na pytania, pomagać w planowaniu, analizować problemy, doradzać.${customInstructions}
+
+KONTEKST UŻYTKOWNIKA (możesz używać tych informacji jeśli to pomocne):
+${contextJson}
+
+Odpowiadaj w formacie JSON:
+{
+  "type": "message",
+  "message": "Twoja odpowiedź"
+}
+
+Zawsze odpowiadaj w formacie JSON.`
+  }
 
   if (mode === "sprint_goals") {
     return `Jesteś asystentem do planowania celów sprintowych. Rozmawiasz po polsku.${customInstructions}
