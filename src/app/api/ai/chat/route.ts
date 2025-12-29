@@ -64,10 +64,10 @@ async function getMinimalContext(userId: string) {
       `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
 
-  // Format important knowledge
+  // Format important knowledge - no character limit for important entries
   const knowledgeSummary = importantKnowledge.length > 0
     ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null }) =>
-        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}: ${k.content?.substring(0, 800) || ""}${(k.content?.length || 0) > 800 ? "..." : ""}`
+        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}: ${k.content || ""}`
       ).join("\n")
     : null
 
