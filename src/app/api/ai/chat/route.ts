@@ -47,14 +47,14 @@ async function getMinimalContext(userId: string) {
 
   const periodGoalsList = activePeriod?.goals
     .filter((g: { isCompleted: boolean }) => !g.isCompleted)
-    .map((g: { title: string; currentValue: number; targetValue: number; unit: string | null }) =>
-      `${g.title}: ${g.currentValue}/${g.targetValue} ${g.unit}`
+    .map((g: { title: string; currentValue: number; targetValue: number | null; unit: string | null }) =>
+      `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
 
   const sprintGoalsList = activeSprint?.goals
     .filter((g: { isCompleted: boolean }) => !g.isCompleted)
-    .map((g: { title: string; currentValue: number; targetValue: number; unit: string | null }) =>
-      `${g.title}: ${g.currentValue}/${g.targetValue} ${g.unit}`
+    .map((g: { title: string; currentValue: number; targetValue: number | null; unit: string | null }) =>
+      `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
 
   return {
