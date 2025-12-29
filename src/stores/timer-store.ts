@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useEffect, useState } from 'react'
 
 export type TimerMode = 'countdown' | 'stopwatch'
 
@@ -255,4 +256,28 @@ export const formatMinutes = (minutes: number): string => {
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`
+}
+
+// Hook to check if timer store is hydrated (prevents SSR mismatch)
+export const useTimerHydration = () => {
+  const [isHydrated, setIsHydrated] = useState(false)
+
+  useEffect(() => {
+    // Zustand persist rehydrates synchronously after mount
+    // We wait a tick to ensure localStorage state is loaded
+    const unsubFinishHydration = useTimerStore.persist.onFinishHydration(() => {
+      setIsHydrated(true)
+    })
+
+    // If already rehydrated (e.g., navigating between pages)
+    if (useTimerStore.persist.hasHydrated()) {
+      setIsHydrated(true)
+    }
+
+    return () => {
+      unsubFinishHydration()
+    }
+  }, [])
+
+  return isHydrated
 }

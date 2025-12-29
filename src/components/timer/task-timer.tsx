@@ -29,16 +29,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
 
   const isActive = activeTaskId === taskId
 
-  // Timer tick
-  useEffect(() => {
-    if (!isRunning || isPaused) return
-
-    const interval = setInterval(() => {
-      tick()
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [isRunning, isPaused, tick])
+  // Note: Timer tick is handled by FloatingTimer only to avoid double counting
 
   const handleStart = () => {
     if (isRunning && activeTaskId !== taskId) {

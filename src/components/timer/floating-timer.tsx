@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useTimerStore, formatTime } from "@/stores/timer-store"
+import { useTimerStore, formatTime, useTimerHydration } from "@/stores/timer-store"
 
 interface FloatingTimerProps {
   onComplete?: (taskId: string, duration: number) => void
@@ -21,6 +21,9 @@ interface FloatingTimerProps {
 }
 
 export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
+  // Wait for hydration to prevent timer flash on page load
+  const isHydrated = useTimerHydration()
+
   const {
     isRunning,
     isPaused,
@@ -41,16 +44,16 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     dismissNotification,
   } = useTimerStore()
 
-  // Timer tick effect
+  // Timer tick effect - only tick when running and not paused
   useEffect(() => {
-    if (!isRunning) return
+    if (!isRunning || isPaused) return
 
     const interval = setInterval(() => {
       tick()
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [isRunning, tick])
+  }, [isRunning, isPaused, tick])
 
   // Handle stop
   const handleStop = () => {
@@ -74,7 +77,8 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     dismissNotification()
   }
 
-  if (!isRunning) return null
+  // Don't render until hydration is complete and timer is actually running
+  if (!isHydrated || !isRunning) return null
 
   // Calculate progress percentage
   const progress = mode === 'countdown' && plannedSeconds > 0
