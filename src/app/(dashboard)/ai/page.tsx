@@ -220,7 +220,9 @@ export default function AIPage() {
             }
           }
         }
-        flatten(data.categories || [])
+        // Flatten both strategic and custom categories
+        flatten(data.strategicCategories || [])
+        flatten(data.customCategories || [])
         setKnowledgeCategories(flatCats)
       }
     } catch (error) {
