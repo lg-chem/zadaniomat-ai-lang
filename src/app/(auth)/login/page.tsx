@@ -4,6 +4,7 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,11 +14,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [isPendingApproval, setIsPendingApproval] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setIsPendingApproval(false)
     setIsLoading(true)
 
     try {
@@ -28,7 +31,11 @@ export default function LoginPage() {
       })
 
       if (result?.error) {
-        setError(result.error)
+        if (result.error === "PENDING_APPROVAL") {
+          setIsPendingApproval(true)
+        } else {
+          setError(result.error)
+        }
       } else {
         router.push("/")
         router.refresh()
@@ -38,6 +45,39 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isPendingApproval) {
+    return (
+      <Card>
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
+            <Clock className="h-6 w-6 text-amber-600" />
+          </div>
+          <CardTitle className="text-2xl font-bold">Oczekiwanie na zatwierdzenie</CardTitle>
+          <CardDescription>
+            Twoje konto zostało zarejestrowane, ale wymaga zatwierdzenia przez administratora.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-center text-sm text-muted-foreground">
+          <p>Otrzymasz dostęp do aplikacji po zatwierdzeniu konta.</p>
+          <p className="mt-2">Skontaktuj się z administratorem jeśli potrzebujesz szybszego dostępu.</p>
+        </CardContent>
+        <CardFooter>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              setIsPendingApproval(false)
+              setEmail("")
+              setPassword("")
+            }}
+          >
+            Powrót do logowania
+          </Button>
+        </CardFooter>
+      </Card>
+    )
   }
 
   return (

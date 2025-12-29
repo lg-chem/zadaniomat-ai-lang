@@ -22,6 +22,7 @@ import {
   Dumbbell,
   TrendingUp,
   BookOpen,
+  ShieldCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -127,6 +128,22 @@ export function SidebarContent() {
             {item.label}
           </Link>
         ))}
+        {/* Admin link - only visible for admins */}
+        {(session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN") && (
+          <Link
+            href="/admin"
+            prefetch={false}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              isActive("/admin")
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            <ShieldCheck className="h-5 w-5" />
+            Admin
+          </Link>
+        )}
       </nav>
 
       <Separator />

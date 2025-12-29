@@ -6,11 +6,13 @@ declare module "next-auth" {
     user: {
       id: string
       role: string
+      isApproved: boolean
     } & DefaultSession["user"]
   }
 
   interface User extends DefaultUser {
     role: string
+    isApproved: boolean
   }
 }
 
@@ -18,5 +20,6 @@ declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
     id: string
     role: string
+    isApproved: boolean
   }
 }

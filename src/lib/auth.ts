@@ -36,12 +36,19 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Nieprawidłowe hasło")
         }
 
+        // Check if user is approved (admins are always approved)
+        const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN"
+        if (!user.isApproved && !isAdmin) {
+          throw new Error("PENDING_APPROVAL")
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
           image: user.image,
+          isApproved: user.isApproved,
         }
       },
     }),
@@ -51,6 +58,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.role = user.role
+        token.isApproved = user.isApproved
       }
       return token
     },
@@ -58,6 +66,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        session.user.isApproved = token.isApproved as boolean
       }
       return session
     },
