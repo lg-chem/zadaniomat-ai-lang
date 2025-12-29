@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
+import { Skeleton, SkeletonStats, SkeletonTable } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -381,14 +382,43 @@ export default function SchedulePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-10 w-10" />
+            <Skeleton className="h-10 w-20" />
+            <Skeleton className="h-10 w-48" />
+            <Skeleton className="h-10 w-10" />
+          </div>
+        </div>
+
+        {/* Stats skeleton */}
+        <Card>
+          <CardContent className="py-4">
+            <SkeletonStats />
+          </CardContent>
+        </Card>
+
+        {/* Tasks skeleton */}
+        <Card>
+          <CardHeader className="pb-3">
+            <Skeleton className="h-6 w-32" />
+          </CardHeader>
+          <CardContent>
+            <SkeletonTable rows={5} />
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header with date navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>

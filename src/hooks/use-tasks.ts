@@ -1,4 +1,5 @@
 import useSWR from 'swr'
+import { useCallback } from 'react'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
 export type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
@@ -44,8 +45,59 @@ export function useTasks(options: UseTasksOptions = {}) {
   if (options.from) params.append('from', options.from)
   if (options.to) params.append('to', options.to)
 
-  const { data, error, isLoading, mutate } = useSWR<Task[]>(
-    `/api/tasks?${params.toString()}`
+  const url = `/api/tasks?${params.toString()}`
+
+  const { data, error, isLoading, mutate } = useSWR<Task[]>(url)
+
+  // Optimistic update helper
+  const optimisticUpdate = useCallback(
+    async (
+      taskId: string,
+      updates: Partial<Task>,
+      serverUpdate: () => Promise<void>
+    ) => {
+      // Get current data
+      const currentTasks = data ?? []
+
+      // Optimistically update the UI
+      const optimisticData = currentTasks.map((task) =>
+        task.id === taskId ? { ...task, ...updates } : task
+      )
+
+      // Update the cache optimistically
+      await mutate(optimisticData, false)
+
+      try {
+        // Perform the actual update
+        await serverUpdate()
+        // Revalidate to ensure consistency
+        mutate()
+      } catch (error) {
+        // Rollback on error
+        mutate(currentTasks, false)
+        throw error
+      }
+    },
+    [data, mutate]
+  )
+
+  // Optimistic delete helper
+  const optimisticDelete = useCallback(
+    async (taskId: string, serverDelete: () => Promise<void>) => {
+      const currentTasks = data ?? []
+      const optimisticData = currentTasks.filter((task) => task.id !== taskId)
+
+      await mutate(optimisticData, false)
+
+      try {
+        await serverDelete()
+        mutate()
+      } catch (error) {
+        mutate(currentTasks, false)
+        throw error
+      }
+    },
+    [data, mutate]
   )
 
   return {
@@ -53,5 +105,7 @@ export function useTasks(options: UseTasksOptions = {}) {
     isLoading,
     isError: error,
     mutate,
+    optimisticUpdate,
+    optimisticDelete,
   }
 }

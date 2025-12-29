@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { Skeleton, SkeletonStats, SkeletonTable } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -262,14 +263,38 @@ export default function BacklogPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Ładowanie...</p>
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <Skeleton className="h-8 w-32 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-40" />
+        </div>
+
+        {/* Stats skeleton */}
+        <Card>
+          <CardContent className="py-4">
+            <SkeletonStats />
+          </CardContent>
+        </Card>
+
+        {/* List skeleton */}
+        <Card>
+          <CardHeader className="pb-3">
+            <Skeleton className="h-6 w-32" />
+          </CardHeader>
+          <CardContent>
+            <SkeletonTable rows={5} />
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
