@@ -82,9 +82,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    if (category.isDefault) {
+    // Protect strategic categories (linked to main categories)
+    if (category.linkedCategoryId) {
       return NextResponse.json(
-        { error: "Nie można usunąć domyślnej kategorii" },
+        { error: "Nie można usunąć kategorii strategicznej" },
         { status: 400 }
       )
     }
