@@ -110,11 +110,14 @@ export default function SchedulePage() {
     recurrenceRule: string
   }>>({})
 
+  // Hidden templates for the day (user dismissed them)
+  const [hiddenTemplates, setHiddenTemplates] = useState<Set<string>>(new Set())
+
   // Inline edit task state
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
 
-  // Generate recurring tasks on date change
+  // Generate recurring tasks on date change and reset hidden templates
   useEffect(() => {
     const generateRecurringTasks = async () => {
       try {
@@ -130,6 +133,9 @@ export default function SchedulePage() {
       }
     }
     generateRecurringTasks()
+    // Reset hidden templates when date changes
+    setHiddenTemplates(new Set())
+    setTemplateInputs({})
   }, [dateString, workspace, mutateTasks])
 
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1))
@@ -363,9 +369,14 @@ export default function SchedulePage() {
   const totalActual = tasks.reduce((sum, t) => sum + t.actualMinutes, 0)
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
 
-  // Get tasks by category for templates
-  const getTasksForCategory = (categoryId: string) => {
-    return tasks.filter((t) => t.categoryId === categoryId)
+  // Get strategic categories that need template rows (no tasks yet and not hidden)
+  const categoriesNeedingTemplates = strategicCategories.filter(
+    (c) => !tasks.some((t) => t.categoryId === c.id) && !hiddenTemplates.has(c.id)
+  )
+
+  // Hide a template row
+  const handleHideTemplate = (categoryId: string) => {
+    setHiddenTemplates((prev) => new Set([...prev, categoryId]))
   }
 
   if (isLoading) {
@@ -436,96 +447,6 @@ export default function SchedulePage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Strategic Category Templates */}
-      {strategicCategories.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base md:text-lg flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Kategorie strategiczne
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {strategicCategories.map((category) => {
-                const categoryTasks = getTasksForCategory(category.id)
-                const input = templateInputs[category.id] || { title: "", plannedMinutes: "25", recurrenceRule: "none" }
-
-                return (
-                  <div key={category.id} className="border rounded-lg p-3 bg-muted/20">
-                    {/* Category header */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <div
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: category.color }}
-                      />
-                      <span className="font-medium text-sm">{category.name}</span>
-                      {categoryTasks.length > 0 && (
-                        <Badge variant="secondary" className="text-[10px]">{categoryTasks.length}</Badge>
-                      )}
-                    </div>
-
-                    {/* Existing tasks for this category */}
-                    {categoryTasks.length > 0 && (
-                      <div className="space-y-1 mb-2">
-                        {categoryTasks.map((task) => (
-                          <div
-                            key={task.id}
-                            className={`text-xs p-1.5 rounded flex items-center justify-between ${
-                              task.status === "COMPLETED"
-                                ? "bg-green-50 text-green-700 line-through"
-                                : "bg-background"
-                            }`}
-                          >
-                            <span className="truncate">{task.title}</span>
-                            <Badge className={`${STATUS_COLORS[task.status]} text-[9px] ml-1`}>
-                              {task.plannedMinutes}m
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Input row */}
-                    <div className="flex gap-1">
-                      <Input
-                        placeholder="Nazwa zadania..."
-                        value={input.title}
-                        onChange={(e) => handleTemplateInputChange(category.id, "title", e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleCreateFromTemplate(category.id)
-                          }
-                        }}
-                        className="h-7 text-xs flex-1"
-                      />
-                      <Input
-                        type="number"
-                        min="5"
-                        step="5"
-                        placeholder="min"
-                        value={input.plannedMinutes}
-                        onChange={(e) => handleTemplateInputChange(category.id, "plannedMinutes", e.target.value)}
-                        className="h-7 text-xs w-14 text-center"
-                      />
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-7 px-2"
-                        onClick={() => handleCreateFromTemplate(category.id)}
-                        disabled={!input.title.trim()}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Sprint Goals - WORK only, grouped by category */}
       {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (() => {
@@ -719,6 +640,95 @@ export default function SchedulePage() {
               </div>
               <div>Akcje</div>
             </div>
+
+            {/* Template rows for strategic categories without tasks */}
+            {categoriesNeedingTemplates.map((category) => {
+              const input = templateInputs[category.id] || { title: "", plannedMinutes: "25", recurrenceRule: "none" }
+              return (
+                <div
+                  key={`template-${category.id}`}
+                  className="grid grid-cols-[160px_1fr_70px_100px_180px] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
+                >
+                  {/* Category - fixed */}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: category.color }}
+                    />
+                    <span className="text-xs font-medium truncate">{category.name}</span>
+                  </div>
+
+                  {/* Title Input */}
+                  <div>
+                    <Input
+                      placeholder="Wpisz zadanie..."
+                      value={input.title}
+                      onChange={(e) => handleTemplateInputChange(category.id, "title", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && input.title.trim()) {
+                          handleCreateFromTemplate(category.id)
+                        }
+                      }}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+
+                  {/* Time */}
+                  <div>
+                    <Input
+                      type="number"
+                      min="5"
+                      step="5"
+                      value={input.plannedMinutes}
+                      onChange={(e) => handleTemplateInputChange(category.id, "plannedMinutes", e.target.value)}
+                      className="h-8 text-center text-xs"
+                    />
+                  </div>
+
+                  {/* Recurrence */}
+                  <div>
+                    <Select
+                      value={input.recurrenceRule}
+                      onValueChange={(value) => handleTemplateInputChange(category.id, "recurrenceRule", value)}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {RECURRENCE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => handleCreateFromTemplate(category.id)}
+                      disabled={!input.title.trim()}
+                      title="Dodaj zadanie"
+                    >
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => handleHideTemplate(category.id)}
+                      title="Ukryj szablon"
+                    >
+                      <X className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
 
             {/* Existing Tasks */}
             {tasks.map((task) => (
@@ -1016,11 +1026,11 @@ export default function SchedulePage() {
           </div>
 
           {/* Empty state */}
-          {tasks.length === 0 && !isAddingTask && (
+          {tasks.length === 0 && categoriesNeedingTemplates.length === 0 && !isAddingTask && (
             <div className="text-center py-8 text-muted-foreground">
               <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Brak zadań na ten dzień</p>
-              <p className="text-sm">Kliknij "Dodaj zadanie" lub wygeneruj szablony</p>
+              <p className="text-sm">Kliknij "Dodaj zadanie" aby zaplanować dzień</p>
             </div>
           )}
         </CardContent>
