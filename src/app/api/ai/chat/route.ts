@@ -194,11 +194,13 @@ function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getM
   }
 
   // Get base system prompt - custom or default
+  // If user explicitly set empty string, use empty (not default)
   let basePrompt = DEFAULT_SYSTEM_PROMPTS[mode] || DEFAULT_SYSTEM_PROMPTS.general
   if (context.knowledgeBase?.systemPrompts) {
     try {
       const customPrompts = JSON.parse(context.knowledgeBase.systemPrompts)
-      if (customPrompts[mode]) {
+      // Check if key exists (even if empty string)
+      if (mode in customPrompts) {
         basePrompt = customPrompts[mode]
       }
     } catch {
