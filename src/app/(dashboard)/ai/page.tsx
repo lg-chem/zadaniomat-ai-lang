@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent, useCallback } from "react"
+import { mutate } from "swr"
 import { format, formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
 import ReactMarkdown from "react-markdown"
@@ -631,6 +632,8 @@ export default function AIPage() {
       })
       if (res.ok) {
         setKnowledgeStep("saved")
+        // Invalidate knowledge cache so the knowledge page shows new entry immediately
+        mutate((key) => typeof key === "string" && key.startsWith("/api/knowledge"))
         setTimeout(() => {
           setKnowledgeStep("idle")
           setKnowledgeForm({ title: "", content: "", categoryId: "" })
