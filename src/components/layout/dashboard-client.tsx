@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
+import { mutate } from "swr"
 import { FloatingTimer } from "@/components/timer/floating-timer"
 import { BacklogQuickAddBubble } from "@/components/backlog/quick-add-bubble"
 import { usePrefetchData } from "@/hooks/use-prefetch"
@@ -40,6 +41,9 @@ export function DashboardClient({ children }: DashboardClientProps) {
           }),
         })
       }
+
+      // Refresh tasks data so UI updates immediately
+      mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
     } catch (error) {
       console.error("Error completing task:", error)
     }
@@ -71,6 +75,9 @@ export function DashboardClient({ children }: DashboardClientProps) {
           }),
         })
       }
+
+      // Refresh tasks data so UI updates immediately
+      mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
     } catch (error) {
       console.error("Error saving time:", error)
     }
