@@ -632,8 +632,12 @@ export default function AIPage() {
       })
       if (res.ok) {
         setKnowledgeStep("saved")
-        // Invalidate knowledge cache so the knowledge page shows new entry immediately
-        mutate((key) => typeof key === "string" && key.startsWith("/api/knowledge"))
+        // Invalidate knowledge cache so the knowledge page shows new entry and category counts immediately
+        mutate(
+          (key) => typeof key === "string" && key.startsWith("/api/knowledge"),
+          undefined,
+          { revalidate: true }
+        )
         setTimeout(() => {
           setKnowledgeStep("idle")
           setKnowledgeForm({ title: "", content: "", categoryId: "" })
