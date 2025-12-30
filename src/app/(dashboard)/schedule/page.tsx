@@ -92,6 +92,15 @@ export default function SchedulePage() {
   const { workspace } = useWorkspaceStore()
   const timerStore = useTimerStore()
 
+  // Helper to get real-time actual minutes for a task (includes running timer)
+  const getActualMinutes = (task: Task) => {
+    if (timerStore.taskId === task.id && timerStore.isRunning) {
+      // Timer is running for this task - show real-time value
+      return (task.actualMinutes || 0) + Math.floor(timerStore.elapsedSeconds / 60)
+    }
+    return task.actualMinutes || 0
+  }
+
   const [selectedDate, setSelectedDate] = useState(new Date())
   const dateString = format(selectedDate, "yyyy-MM-dd")
 
@@ -572,7 +581,7 @@ export default function SchedulePage() {
 
   // Calculate stats
   const totalPlanned = tasks.reduce((sum, t) => sum + (t.plannedMinutes || 0), 0)
-  const totalActual = tasks.reduce((sum, t) => sum + t.actualMinutes, 0)
+  const totalActual = tasks.reduce((sum, t) => sum + getActualMinutes(t), 0)
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
 
   // Get strategic categories that need template rows (no tasks yet and not hidden)
@@ -1283,7 +1292,7 @@ export default function SchedulePage() {
                       {editingActualTimeTaskId === task.id ? (
                         <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
                       ) : (
-                        <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{task.actualMinutes || 0}</div>
+                        <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
                       )}
                     </div>
                     {/* Actions - bigger buttons */}
@@ -1363,7 +1372,7 @@ export default function SchedulePage() {
                       {editingActualTimeTaskId === task.id ? (
                         <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
                       ) : (
-                        <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{task.actualMinutes || 0}</div>
+                        <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
                       )}
                     </div>
                     {/* Actions - bigger buttons */}
@@ -1419,7 +1428,7 @@ export default function SchedulePage() {
                       </div>
                     </div>
                     <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
-                    <div className="text-center text-xs text-green-600">{task.actualMinutes || 0}</div>
+                    <div className="text-center text-xs text-green-600">{getActualMinutes(task)}</div>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "NEW")}><ArrowRight className="h-4 w-4 rotate-180" /></Button>
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -1456,7 +1465,7 @@ export default function SchedulePage() {
                       </div>
                     </div>
                     <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
-                    <div className="text-center text-xs text-muted-foreground">{task.actualMinutes || 0}</div>
+                    <div className="text-center text-xs text-muted-foreground">{getActualMinutes(task)}</div>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "NEW")}><ArrowRight className="h-4 w-4 rotate-180" /></Button>
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
