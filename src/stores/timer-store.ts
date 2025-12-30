@@ -282,14 +282,19 @@ export const useTimerStore = create<TimerState>()(
       },
 
       tick: () => {
-        const { isRunning, isPaused, elapsedSeconds, remainingSeconds, mode, isTimeUp, taskTitle } = get()
+        const { isRunning, isPaused, sessionStartTime, accumulatedSeconds, remainingSeconds, mode, isTimeUp, taskTitle, plannedSeconds } = get()
 
-        if (!isRunning || isPaused) return
+        if (!isRunning || isPaused || !sessionStartTime) return
 
-        const newElapsedSeconds = elapsedSeconds + 1
+        // Calculate real elapsed time based on wall clock (not setInterval ticks)
+        const now = new Date()
+        const sessionSeconds = Math.floor((now.getTime() - new Date(sessionStartTime).getTime()) / 1000)
+        const newElapsedSeconds = accumulatedSeconds + sessionSeconds
 
         if (mode === 'countdown') {
-          const newRemainingSeconds = Math.max(0, remainingSeconds - 1)
+          // Calculate remaining based on planned time minus elapsed
+          const totalElapsed = newElapsedSeconds
+          const newRemainingSeconds = Math.max(0, plannedSeconds - totalElapsed)
 
           // Sprawdź czy czas się skończył
           if (newRemainingSeconds === 0 && !isTimeUp) {

@@ -55,7 +55,18 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
       tick()
     }, 1000)
 
-    return () => clearInterval(interval)
+    // Immediately sync when tab becomes visible again (browser throttles setInterval in background)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        tick()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [isRunning, isPaused, tick])
 
   // Handle stop
