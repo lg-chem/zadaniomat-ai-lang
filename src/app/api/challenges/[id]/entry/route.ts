@@ -2,6 +2,46 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { startOfWeek, differenceInWeeks } from "date-fns"
+
+// Calculate completed weeks for WEEKLY_HABIT challenges
+// Returns the number of weeks where user completed >= weeklyTarget entries
+function calculateCompletedWeeks(
+  entries: { date: Date; value: number }[],
+  startDate: Date,
+  weeklyTarget: number
+): number {
+  if (entries.length === 0 || weeklyTarget <= 0) return 0
+
+  // Group entries by week number (relative to challenge start)
+  const weekMap = new Map<number, number>()
+
+  const challengeStartWeek = startOfWeek(startDate, { weekStartsOn: 1 }) // Monday
+
+  for (const entry of entries) {
+    const entryDate = new Date(entry.date)
+    const weekNumber = differenceInWeeks(
+      startOfWeek(entryDate, { weekStartsOn: 1 }),
+      challengeStartWeek
+    )
+
+    // Only count weeks that are >= 0 (after or at start)
+    if (weekNumber >= 0) {
+      const currentCount = weekMap.get(weekNumber) || 0
+      weekMap.set(weekNumber, currentCount + entry.value)
+    }
+  }
+
+  // Count weeks where entries >= weeklyTarget
+  let completedWeeks = 0
+  for (const count of weekMap.values()) {
+    if (count >= weeklyTarget) {
+      completedWeeks++
+    }
+  }
+
+  return completedWeeks
+}
 
 export async function POST(
   req: Request,
@@ -43,8 +83,21 @@ export async function POST(
           where: { id: existingEntry.id },
         })
 
-        // Update challenge progress (decrease by entry value)
-        const newCurrentValue = Math.max(0, challenge.currentValue - existingEntry.value)
+        // Calculate new progress
+        let newCurrentValue: number
+        if (challenge.challengeType === "WEEKLY_HABIT" && challenge.weeklyTarget) {
+          // For WEEKLY_HABIT: recalculate completed weeks
+          const remainingEntries = challenge.entries.filter(e => e.id !== existingEntry.id)
+          newCurrentValue = calculateCompletedWeeks(
+            remainingEntries,
+            challenge.startDate,
+            challenge.weeklyTarget
+          )
+        } else {
+          // For other types: decrease by entry value
+          newCurrentValue = Math.max(0, challenge.currentValue - existingEntry.value)
+        }
+
         await prisma.challenge.update({
           where: { id },
           data: {
@@ -70,8 +123,21 @@ export async function POST(
       },
     })
 
-    // Update challenge progress
-    const newCurrentValue = challenge.currentValue + parseFloat(value)
+    // Calculate new progress
+    let newCurrentValue: number
+    if (challenge.challengeType === "WEEKLY_HABIT" && challenge.weeklyTarget) {
+      // For WEEKLY_HABIT: recalculate completed weeks including new entry
+      const allEntries = [...challenge.entries, { date: entryDate, value: parseFloat(value) }]
+      newCurrentValue = calculateCompletedWeeks(
+        allEntries,
+        challenge.startDate,
+        challenge.weeklyTarget
+      )
+    } else {
+      // For other types: add entry value
+      newCurrentValue = challenge.currentValue + parseFloat(value)
+    }
+
     // Don't auto-complete for NUMERIC - user might want to keep tracking
     // Only auto-complete for WEEKLY_HABIT and MONTHLY_GOAL when target reached
     const shouldAutoComplete = challenge.challengeType !== "NUMERIC" && newCurrentValue >= challenge.targetValue
@@ -126,6 +192,7 @@ export async function PATCH(
 
     const challenge = await prisma.challenge.findFirst({
       where: { id, userId: session.user.id },
+      include: { entries: true },
     })
 
     if (!challenge) {
@@ -153,11 +220,27 @@ export async function PATCH(
       },
     })
 
-    // Update challenge current value
+    // Calculate new progress
+    let newCurrentValue: number
+    if (challenge.challengeType === "WEEKLY_HABIT" && challenge.weeklyTarget) {
+      // For WEEKLY_HABIT: recalculate completed weeks with updated entry value
+      const updatedEntries = challenge.entries.map(e =>
+        e.id === entryId ? { ...e, value: newValue } : e
+      )
+      newCurrentValue = calculateCompletedWeeks(
+        updatedEntries,
+        challenge.startDate,
+        challenge.weeklyTarget
+      )
+    } else {
+      // For other types: add difference
+      newCurrentValue = challenge.currentValue + valueDiff
+    }
+
     await prisma.challenge.update({
       where: { id },
       data: {
-        currentValue: challenge.currentValue + valueDiff,
+        currentValue: newCurrentValue,
       },
     })
 
@@ -189,6 +272,7 @@ export async function DELETE(
 
     const challenge = await prisma.challenge.findFirst({
       where: { id, userId: session.user.id },
+      include: { entries: true },
     })
 
     if (!challenge) {
@@ -208,11 +292,25 @@ export async function DELETE(
       where: { id: entryId },
     })
 
-    // Update challenge current value
+    // Calculate new progress
+    let newCurrentValue: number
+    if (challenge.challengeType === "WEEKLY_HABIT" && challenge.weeklyTarget) {
+      // For WEEKLY_HABIT: recalculate completed weeks without deleted entry
+      const remainingEntries = challenge.entries.filter(e => e.id !== entryId)
+      newCurrentValue = calculateCompletedWeeks(
+        remainingEntries,
+        challenge.startDate,
+        challenge.weeklyTarget
+      )
+    } else {
+      // For other types: decrease by entry value
+      newCurrentValue = Math.max(0, challenge.currentValue - entry.value)
+    }
+
     await prisma.challenge.update({
       where: { id },
       data: {
-        currentValue: Math.max(0, challenge.currentValue - entry.value),
+        currentValue: newCurrentValue,
         isCompleted: false,
       },
     })
