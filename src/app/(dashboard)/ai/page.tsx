@@ -633,8 +633,10 @@ export default function AIPage() {
       if (res.ok) {
         setKnowledgeStep("saved")
         // Invalidate knowledge cache so the knowledge page shows new entry and category counts immediately
+        // Use specific keys to ensure proper revalidation
+        mutate("/api/knowledge/categories?workspace=WORK")
         mutate(
-          (key) => typeof key === "string" && key.startsWith("/api/knowledge"),
+          (key) => typeof key === "string" && key.includes("/api/knowledge/entries"),
           undefined,
           { revalidate: true }
         )
