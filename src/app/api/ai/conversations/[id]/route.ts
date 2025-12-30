@@ -67,8 +67,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
 
-    // Add messages if provided
+    // Replace messages if provided (delete old, create new to avoid duplicates)
     if (messages && Array.isArray(messages)) {
+      // First delete all existing messages
+      await prisma.aIMessage.deleteMany({
+        where: { conversationId: id },
+      })
+      // Then create the new messages
       await prisma.aIMessage.createMany({
         data: messages.map((m: { role: string; content: string }) => ({
           conversationId: id,

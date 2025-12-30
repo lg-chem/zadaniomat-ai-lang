@@ -257,6 +257,7 @@ export default function AIPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const initialLoadDoneRef = useRef(false)
 
   useEffect(() => {
     fetchCategories()
@@ -266,10 +267,8 @@ export default function AIPage() {
     fetchSettings()
   }, [])
 
-  useEffect(() => {
-    setMessages([])
-    setCurrentConversationId(null)
-  }, [mode])
+  // Mode change is now handled explicitly in the UI when user clicks on a mode button
+  // This prevents clearing messages when loading an existing conversation
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -372,6 +371,14 @@ export default function AIPage() {
       console.error("Error loading conversation:", error)
     }
   }
+
+  // Auto-load the most recent conversation on first page load
+  useEffect(() => {
+    if (!initialLoadDoneRef.current && conversations.length > 0) {
+      initialLoadDoneRef.current = true
+      loadConversation(conversations[0].id)
+    }
+  }, [conversations])
 
   const deleteConversation = async (convId: string) => {
     try {
@@ -723,7 +730,12 @@ export default function AIPage() {
         {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (
           <button
             key={key}
-            onClick={() => setMode(key)}
+            onClick={() => {
+              if (mode !== key) {
+                setMode(key)
+                startNewConversation()
+              }
+            }}
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
               mode === key
