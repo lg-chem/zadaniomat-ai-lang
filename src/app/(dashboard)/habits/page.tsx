@@ -20,6 +20,7 @@ import {
   Trash2,
   X,
   Clock,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useHabits } from "@/hooks/use-habits"
 
 type HabitFrequency = "DAILY" | "WEEKLY" | "MONTHLY"
@@ -82,6 +84,7 @@ export default function HabitsPage() {
     color: COLORS[0],
     frequency: "DAILY" as HabitFrequency,
     defaultMinutes: "",
+    isPublic: false,
   })
   const newHabitRef = useRef<HTMLInputElement>(null)
 
@@ -106,7 +109,7 @@ export default function HabitsPage() {
       })
       if (res.ok) {
         mutateHabits()
-        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
+        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
         setIsAddingHabit(false)
       }
     } catch (error) {
@@ -176,7 +179,7 @@ export default function HabitsPage() {
       setIsAddingHabit(false)
       setEditingTime(null)
       setTimeValue("")
-      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
+      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
     }
   }
 
@@ -495,6 +498,17 @@ export default function HabitsPage() {
                       </Button>
                     </div>
 
+                    {/* Public toggle */}
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span>Udostępnij znajomym</span>
+                      </div>
+                      <Switch
+                        checked={newHabit.isPublic}
+                        onCheckedChange={(checked) => setNewHabit({ ...newHabit, isPublic: checked })}
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -694,6 +708,14 @@ export default function HabitsPage() {
                     />
                   </div>
 
+                  {/* Public toggle */}
+                  <div className="flex items-center gap-1.5 ml-2" title="Udostępnij znajomym">
+                    <Users className={`h-4 w-4 ${newHabit.isPublic ? "text-primary" : "text-muted-foreground"}`} />
+                    <Switch
+                      checked={newHabit.isPublic}
+                      onCheckedChange={(checked) => setNewHabit({ ...newHabit, isPublic: checked })}
+                    />
+                  </div>
                 </div>
 
                 {/* Empty cells for days */}
@@ -720,7 +742,7 @@ export default function HabitsPage() {
                     className="h-7 w-7"
                     onClick={() => {
                       setIsAddingHabit(false)
-                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "" })
+                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
                     }}
                   >
                     <X className="h-3.5 w-3.5" />
