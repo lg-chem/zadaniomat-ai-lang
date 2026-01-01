@@ -295,6 +295,7 @@ model Habit {
   currentStreak Int           @default(0)
   longestStreak Int           @default(0)
   isActive      Boolean       @default(true)
+  isPublic      Boolean       @default(false) // Share with friends
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -342,6 +343,7 @@ model Challenge {
   unit          String         // e.g., "days", "km", "sessions"
   weeklyTarget  Int?           // For WEEKLY_HABIT: number of days per week
   isCompleted   Boolean        @default(false)
+  isPublic      Boolean        @default(false) // Share with friends
   color         String         @default("#f59e0b")
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -611,6 +613,7 @@ model SportActivity {
   duration    Int?     // Duration in minutes
   notes       String?
   fromSteps   Boolean  @default(false) // If copied from steps
+  isPublic    Boolean  @default(false) // Share with friends
   createdAt   DateTime @default(now())
 
   // Relations

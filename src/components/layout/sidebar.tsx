@@ -23,6 +23,7 @@ import {
   TrendingUp,
   BookOpen,
   ShieldCheck,
+  Users,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -49,6 +50,7 @@ const privateNavItems = [
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
   { href: "/sport", label: "Sport", icon: Dumbbell },
+  { href: "/friends", label: "Znajomi", icon: Users },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },
 ]
 
