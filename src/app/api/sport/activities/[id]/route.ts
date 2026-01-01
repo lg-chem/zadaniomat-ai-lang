@@ -24,12 +24,12 @@ export async function PATCH(
       return NextResponse.json({ error: "Activity not found" }, { status: 404 })
     }
 
-    const { duration, notes, isPublic } = body
+    const { duration, notes } = body
     const updateData: Record<string, unknown> = {}
 
     if (duration !== undefined) updateData.duration = duration
     if (notes !== undefined) updateData.notes = notes
-    if (isPublic !== undefined) updateData.isPublic = isPublic
+    // if (isPublic !== undefined) updateData.isPublic = isPublic // TODO: uncomment after running migration
 
     const activity = await prisma.sportActivity.update({
       where: { id },

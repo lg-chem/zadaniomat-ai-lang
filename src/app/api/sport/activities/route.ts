@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { typeId, date, duration, notes, bodyParts, fromSteps, isPublic } = body
+    const { typeId, date, duration, notes, bodyParts, fromSteps } = body
 
     if (!typeId || !date) {
       return NextResponse.json({ error: "Typ i data są wymagane" }, { status: 400 })
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
         duration,
         notes,
         fromSteps: fromSteps || false,
-        isPublic: isPublic || false,
+        // isPublic: isPublic || false, // TODO: uncomment after running migration
         userId: session.user.id,
         bodyParts: bodyParts?.length > 0
           ? {

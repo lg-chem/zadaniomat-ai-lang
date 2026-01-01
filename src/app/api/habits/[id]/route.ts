@@ -24,7 +24,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Habit not found" }, { status: 404 })
     }
 
-    const { name, description, frequency, targetCount, color, icon, categoryId, isActive, currentStreak, longestStreak, isPublic } = body
+    const { name, description, frequency, targetCount, color, icon, categoryId, isActive, currentStreak, longestStreak } = body
 
     const updateData: Record<string, unknown> = {}
     if (name !== undefined) updateData.name = name
@@ -37,7 +37,7 @@ export async function PATCH(
     if (isActive !== undefined) updateData.isActive = isActive
     if (currentStreak !== undefined) updateData.currentStreak = currentStreak
     if (longestStreak !== undefined) updateData.longestStreak = longestStreak
-    if (isPublic !== undefined) updateData.isPublic = isPublic
+    // if (isPublic !== undefined) updateData.isPublic = isPublic // TODO: uncomment after running migration
 
     const habit = await prisma.habit.update({
       where: { id },

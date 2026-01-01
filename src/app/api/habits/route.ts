@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, frequency, targetCount, defaultMinutes, color, icon, categoryId, isPublic } = body
+    const { name, description, frequency, targetCount, defaultMinutes, color, icon, categoryId } = body
 
     if (!name) {
       return NextResponse.json({ error: "Nazwa jest wymagana" }, { status: 400 })
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
         color: color || "#10b981",
         icon,
         categoryId,
-        isPublic: isPublic || false,
+        // isPublic: isPublic || false, // TODO: uncomment after running migration
         userId: session.user.id,
       },
       include: {

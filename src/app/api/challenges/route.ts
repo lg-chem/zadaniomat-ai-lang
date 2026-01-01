@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, startDate, endDate, targetValue, unit, color, challengeType, weeklyTarget, isPublic } = body
+    const { name, description, startDate, endDate, targetValue, unit, color, challengeType, weeklyTarget } = body
 
     if (!name || !startDate || !endDate || !targetValue || !unit) {
       return NextResponse.json({ error: "Wymagane pola: nazwa, daty, cel, jednostka" }, { status: 400 })
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
         unit,
         weeklyTarget: weeklyTarget ? parseInt(weeklyTarget) : null,
         color: color || "#f59e0b",
-        isPublic: isPublic || false,
+        // isPublic: isPublic || false, // TODO: uncomment after running migration
         userId: session.user.id,
       },
       include: {
