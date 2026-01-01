@@ -22,13 +22,11 @@ import {
   Footprints,
   Copy,
   Clock,
-  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
@@ -118,7 +116,6 @@ export default function SportPage() {
     duration: "",
     notes: "",
     bodyParts: [] as string[],
-    isPublic: false,
   })
 
   // Add steps
@@ -154,7 +151,6 @@ export default function SportPage() {
         duration: "",
         notes: "",
         bodyParts: [],
-        isPublic: false,
       })
       setIsAddingActivity(false)
     } catch (error) {
@@ -797,18 +793,6 @@ export default function SportPage() {
                 value={newActivity.notes}
                 onChange={(e) => setNewActivity({ ...newActivity, notes: e.target.value })}
                 placeholder="Dodatkowe informacje..."
-              />
-            </div>
-
-            {/* Public toggle */}
-            <div className="flex items-center justify-between pt-2 border-t">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span>Udostępnij znajomym</span>
-              </div>
-              <Switch
-                checked={newActivity.isPublic}
-                onCheckedChange={(checked) => setNewActivity({ ...newActivity, isPublic: checked })}
               />
             </div>
 

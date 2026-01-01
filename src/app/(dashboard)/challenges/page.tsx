@@ -27,7 +27,6 @@ import {
   Edit2,
   Copy,
   MoreHorizontal,
-  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -115,7 +114,6 @@ export default function ChallengesPage() {
     unit: "",
     weeklyTarget: "",
     color: COLORS[0],
-    isPublic: false,
   })
 
   // Add progress
@@ -194,7 +192,6 @@ export default function ChallengesPage() {
           unit: "",
           weeklyTarget: "",
           color: COLORS[0],
-          isPublic: false,
         })
         setIsDialogOpen(false)
       }
@@ -595,18 +592,6 @@ export default function ChallengesPage() {
                       />
                     ))}
                   </div>
-                </div>
-
-                {/* Public toggle */}
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span>Udostępnij znajomym</span>
-                  </div>
-                  <Switch
-                    checked={newChallenge.isPublic}
-                    onCheckedChange={(checked) => setNewChallenge({ ...newChallenge, isPublic: checked })}
-                  />
                 </div>
 
                 <Button onClick={handleCreateChallenge} className="w-full">
