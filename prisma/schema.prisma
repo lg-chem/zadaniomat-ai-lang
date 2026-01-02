@@ -427,6 +427,7 @@ model GroupChallenge {
   creator       User           @relation(fields: [creatorId], references: [id], onDelete: Cascade)
   members       GroupChallengeMember[]
   invitations   GroupChallengeInvitation[]
+  messages      GroupChallengeMessage[]
 
   @@index([creatorId])
 }
@@ -498,6 +499,21 @@ model GroupChallengeEntry {
 
   @@unique([memberId, date])
   @@index([memberId, date])
+}
+
+model GroupChallengeMessage {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  // Relations
+  challengeId String
+  challenge   GroupChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([challengeId, createdAt])
+  @@index([userId])
 }
 
 // ==================== GAMIFICATION ====================

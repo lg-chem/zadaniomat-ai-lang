@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, KeyboardEvent } from "react"
+import { useState, useEffect, KeyboardEvent, useRef } from "react"
 import {
   format,
   differenceInDays,
@@ -33,6 +33,8 @@ import {
   Dumbbell,
   Target,
   Link2Off,
+  MessageCircle,
+  Send,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -148,6 +150,71 @@ export default function GroupChallengesPage() {
 
   // Detail view
   const [viewingChallenge, setViewingChallenge] = useState<GroupChallenge | null>(null)
+  const [detailTab, setDetailTab] = useState<"ranking" | "days" | "chat">("ranking")
+
+  // Chat
+  const [chatMessage, setChatMessage] = useState("")
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [chatMessages, setChatMessages] = useState<Array<{
+    id: string
+    content: string
+    createdAt: string
+    user: { id: string; name: string | null; image: string | null }
+  }>>([])
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-sync on mount for all challenges with integration
+  useEffect(() => {
+    const syncAllChallenges = async () => {
+      if (!groupChallenges || groupChallenges.length === 0) return
+
+      const challengesToSync = groupChallenges.filter(
+        (c) => c.userMembership?.linkedType && c.userMembership.linkedType !== "NONE"
+      )
+
+      for (const challenge of challengesToSync) {
+        try {
+          await fetch(`/api/group-challenges/${challenge.id}/sync`, { method: "POST" })
+        } catch (error) {
+          console.error("Auto-sync error:", error)
+        }
+      }
+
+      if (challengesToSync.length > 0) {
+        mutateGroupChallenges()
+      }
+    }
+
+    syncAllChallenges()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Load chat messages when viewing a challenge
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!viewingChallenge) return
+      try {
+        const res = await fetch(`/api/group-challenges/${viewingChallenge.id}/messages`)
+        if (res.ok) {
+          const data = await res.json()
+          setChatMessages(data.messages || [])
+        }
+      } catch (error) {
+        console.error("Error loading messages:", error)
+      }
+    }
+
+    if (viewingChallenge && detailTab === "chat") {
+      loadMessages()
+    }
+  }, [viewingChallenge, detailTab])
+
+  // Scroll chat to bottom when messages change
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [chatMessages])
 
   const handleCreateChallenge = async () => {
     if (!newChallenge.name || !newChallenge.endDate) {
@@ -392,6 +459,28 @@ export default function GroupChallengesPage() {
       console.error("Error syncing data:", error)
     } finally {
       setIsSyncing(null)
+    }
+  }
+
+  const handleSendMessage = async () => {
+    if (!viewingChallenge || !chatMessage.trim()) return
+
+    setIsSendingMessage(true)
+    try {
+      const res = await fetch(`/api/group-challenges/${viewingChallenge.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: chatMessage }),
+      })
+      if (res.ok) {
+        const newMsg = await res.json()
+        setChatMessages((prev) => [...prev, newMsg])
+        setChatMessage("")
+      }
+    } catch (error) {
+      console.error("Error sending message:", error)
+    } finally {
+      setIsSendingMessage(false)
     }
   }
 
@@ -1055,6 +1144,7 @@ export default function GroupChallengesPage() {
                   <div className="space-y-1.5">
                     {sortedMembers.slice(0, 3).map((member, index) => {
                       const memberProgress = (member.currentValue / challenge.targetValue) * 100
+                      const isLeader = index === 0 && member.currentValue > 0
                       return (
                         <div
                           key={member.id}
@@ -1071,7 +1161,7 @@ export default function GroupChallengesPage() {
                           </Avatar>
                           <span className="text-xs flex-1 truncate">
                             {member.user.name}
-                            {member.role === "CREATOR" && (
+                            {isLeader && (
                               <Crown className="h-3 w-3 inline ml-1 text-yellow-500" />
                             )}
                           </span>
@@ -1158,8 +1248,14 @@ export default function GroupChallengesPage() {
       )}
 
       {/* Detail View Dialog */}
-      <Dialog open={!!viewingChallenge} onOpenChange={(open) => !open && setViewingChallenge(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={!!viewingChallenge} onOpenChange={(open) => {
+        if (!open) {
+          setViewingChallenge(null)
+          setDetailTab("ranking")
+          setChatMessages([])
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div
@@ -1170,14 +1266,14 @@ export default function GroupChallengesPage() {
             </DialogTitle>
           </DialogHeader>
           {viewingChallenge && (
-            <div className="space-y-4 pt-4">
+            <div className="flex flex-col flex-1 overflow-hidden">
               {viewingChallenge.description && (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground mb-3">
                   {viewingChallenge.description}
                 </p>
               )}
 
-              <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-4 text-sm mb-3">
                 <div className="flex items-center gap-1">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   {format(new Date(viewingChallenge.startDate), "d MMM", { locale: pl })} -{" "}
@@ -1188,84 +1284,293 @@ export default function GroupChallengesPage() {
                 </Badge>
               </div>
 
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-3 flex items-center gap-2">
-                  <Trophy className="h-4 w-4" />
-                  Ranking uczestników
-                </h4>
-                <div className="space-y-2">
-                  {[...viewingChallenge.members]
-                    .sort((a, b) => b.currentValue - a.currentValue)
-                    .map((member, index) => {
-                      const memberProgress = (member.currentValue / viewingChallenge.targetValue) * 100
-                      return (
-                        <div
-                          key={member.id}
-                          className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
-                        >
-                          <span className="text-lg font-bold w-6 text-center">
-                            {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`}
-                          </span>
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={member.user.image || undefined} />
-                            <AvatarFallback>
-                              {getInitials(member.user.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium flex items-center gap-1">
-                              {member.user.name}
-                              {member.role === "CREATOR" && (
-                                <Crown className="h-3.5 w-3.5 text-yellow-500" />
-                              )}
-                              {member.isCompleted && (
-                                <Badge className="bg-green-100 text-green-700 text-[10px] ml-1">
-                                  Ukończone
-                                </Badge>
-                              )}
-                            </div>
-                            <Progress value={Math.min(100, memberProgress)} className="h-1.5 mt-1" />
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-bold">{Math.round(memberProgress)}%</div>
-                            <div className="text-xs text-muted-foreground">
-                              {member.currentValue} / {viewingChallenge.targetValue}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                </div>
+              {/* Tabs */}
+              <div className="flex gap-1 p-1 bg-muted rounded-lg mb-3">
+                <button
+                  className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                    detailTab === "ranking" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setDetailTab("ranking")}
+                >
+                  <Trophy className="h-3.5 w-3.5" />
+                  Ranking
+                </button>
+                <button
+                  className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                    detailTab === "days" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setDetailTab("days")}
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  Dni
+                </button>
+                <button
+                  className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                    detailTab === "chat" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setDetailTab("chat")}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Chat
+                </button>
               </div>
 
-              {/* Pending invitations */}
-              {viewingChallenge.invitations && viewingChallenge.invitations.length > 0 && (
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-3 flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Oczekujące zaproszenia
-                  </h4>
+              {/* Tab Content */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Ranking Tab */}
+                {detailTab === "ranking" && (
                   <div className="space-y-2">
-                    {viewingChallenge.invitations.map((inv) => (
-                      <div
-                        key={inv.id}
-                        className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
-                      >
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={inv.user.image || undefined} />
-                          <AvatarFallback className="text-xs">
-                            {getInitials(inv.user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm">{inv.user.name}</span>
-                        <Badge variant="outline" className="ml-auto text-xs">
-                          Oczekuje
-                        </Badge>
+                    {[...viewingChallenge.members]
+                      .sort((a, b) => b.currentValue - a.currentValue)
+                      .map((member, index) => {
+                        const memberProgress = (member.currentValue / viewingChallenge.targetValue) * 100
+                        const isLeader = index === 0 && member.currentValue > 0
+                        return (
+                          <div
+                            key={member.id}
+                            className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
+                          >
+                            <span className="text-lg font-bold w-6 text-center">
+                              {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`}
+                            </span>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={member.user.image || undefined} />
+                              <AvatarFallback>
+                                {getInitials(member.user.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium flex items-center gap-1">
+                                {member.user.name}
+                                {isLeader && (
+                                  <Crown className="h-3.5 w-3.5 text-yellow-500" />
+                                )}
+                                {member.isCompleted && (
+                                  <Badge className="bg-green-100 text-green-700 text-[10px] ml-1">
+                                    Ukończone
+                                  </Badge>
+                                )}
+                              </div>
+                              <Progress value={Math.min(100, memberProgress)} className="h-1.5 mt-1" />
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold">{Math.round(memberProgress)}%</div>
+                              <div className="text-xs text-muted-foreground">
+                                {member.currentValue} / {viewingChallenge.targetValue}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                    {/* Pending invitations */}
+                    {viewingChallenge.invitations && viewingChallenge.invitations.length > 0 && (
+                      <div className="border-t pt-3 mt-3">
+                        <h4 className="font-medium mb-2 text-sm flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          Oczekujące zaproszenia
+                        </h4>
+                        <div className="space-y-1.5">
+                          {viewingChallenge.invitations.map((inv) => (
+                            <div
+                              key={inv.id}
+                              className="flex items-center gap-2 p-2 rounded-lg bg-muted/50"
+                            >
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={inv.user.image || undefined} />
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(inv.user.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm">{inv.user.name}</span>
+                              <Badge variant="outline" className="ml-auto text-xs">
+                                Oczekuje
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Days Tab */}
+                {detailTab === "days" && (
+                  <div className="space-y-4">
+                    {(viewingChallenge.challengeType === "DAILY_GOAL" || viewingChallenge.challengeType === "WEEKLY_HABIT") && (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Ten tydzień - dni odhaczone przez uczestników:
+                        </p>
+                        {[...viewingChallenge.members]
+                          .sort((a, b) => b.currentValue - a.currentValue)
+                          .map((member, index) => {
+                            const memberEntries = member.entries || []
+                            const weekDays = getCurrentWeekDays()
+                            const isLeader = index === 0 && member.currentValue > 0
+                            return (
+                              <div key={member.id} className="p-3 rounded-lg bg-muted/50">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={member.user.image || undefined} />
+                                    <AvatarFallback className="text-[10px]">
+                                      {getInitials(member.user.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-sm font-medium">{member.user.name}</span>
+                                  {isLeader && <Crown className="h-3.5 w-3.5 text-yellow-500" />}
+                                </div>
+                                <div className="flex gap-1 justify-between">
+                                  {weekDays.map((day) => {
+                                    const isCompleted = isDayCompleted(memberEntries, day)
+                                    const isToday = isSameDay(day, new Date())
+                                    return (
+                                      <div
+                                        key={day.toISOString()}
+                                        className={`
+                                          h-7 w-7 rounded flex flex-col items-center justify-center text-[10px]
+                                          ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
+                                          ${isToday && !isCompleted ? "border-primary border-solid" : ""}
+                                        `}
+                                        style={{
+                                          backgroundColor: isCompleted ? viewingChallenge.color : "transparent",
+                                        }}
+                                      >
+                                        <span className="font-medium">
+                                          {format(day, "EEEEE", { locale: pl })}
+                                        </span>
+                                        {isCompleted && <Check className="h-2.5 w-2.5" />}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                      </>
+                    )}
+
+                    {viewingChallenge.challengeType === "MONTHLY_GOAL" && (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Miesiące odhaczone przez uczestników:
+                        </p>
+                        {[...viewingChallenge.members]
+                          .sort((a, b) => b.currentValue - a.currentValue)
+                          .map((member, index) => {
+                            const memberEntries = member.entries || []
+                            const months = getMonthsInRange(viewingChallenge.startDate, viewingChallenge.endDate)
+                            const isLeader = index === 0 && member.currentValue > 0
+                            return (
+                              <div key={member.id} className="p-3 rounded-lg bg-muted/50">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={member.user.image || undefined} />
+                                    <AvatarFallback className="text-[10px]">
+                                      {getInitials(member.user.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-sm font-medium">{member.user.name}</span>
+                                  {isLeader && <Crown className="h-3.5 w-3.5 text-yellow-500" />}
+                                </div>
+                                <div className="flex gap-1 flex-wrap">
+                                  {months.slice(0, 12).map((month) => {
+                                    const isCompleted = memberEntries.some(
+                                      (e) => getMonth(new Date(e.date)) === getMonth(month) &&
+                                             new Date(e.date).getFullYear() === month.getFullYear()
+                                    )
+                                    return (
+                                      <div
+                                        key={month.toISOString()}
+                                        className={`
+                                          h-6 px-2 rounded flex items-center justify-center text-[10px]
+                                          ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
+                                        `}
+                                        style={{
+                                          backgroundColor: isCompleted ? viewingChallenge.color : "transparent",
+                                        }}
+                                      >
+                                        {format(month, "MMM", { locale: pl })}
+                                        {isCompleted && <Check className="h-2.5 w-2.5 ml-0.5" />}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                      </>
+                    )}
+
+                    {viewingChallenge.challengeType === "NUMERIC" && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Ten widok jest dostępny tylko dla wyzwań dziennych, tygodniowych i miesięcznych.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Chat Tab */}
+                {detailTab === "chat" && (
+                  <div className="flex flex-col h-[300px]">
+                    <div
+                      ref={chatContainerRef}
+                      className="flex-1 overflow-y-auto space-y-2 pr-1"
+                    >
+                      {chatMessages.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">Brak wiadomości</p>
+                          <p className="text-xs">Rozpocznij rozmowę!</p>
+                        </div>
+                      ) : (
+                        chatMessages.map((msg) => (
+                          <div key={msg.id} className="flex gap-2">
+                            <Avatar className="h-6 w-6 flex-shrink-0">
+                              <AvatarImage src={msg.user.image || undefined} />
+                              <AvatarFallback className="text-[10px]">
+                                {getInitials(msg.user.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-xs font-medium">{msg.user.name}</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {format(new Date(msg.createdAt), "HH:mm", { locale: pl })}
+                                </span>
+                              </div>
+                              <p className="text-sm break-words">{msg.content}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex gap-2 mt-2 pt-2 border-t">
+                      <Input
+                        placeholder="Napisz wiadomość..."
+                        value={chatMessage}
+                        onChange={(e) => setChatMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault()
+                            handleSendMessage()
+                          }
+                        }}
+                        className="h-9"
+                        disabled={isSendingMessage}
+                      />
+                      <Button
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={handleSendMessage}
+                        disabled={!chatMessage.trim() || isSendingMessage}
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>

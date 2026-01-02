@@ -73,6 +73,19 @@ export async function GET(
             },
           },
         },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
+            },
+          },
+        },
       },
     })
 
