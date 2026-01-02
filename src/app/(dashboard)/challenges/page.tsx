@@ -80,6 +80,7 @@ interface Challenge {
   unit: string
   weeklyTarget?: number | null
   isCompleted: boolean
+  isPublic?: boolean
   color: string
   milestones: ChallengeMilestone[]
   entries: ChallengeEntry[]
@@ -661,6 +662,9 @@ export default function ChallengesPage() {
                       style={{ backgroundColor: challenge.color }}
                     />
                     <CardTitle className="text-sm md:text-base">{challenge.name}</CardTitle>
+                    {challenge.isPublic && (
+                      <Users className="h-3.5 w-3.5 text-primary" title="Udostępnione znajomym" />
+                    )}
                     {challenge.challengeType === "WEEKLY_HABIT" && (
                       <Badge variant="secondary" className="text-[10px]">
                         {challenge.weeklyTarget}x/tyg

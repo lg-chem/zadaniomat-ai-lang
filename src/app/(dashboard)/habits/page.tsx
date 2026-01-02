@@ -55,6 +55,7 @@ interface Habit {
   color: string
   currentStreak: number
   longestStreak: number
+  isPublic?: boolean
   completions?: HabitCompletion[]
 }
 
@@ -300,6 +301,9 @@ export default function HabitsPage() {
                           style={{ backgroundColor: habit.color }}
                         />
                         <span className="font-medium text-sm">{habit.name}</span>
+                        {habit.isPublic && (
+                          <Users className="h-3 w-3 text-primary" title="Udostępnione znajomym" />
+                        )}
                         <Badge variant="secondary" className="text-[10px]">
                           {FREQUENCY_LABELS[habit.frequency]}
                         </Badge>
@@ -557,6 +561,9 @@ export default function HabitsPage() {
                     style={{ backgroundColor: habit.color }}
                   />
                   <span className="font-medium">{habit.name}</span>
+                  {habit.isPublic && (
+                    <Users className="h-3.5 w-3.5 text-primary" title="Udostępnione znajomym" />
+                  )}
                   <Badge variant="secondary" className="text-[10px]">
                     {FREQUENCY_LABELS[habit.frequency]}
                   </Badge>

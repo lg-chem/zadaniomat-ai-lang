@@ -425,7 +425,10 @@ export default function SportPage() {
                                 className="p-2 rounded text-xs text-white relative"
                                 style={{ backgroundColor: activity.type.color }}
                               >
-                                <div className="font-medium">{activity.type.name}</div>
+                                <div className="font-medium flex items-center gap-1">
+                                  {activity.type.name}
+                                  {activity.isPublic && <Users className="h-3 w-3 opacity-80" />}
+                                </div>
                                 {activity.duration && (
                                   <div className="flex items-center gap-1 opacity-80">
                                     <Clock className="h-3 w-3" />
@@ -489,7 +492,10 @@ export default function SportPage() {
                             className="mb-2 p-2 rounded text-xs text-white relative group"
                             style={{ backgroundColor: activity.type.color }}
                           >
-                            <div className="font-medium">{activity.type.name}</div>
+                            <div className="font-medium flex items-center gap-1">
+                              {activity.type.name}
+                              {activity.isPublic && <Users className="h-3 w-3 opacity-80" />}
+                            </div>
                             {activity.duration && (
                               <div className="flex items-center gap-1 opacity-80">
                                 <Clock className="h-3 w-3" />

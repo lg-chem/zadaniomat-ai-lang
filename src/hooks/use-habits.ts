@@ -20,6 +20,7 @@ interface Habit {
   currentStreak: number
   longestStreak: number
   isActive: boolean
+  isPublic: boolean
   completions: HabitCompletion[]
   category?: {
     id: string
