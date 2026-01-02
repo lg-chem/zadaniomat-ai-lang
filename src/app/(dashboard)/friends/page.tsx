@@ -14,6 +14,8 @@ import {
   isSameDay,
   eachDayOfInterval,
   getDay,
+  getMonth,
+  differenceInDays,
 } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -44,6 +46,7 @@ interface FriendUser {
   id: string
   name: string | null
   image: string | null
+  isSelf?: boolean
   _count: {
     habits: number
     challenges: number
@@ -133,9 +136,9 @@ export default function FriendsPage() {
   )
   const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()))
 
-  // Fetch friends list
+  // Fetch friends list (including self)
   const { data: friends = [], isLoading: isLoadingFriends } = useSWR<FriendUser[]>(
-    "/api/friends"
+    "/api/friends?includeSelf=true"
   )
 
   // Calculate date range based on view mode
@@ -183,6 +186,31 @@ export default function FriendsPage() {
   const getInitials = (name: string | null) => {
     if (!name) return "?"
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+  }
+
+  // Get current week days for challenges
+  const getCurrentWeekDays = () => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  }
+
+  // Get months in range for monthly challenges
+  const getMonthsInRange = (startDateStr: string, endDateStr: string) => {
+    const start = new Date(startDateStr)
+    const end = new Date(endDateStr)
+    const months: Date[] = []
+    const current = startOfMonth(start)
+    while (current <= end) {
+      months.push(new Date(current))
+      current.setMonth(current.getMonth() + 1)
+    }
+    return months
+  }
+
+  // Check if a day has a challenge entry
+  const isChallengeEntryOnDate = (challenge: FriendChallenge, date: Date): boolean => {
+    const dateStr = format(date, "yyyy-MM-dd")
+    return challenge.entries.some((e) => format(new Date(e.date), "yyyy-MM-dd") === dateStr)
   }
 
   // Loading state
@@ -406,29 +434,50 @@ export default function FriendsPage() {
                     {friendData.challenges.map((challenge) => {
                       const progress = (challenge.currentValue / challenge.targetValue) * 100
                       const progressCapped = Math.min(100, progress)
+                      const challengeWeekDays = getCurrentWeekDays()
+                      const months = challenge.challengeType === "MONTHLY_GOAL"
+                        ? getMonthsInRange(challenge.startDate, challenge.endDate)
+                        : []
+                      const daysLeft = differenceInDays(new Date(challenge.endDate), new Date())
 
                       return (
                         <Card key={challenge.id} className="border">
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div
-                                className="h-3 w-3 rounded-full"
-                                style={{ backgroundColor: challenge.color }}
-                              />
-                              <span className="font-medium">{challenge.name}</span>
-                              {challenge.isCompleted && (
-                                <Badge className="bg-green-100 text-green-700 text-[10px]">
-                                  <Trophy className="h-3 w-3 mr-1" />
-                                  Ukończone
+                          <CardContent className="p-4 space-y-3">
+                            {/* Header */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ backgroundColor: challenge.color }}
+                                />
+                                <span className="font-medium">{challenge.name}</span>
+                                {challenge.isCompleted && (
+                                  <Badge className="bg-green-100 text-green-700 text-[10px]">
+                                    <Trophy className="h-3 w-3 mr-1" />
+                                    Ukończone
+                                  </Badge>
+                                )}
+                              </div>
+                              {challenge.challengeType === "WEEKLY_HABIT" && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {challenge.weeklyTarget}x/tyg
+                                </Badge>
+                              )}
+                              {challenge.challengeType === "MONTHLY_GOAL" && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  1x/mies
                                 </Badge>
                               )}
                             </div>
+
                             {challenge.description && (
-                              <p className="text-sm text-muted-foreground mb-2">
+                              <p className="text-sm text-muted-foreground">
                                 {challenge.description}
                               </p>
                             )}
-                            <div className="space-y-2">
+
+                            {/* Progress */}
+                            <div className="space-y-1">
                               <div className="flex justify-between text-sm">
                                 <span>
                                   {challenge.currentValue} / {challenge.targetValue} {challenge.unit}
@@ -437,10 +486,85 @@ export default function FriendsPage() {
                               </div>
                               <Progress value={progressCapped} className="h-2" />
                             </div>
-                            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+
+                            {/* Weekly Habit - Day Visualization */}
+                            {challenge.challengeType === "WEEKLY_HABIT" && (
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-2">Ten tydzień:</div>
+                                <div className="flex gap-1 justify-between">
+                                  {challengeWeekDays.map((day) => {
+                                    const isCompleted = isChallengeEntryOnDate(challenge, day)
+                                    const isToday = isSameDay(day, new Date())
+                                    const isFuture = day > new Date()
+                                    return (
+                                      <div
+                                        key={day.toISOString()}
+                                        className={`
+                                          h-8 w-8 rounded-lg flex flex-col items-center justify-center text-[10px]
+                                          ${isFuture ? "opacity-30" : ""}
+                                          ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
+                                          ${isToday && !isCompleted ? "border-primary border-solid" : ""}
+                                        `}
+                                        style={{
+                                          backgroundColor: isCompleted ? challenge.color : "transparent",
+                                        }}
+                                      >
+                                        <span className="font-medium">
+                                          {format(day, "EEEEE", { locale: pl })}
+                                        </span>
+                                        {isCompleted && <Check className="h-3 w-3" />}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Monthly Goal - Month Visualization */}
+                            {challenge.challengeType === "MONTHLY_GOAL" && (
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-2">Miesiące:</div>
+                                <div className="flex gap-1 flex-wrap">
+                                  {months.slice(0, 12).map((month) => {
+                                    const isCompleted = challenge.entries.some(
+                                      (e) => getMonth(new Date(e.date)) === getMonth(month) &&
+                                             new Date(e.date).getFullYear() === month.getFullYear()
+                                    )
+                                    const isCurrentMonth = getMonth(new Date()) === getMonth(month) &&
+                                                          new Date().getFullYear() === month.getFullYear()
+                                    const isFuture = startOfMonth(month) > new Date()
+                                    return (
+                                      <div
+                                        key={month.toISOString()}
+                                        className={`
+                                          h-7 px-2 rounded flex items-center justify-center text-[10px]
+                                          ${isFuture ? "opacity-30" : ""}
+                                          ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
+                                          ${isCurrentMonth && !isCompleted ? "border-primary border-solid" : ""}
+                                        `}
+                                        style={{
+                                          backgroundColor: isCompleted ? challenge.color : "transparent",
+                                        }}
+                                      >
+                                        {format(month, "MMM", { locale: pl })}
+                                        {isCompleted && <Check className="h-3 w-3 ml-0.5" />}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Dates */}
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <Calendar className="h-3 w-3" />
                               {format(new Date(challenge.startDate), "d MMM", { locale: pl })} -{" "}
                               {format(new Date(challenge.endDate), "d MMM yyyy", { locale: pl })}
+                              {!challenge.isCompleted && daysLeft >= 0 && (
+                                <Badge variant="secondary" className="text-[10px] ml-auto">
+                                  {daysLeft} dni
+                                </Badge>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -607,27 +731,37 @@ export default function FriendsPage() {
       {/* Friends Grid */}
       {friends.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {friends.map((friend) => (
+          {/* Sort: self first, then others */}
+          {[...friends].sort((a, b) => (a.isSelf ? -1 : b.isSelf ? 1 : 0)).map((friend) => (
             <Card
               key={friend.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
+              className={`cursor-pointer hover:border-primary/50 transition-colors ${
+                friend.isSelf ? "border-primary/30 bg-primary/5" : ""
+              }`}
               onClick={() => setSelectedUserId(friend.id)}
             >
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-4">
-                  <Avatar className="h-12 w-12">
+                  <Avatar className={`h-12 w-12 ${friend.isSelf ? "ring-2 ring-primary ring-offset-2" : ""}`}>
                     <AvatarImage src={friend.image || undefined} />
                     <AvatarFallback>{getInitials(friend.name)}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <div className="font-medium">{friend.name || "Użytkownik"}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{friend.name || "Użytkownik"}</span>
+                      {friend.isSelf && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Ja
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">
-                      Kliknij aby zobaczyć aktywności
+                      {friend.isSelf ? "Zobacz jak widzą Cię inni" : "Kliknij aby zobaczyć aktywności"}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-4 text-sm">
+                <div className="flex gap-4 text-sm flex-wrap">
                   {friend._count.habits > 0 && (
                     <div className="flex items-center gap-1.5">
                       <Flame className="h-4 w-4 text-orange-500" />

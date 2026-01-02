@@ -3,24 +3,27 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get all approved users except the current user
+    const { searchParams } = new URL(request.url)
+    const includeSelf = searchParams.get("includeSelf") === "true"
+
+    // Get all approved users (optionally excluding current user)
     const users = await prisma.user.findMany({
       where: {
         isApproved: true,
-        id: { not: session.user.id },
+        ...(includeSelf ? {} : { id: { not: session.user.id } }),
       },
       select: {
         id: true,
         name: true,
         image: true,
-        // Count public items
+        // Count public items (for self, count all items)
         _count: {
           select: {
             habits: { where: { isPublic: true, isActive: true } },
@@ -42,7 +45,13 @@ export async function GET() {
         user._count.stepsEntries > 0
     )
 
-    return NextResponse.json(usersWithPublicContent)
+    // Mark the current user
+    const result = usersWithPublicContent.map((user) => ({
+      ...user,
+      isSelf: user.id === session.user.id,
+    }))
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error("Error fetching friends:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
