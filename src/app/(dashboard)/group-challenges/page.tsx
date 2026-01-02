@@ -808,6 +808,18 @@ export default function GroupChallengesPage() {
         </Dialog>
       </div>
 
+      {/* Integration tip */}
+      <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
+        <Settings className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+        <div>
+          <span className="font-medium">Automatyczna synchronizacja:</span>{" "}
+          <span className="text-muted-foreground">
+            Kliknij <Settings className="h-3.5 w-3.5 inline mx-0.5" /> przy wyzwaniu, aby podpiąć je pod swoje kroki, aktywności sportowe lub nawyki.
+            Postęp będzie się aktualizował automatycznie na podstawie danych z innych zakładek.
+          </span>
+        </div>
+      </div>
+
       {/* Pending Invitations */}
       {invitations.length > 0 && (
         <Card className="border-primary/50 bg-primary/5">
