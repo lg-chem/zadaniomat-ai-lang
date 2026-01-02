@@ -663,7 +663,7 @@ export default function ChallengesPage() {
                     />
                     <CardTitle className="text-sm md:text-base">{challenge.name}</CardTitle>
                     {challenge.isPublic && (
-                      <Users className="h-3.5 w-3.5 text-primary" title="Udostępnione znajomym" />
+                      <Users className="h-3.5 w-3.5 text-primary" />
                     )}
                     {challenge.challengeType === "WEEKLY_HABIT" && (
                       <Badge variant="secondary" className="text-[10px]">
