@@ -66,6 +66,7 @@ interface SportActivity {
   duration?: number | null
   notes?: string | null
   fromSteps: boolean
+  isPublic: boolean
   type: SportActivityType
   bodyParts: BodyPart[]
 }
