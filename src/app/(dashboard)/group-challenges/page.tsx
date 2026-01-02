@@ -35,6 +35,8 @@ import {
   Link2Off,
   MessageCircle,
   Send,
+  BarChart3,
+  Flame,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -150,7 +152,30 @@ export default function GroupChallengesPage() {
 
   // Detail view
   const [viewingChallenge, setViewingChallenge] = useState<GroupChallenge | null>(null)
-  const [detailTab, setDetailTab] = useState<"ranking" | "days" | "chat">("ranking")
+  const [detailTab, setDetailTab] = useState<"ranking" | "days" | "chat" | "stats">("ranking")
+
+  // Stats
+  const [statsData, setStatsData] = useState<{
+    memberStats: Array<{
+      memberId: string
+      userName: string
+      userImage: string | null
+      totalEntries: number
+      totalSteps: number
+      totalDuration: number
+      averageSteps: number
+      averageDuration: number
+      longestStreak: number
+      currentStreak: number
+    }>
+    summary: {
+      totalGroupEntries: number
+      totalGroupSteps: number
+      totalGroupDuration: number
+      bestStreak: number
+    }
+  } | null>(null)
+  const [loadingStats, setLoadingStats] = useState(false)
 
   // Chat
   const [chatMessage, setChatMessage] = useState("")
@@ -206,6 +231,29 @@ export default function GroupChallengesPage() {
 
     if (viewingChallenge && detailTab === "chat") {
       loadMessages()
+    }
+  }, [viewingChallenge, detailTab])
+
+  // Load stats when viewing stats tab
+  useEffect(() => {
+    const loadStats = async () => {
+      if (!viewingChallenge) return
+      setLoadingStats(true)
+      try {
+        const res = await fetch(`/api/group-challenges/${viewingChallenge.id}/stats`)
+        if (res.ok) {
+          const data = await res.json()
+          setStatsData(data)
+        }
+      } catch (error) {
+        console.error("Error loading stats:", error)
+      } finally {
+        setLoadingStats(false)
+      }
+    }
+
+    if (viewingChallenge && detailTab === "stats") {
+      loadStats()
     }
   }, [viewingChallenge, detailTab])
 
@@ -1301,6 +1349,7 @@ export default function GroupChallengesPage() {
           setViewingChallenge(null)
           setDetailTab("ranking")
           setChatMessages([])
+          setStatsData(null)
         }
       }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
@@ -1360,6 +1409,15 @@ export default function GroupChallengesPage() {
                 >
                   <MessageCircle className="h-3.5 w-3.5" />
                   Chat
+                </button>
+                <button
+                  className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                    detailTab === "stats" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setDetailTab("stats")}
+                >
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Stats
                 </button>
               </div>
 
@@ -1616,6 +1674,187 @@ export default function GroupChallengesPage() {
                         <Send className="h-4 w-4" />
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {/* Stats Tab */}
+                {detailTab === "stats" && (
+                  <div className="space-y-4">
+                    {loadingStats ? (
+                      <div className="text-center py-8">
+                        <RefreshCw className="h-6 w-6 mx-auto animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground mt-2">Ładowanie statystyk...</p>
+                      </div>
+                    ) : statsData ? (
+                      <>
+                        {/* Summary */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="p-3 rounded-lg bg-muted/50 text-center">
+                            <div className="text-2xl font-bold">{statsData.summary.totalGroupEntries}</div>
+                            <div className="text-xs text-muted-foreground">Łączne dni</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-muted/50 text-center">
+                            <div className="text-2xl font-bold flex items-center justify-center gap-1">
+                              <Flame className="h-5 w-5 text-orange-500" />
+                              {statsData.summary.bestStreak}
+                            </div>
+                            <div className="text-xs text-muted-foreground">Najdłuższy streak</div>
+                          </div>
+                          {statsData.summary.totalGroupSteps > 0 && (
+                            <div className="p-3 rounded-lg bg-muted/50 text-center">
+                              <div className="text-2xl font-bold">
+                                {(statsData.summary.totalGroupSteps / 1000).toFixed(0)}k
+                              </div>
+                              <div className="text-xs text-muted-foreground">Łączne kroki</div>
+                            </div>
+                          )}
+                          {statsData.summary.totalGroupDuration > 0 && (
+                            <div className="p-3 rounded-lg bg-muted/50 text-center">
+                              <div className="text-2xl font-bold">
+                                {Math.round(statsData.summary.totalGroupDuration / 60)}h
+                              </div>
+                              <div className="text-xs text-muted-foreground">Łączny czas</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Leaderboards */}
+                        <div className="space-y-3">
+                          {/* Longest streak */}
+                          <div className="p-3 rounded-lg border">
+                            <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                              <Flame className="h-3.5 w-3.5 text-orange-500" />
+                              Najdłuższy streak
+                            </div>
+                            <div className="space-y-1.5">
+                              {statsData.memberStats
+                                .sort((a, b) => b.longestStreak - a.longestStreak)
+                                .slice(0, 3)
+                                .map((member, index) => (
+                                  <div key={member.memberId} className="flex items-center gap-2">
+                                    <span className="text-xs font-bold w-4">
+                                      {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                                    </span>
+                                    <Avatar className="h-5 w-5">
+                                      <AvatarImage src={member.userImage || undefined} />
+                                      <AvatarFallback className="text-[10px]">
+                                        {getInitials(member.userName)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-xs flex-1 truncate">{member.userName}</span>
+                                    <span className="text-xs font-medium">{member.longestStreak} dni</span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+
+                          {/* Current streak */}
+                          <div className="p-3 rounded-lg border">
+                            <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                              <Flame className="h-3.5 w-3.5 text-red-500" />
+                              Aktualny streak
+                            </div>
+                            <div className="space-y-1.5">
+                              {statsData.memberStats
+                                .sort((a, b) => b.currentStreak - a.currentStreak)
+                                .slice(0, 3)
+                                .map((member, index) => (
+                                  <div key={member.memberId} className="flex items-center gap-2">
+                                    <span className="text-xs font-bold w-4">
+                                      {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                                    </span>
+                                    <Avatar className="h-5 w-5">
+                                      <AvatarImage src={member.userImage || undefined} />
+                                      <AvatarFallback className="text-[10px]">
+                                        {getInitials(member.userName)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-xs flex-1 truncate">{member.userName}</span>
+                                    <span className="text-xs font-medium">{member.currentStreak} dni</span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+
+                          {/* Total steps (if any) */}
+                          {statsData.memberStats.some((m) => m.totalSteps > 0) && (
+                            <div className="p-3 rounded-lg border">
+                              <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                                <Footprints className="h-3.5 w-3.5" />
+                                Łączne kroki
+                              </div>
+                              <div className="space-y-1.5">
+                                {statsData.memberStats
+                                  .sort((a, b) => b.totalSteps - a.totalSteps)
+                                  .filter((m) => m.totalSteps > 0)
+                                  .slice(0, 3)
+                                  .map((member, index) => (
+                                    <div key={member.memberId} className="flex items-center gap-2">
+                                      <span className="text-xs font-bold w-4">
+                                        {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                                      </span>
+                                      <Avatar className="h-5 w-5">
+                                        <AvatarImage src={member.userImage || undefined} />
+                                        <AvatarFallback className="text-[10px]">
+                                          {getInitials(member.userName)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="text-xs flex-1 truncate">{member.userName}</span>
+                                      <span className="text-xs font-medium">
+                                        {(member.totalSteps / 1000).toFixed(0)}k
+                                        <span className="text-muted-foreground ml-1">
+                                          (śr. {(member.averageSteps / 1000).toFixed(1)}k)
+                                        </span>
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Total duration (if any) */}
+                          {statsData.memberStats.some((m) => m.totalDuration > 0) && (
+                            <div className="p-3 rounded-lg border">
+                              <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                                <Dumbbell className="h-3.5 w-3.5" />
+                                Łączny czas aktywności
+                              </div>
+                              <div className="space-y-1.5">
+                                {statsData.memberStats
+                                  .sort((a, b) => b.totalDuration - a.totalDuration)
+                                  .filter((m) => m.totalDuration > 0)
+                                  .slice(0, 3)
+                                  .map((member, index) => (
+                                    <div key={member.memberId} className="flex items-center gap-2">
+                                      <span className="text-xs font-bold w-4">
+                                        {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                                      </span>
+                                      <Avatar className="h-5 w-5">
+                                        <AvatarImage src={member.userImage || undefined} />
+                                        <AvatarFallback className="text-[10px]">
+                                          {getInitials(member.userName)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="text-xs flex-1 truncate">{member.userName}</span>
+                                      <span className="text-xs font-medium">
+                                        {Math.round(member.totalDuration / 60)}h {member.totalDuration % 60}m
+                                        <span className="text-muted-foreground ml-1">
+                                          (śr. {member.averageDuration}m)
+                                        </span>
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Nie udało się załadować statystyk</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

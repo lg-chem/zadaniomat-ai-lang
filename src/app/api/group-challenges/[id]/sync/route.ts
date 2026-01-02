@@ -116,6 +116,12 @@ export async function POST(
       }
 
       let shouldCreateEntry = false
+      let entryMetadata: {
+        stepsCount?: number
+        duration?: number
+        activityType?: string
+        habitName?: string
+      } = {}
 
       if (membership.linkedType === "STEPS") {
         // Check steps for this day
@@ -134,6 +140,10 @@ export async function POST(
         } else if (stepsEntry) {
           shouldCreateEntry = stepsEntry.count >= 10000 // Default 10k
         }
+
+        if (shouldCreateEntry && stepsEntry) {
+          entryMetadata.stepsCount = stepsEntry.count
+        }
       } else if (membership.linkedType === "SPORT") {
         // Check sport activities for this day
         const activities = await prisma.sportActivity.findMany({
@@ -150,11 +160,17 @@ export async function POST(
         })
 
         if (activities.length > 0) {
+          const totalDuration = activities.reduce((sum: number, a: { duration?: number | null }) => sum + (a.duration || 0), 0)
           if (membership.minDuration) {
-            const totalDuration = activities.reduce((sum, a) => sum + (a.duration || 0), 0)
             shouldCreateEntry = totalDuration >= membership.minDuration
           } else {
             shouldCreateEntry = true
+          }
+
+          if (shouldCreateEntry) {
+            entryMetadata.duration = totalDuration
+            // Get most common activity type or first one
+            entryMetadata.activityType = activities[0]?.activityType || membership.sportActivityType || undefined
           }
         }
       } else if (membership.linkedType === "HABIT" && membership.linkedHabitId) {
@@ -167,9 +183,19 @@ export async function POST(
               lte: endOfDay(day),
             },
           },
+          include: {
+            habit: {
+              select: { name: true },
+            },
+          },
         })
 
         shouldCreateEntry = !!habitCompletion
+
+        if (shouldCreateEntry && habitCompletion) {
+          entryMetadata.habitName = habitCompletion.habit.name
+          entryMetadata.duration = habitCompletion.minutes || undefined
+        }
       }
 
       if (shouldCreateEntry) {
@@ -178,6 +204,7 @@ export async function POST(
             memberId: membership.id,
             date: day,
             value: 1,
+            ...entryMetadata,
           },
         })
         newEntries.push({ date: day, value: 1 })

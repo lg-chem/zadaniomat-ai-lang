@@ -494,6 +494,12 @@ model GroupChallengeEntry {
   notes       String?
   createdAt   DateTime @default(now())
 
+  // Additional metadata for statistics
+  stepsCount    Int?     // Number of steps for STEPS integration
+  duration      Int?     // Duration in minutes for SPORT/HABIT
+  activityType  String?  // Type of activity for SPORT
+  habitName     String?  // Name of habit for HABIT integration
+
   // Relations
   memberId    String
   member      GroupChallengeMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
