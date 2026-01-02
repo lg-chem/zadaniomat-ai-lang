@@ -119,6 +119,9 @@ export async function POST(req: Request) {
       color,
       challengeType,
       weeklyTarget,
+      dailyTarget,
+      linkedType,
+      linkedHabitId,
       inviteUserIds,
     } = body
 
@@ -148,6 +151,9 @@ export async function POST(req: Request) {
         targetValue: parseFloat(targetValue),
         unit,
         weeklyTarget: weeklyTarget ? parseInt(weeklyTarget) : null,
+        dailyTarget: dailyTarget ? parseFloat(dailyTarget) : null,
+        linkedType: linkedType || "NONE",
+        linkedHabitId: linkedHabitId || null,
         color: color || "#8b5cf6",
         creatorId: session.user.id,
         // Add creator as first member with CREATOR role

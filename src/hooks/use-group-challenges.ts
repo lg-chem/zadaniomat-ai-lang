@@ -32,16 +32,21 @@ interface GroupChallengeInvitation {
   }
 }
 
+export type LinkedDataType = 'NONE' | 'STEPS' | 'SPORT' | 'HABIT'
+
 export interface GroupChallenge {
   id: string
   name: string
   description?: string
-  challengeType: 'NUMERIC' | 'WEEKLY_HABIT' | 'MONTHLY_GOAL'
+  challengeType: 'NUMERIC' | 'WEEKLY_HABIT' | 'MONTHLY_GOAL' | 'DAILY_GOAL'
   startDate: string
   endDate: string
   targetValue: number
   unit: string
   weeklyTarget?: number
+  dailyTarget?: number
+  linkedType: LinkedDataType
+  linkedHabitId?: string
   color: string
   isActive: boolean
   createdAt: string
@@ -74,12 +79,14 @@ export interface PendingInvitation {
     id: string
     name: string
     description?: string
-    challengeType: 'NUMERIC' | 'WEEKLY_HABIT' | 'MONTHLY_GOAL'
+    challengeType: 'NUMERIC' | 'WEEKLY_HABIT' | 'MONTHLY_GOAL' | 'DAILY_GOAL'
     startDate: string
     endDate: string
     targetValue: number
     unit: string
     weeklyTarget?: number
+    dailyTarget?: number
+    linkedType: LinkedDataType
     color: string
     creator: {
       id: string

@@ -364,6 +364,7 @@ enum ChallengeType {
   NUMERIC       // Standard numeric challenge (100km, 30 days, etc.)
   WEEKLY_HABIT  // Weekly habit (3 days per week)
   MONTHLY_GOAL  // Monthly goal (once per month for X months)
+  DAILY_GOAL    // Daily goal (check off each day, e.g., 10k steps daily)
 }
 
 model ChallengeMilestone {
@@ -396,6 +397,13 @@ model ChallengeEntry {
 
 // ==================== GROUP CHALLENGES ====================
 
+enum LinkedDataType {
+  NONE          // Manual tracking only
+  STEPS         // Link to StepsEntry
+  SPORT         // Link to SportActivity
+  HABIT         // Link to specific Habit
+}
+
 model GroupChallenge {
   id            String         @id @default(cuid())
   name          String
@@ -406,6 +414,9 @@ model GroupChallenge {
   targetValue   Float
   unit          String         // e.g., "steps", "km", "sessions"
   weeklyTarget  Int?           // For WEEKLY_HABIT: number of days per week
+  dailyTarget   Float?         // For DAILY_GOAL: daily target (e.g., 10000 steps)
+  linkedType    LinkedDataType @default(NONE)
+  linkedHabitId String?        // Optional: link to specific habit
   color         String         @default("#8b5cf6")
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())

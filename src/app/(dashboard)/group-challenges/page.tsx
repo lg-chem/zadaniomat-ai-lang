@@ -56,9 +56,10 @@ import {
   useGroupChallenges,
   useGroupChallengeInvitations,
   type GroupChallenge,
+  type LinkedDataType,
 } from "@/hooks/use-group-challenges"
 
-type ChallengeType = "NUMERIC" | "WEEKLY_HABIT" | "MONTHLY_GOAL"
+type ChallengeType = "NUMERIC" | "WEEKLY_HABIT" | "MONTHLY_GOAL" | "DAILY_GOAL"
 
 interface FriendUser {
   id: string
@@ -85,12 +86,14 @@ export default function GroupChallengesPage() {
   const [newChallenge, setNewChallenge] = useState({
     name: "",
     description: "",
-    challengeType: "NUMERIC" as ChallengeType,
+    challengeType: "DAILY_GOAL" as ChallengeType,
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: "",
     targetValue: "",
     unit: "",
     weeklyTarget: "",
+    dailyTarget: "",
+    linkedType: "NONE" as LinkedDataType,
     color: COLORS[0],
     inviteUserIds: [] as string[],
   })
@@ -124,14 +127,20 @@ export default function GroupChallengesPage() {
       return
     }
 
+    // Calculate target value based on challenge type
     let targetValue = newChallenge.targetValue
-    if (newChallenge.challengeType === "WEEKLY_HABIT" && newChallenge.startDate && newChallenge.endDate && !newChallenge.targetValue) {
-      targetValue = Math.ceil(differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) / 7).toString()
+    const daysDiff = differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) + 1
+
+    if (newChallenge.challengeType === "WEEKLY_HABIT" && newChallenge.startDate && newChallenge.endDate) {
+      targetValue = Math.ceil(daysDiff / 7).toString()
     }
-    if (newChallenge.challengeType === "MONTHLY_GOAL" && newChallenge.startDate && newChallenge.endDate && !newChallenge.targetValue) {
+    if (newChallenge.challengeType === "MONTHLY_GOAL" && newChallenge.startDate && newChallenge.endDate) {
       const start = new Date(newChallenge.startDate)
       const end = new Date(newChallenge.endDate)
       targetValue = ((end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1).toString()
+    }
+    if (newChallenge.challengeType === "DAILY_GOAL" && newChallenge.startDate && newChallenge.endDate) {
+      targetValue = daysDiff.toString()
     }
 
     if (!targetValue && newChallenge.challengeType === "NUMERIC") {
@@ -141,23 +150,31 @@ export default function GroupChallengesPage() {
       return
     }
 
+    // Set unit based on type
+    let unit = newChallenge.unit
+    if (newChallenge.challengeType === "WEEKLY_HABIT") unit = "tygodni"
+    if (newChallenge.challengeType === "MONTHLY_GOAL") unit = "miesięcy"
+    if (newChallenge.challengeType === "DAILY_GOAL") unit = "dni"
+
     try {
       const res = await fetch("/api/group-challenges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newChallenge, targetValue }),
+        body: JSON.stringify({ ...newChallenge, targetValue, unit }),
       })
       if (res.ok) {
         mutateGroupChallenges()
         setNewChallenge({
           name: "",
           description: "",
-          challengeType: "NUMERIC",
+          challengeType: "DAILY_GOAL",
           startDate: format(new Date(), "yyyy-MM-dd"),
           endDate: "",
           targetValue: "",
           unit: "",
           weeklyTarget: "",
+          dailyTarget: "",
+          linkedType: "NONE",
           color: COLORS[0],
           inviteUserIds: [],
         })
@@ -387,10 +404,43 @@ export default function GroupChallengesPage() {
             </DialogHeader>
             <div className="space-y-4 pt-4">
               {/* Challenge Type Toggle */}
-              <div className="flex gap-1 p-1 bg-muted rounded-lg">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-lg">
                 <button
                   type="button"
-                  className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors ${
+                  className={`py-2 px-2 rounded-md text-xs font-medium transition-colors ${
+                    newChallenge.challengeType === "DAILY_GOAL"
+                      ? "bg-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setNewChallenge({ ...newChallenge, challengeType: "DAILY_GOAL", unit: "dni" })}
+                >
+                  Codziennie
+                </button>
+                <button
+                  type="button"
+                  className={`py-2 px-2 rounded-md text-xs font-medium transition-colors ${
+                    newChallenge.challengeType === "WEEKLY_HABIT"
+                      ? "bg-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setNewChallenge({ ...newChallenge, challengeType: "WEEKLY_HABIT", unit: "tygodni" })}
+                >
+                  X razy/tydzień
+                </button>
+                <button
+                  type="button"
+                  className={`py-2 px-2 rounded-md text-xs font-medium transition-colors ${
+                    newChallenge.challengeType === "MONTHLY_GOAL"
+                      ? "bg-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setNewChallenge({ ...newChallenge, challengeType: "MONTHLY_GOAL", unit: "miesięcy" })}
+                >
+                  Raz/miesiąc
+                </button>
+                <button
+                  type="button"
+                  className={`py-2 px-2 rounded-md text-xs font-medium transition-colors ${
                     newChallenge.challengeType === "NUMERIC"
                       ? "bg-background shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -398,28 +448,6 @@ export default function GroupChallengesPage() {
                   onClick={() => setNewChallenge({ ...newChallenge, challengeType: "NUMERIC", unit: "" })}
                 >
                   Cel liczbowy
-                </button>
-                <button
-                  type="button"
-                  className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors ${
-                    newChallenge.challengeType === "WEEKLY_HABIT"
-                      ? "bg-background shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  onClick={() => setNewChallenge({ ...newChallenge, challengeType: "WEEKLY_HABIT", unit: "tygodni" })}
-                >
-                  Nawyk tyg.
-                </button>
-                <button
-                  type="button"
-                  className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors ${
-                    newChallenge.challengeType === "MONTHLY_GOAL"
-                      ? "bg-background shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  onClick={() => setNewChallenge({ ...newChallenge, challengeType: "MONTHLY_GOAL", unit: "miesięcy" })}
-                >
-                  Cel mies.
                 </button>
               </div>
 
@@ -429,11 +457,13 @@ export default function GroupChallengesPage() {
                   value={newChallenge.name}
                   onChange={(e) => setNewChallenge({ ...newChallenge, name: e.target.value })}
                   placeholder={
-                    newChallenge.challengeType === "WEEKLY_HABIT"
+                    newChallenge.challengeType === "DAILY_GOAL"
+                      ? "np. 10000 kroków dziennie"
+                      : newChallenge.challengeType === "WEEKLY_HABIT"
                       ? "np. 3x siłownia w tygodniu"
                       : newChallenge.challengeType === "MONTHLY_GOAL"
                       ? "np. Przeczytać 1 książkę miesięcznie"
-                      : "np. 12000 kroków dziennie"
+                      : "np. Przebiec 100km"
                   }
                 />
               </div>
@@ -464,7 +494,15 @@ export default function GroupChallengesPage() {
                 </div>
               </div>
 
-              {newChallenge.challengeType === "WEEKLY_HABIT" ? (
+              {newChallenge.challengeType === "DAILY_GOAL" ? (
+                <div>
+                  {newChallenge.startDate && newChallenge.endDate && (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                      Cel: odhacz każdy dzień ({differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) + 1} dni)
+                    </p>
+                  )}
+                </div>
+              ) : newChallenge.challengeType === "WEEKLY_HABIT" ? (
                 <div className="space-y-4">
                   <div>
                     <Label>Ile razy w tygodniu</Label>
@@ -479,19 +517,22 @@ export default function GroupChallengesPage() {
                   </div>
                   {newChallenge.startDate && newChallenge.endDate && (
                     <p className="text-xs text-muted-foreground">
-                      Cel: {Math.ceil(differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) / 7)} tygodni
+                      Cel: {Math.ceil((differenceInDays(new Date(newChallenge.endDate), new Date(newChallenge.startDate)) + 1) / 7)} tygodni
                     </p>
                   )}
                 </div>
               ) : newChallenge.challengeType === "MONTHLY_GOAL" ? (
                 <div>
-                  <Label>Cel (liczba miesięcy)</Label>
-                  <Input
-                    type="number"
-                    value={newChallenge.targetValue}
-                    onChange={(e) => setNewChallenge({ ...newChallenge, targetValue: e.target.value })}
-                    placeholder="np. 12"
-                  />
+                  {newChallenge.startDate && newChallenge.endDate && (() => {
+                    const start = new Date(newChallenge.startDate)
+                    const end = new Date(newChallenge.endDate)
+                    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
+                    return (
+                      <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                        Cel: odhacz każdy miesiąc ({months} miesięcy)
+                      </p>
+                    )
+                  })()}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
@@ -509,7 +550,7 @@ export default function GroupChallengesPage() {
                     <Input
                       value={newChallenge.unit}
                       onChange={(e) => setNewChallenge({ ...newChallenge, unit: e.target.value })}
-                      placeholder="kroków, km..."
+                      placeholder="km, kroków..."
                     />
                   </div>
                 </div>
@@ -687,6 +728,11 @@ export default function GroupChallengesPage() {
                       style={{ backgroundColor: challenge.color }}
                     />
                     <CardTitle className="text-sm md:text-base">{challenge.name}</CardTitle>
+                    {challenge.challengeType === "DAILY_GOAL" && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        codziennie
+                      </Badge>
+                    )}
                     {challenge.challengeType === "WEEKLY_HABIT" && (
                       <Badge variant="secondary" className="text-[10px]">
                         {challenge.weeklyTarget}x/tyg
@@ -771,8 +817,8 @@ export default function GroupChallengesPage() {
                   <Progress value={progressCapped} className="h-2" />
                 </div>
 
-                {/* Weekly Habit - Day Checkboxes */}
-                {challenge.challengeType === "WEEKLY_HABIT" && (
+                {/* Daily Goal & Weekly Habit - Day Checkboxes for current week */}
+                {(challenge.challengeType === "DAILY_GOAL" || challenge.challengeType === "WEEKLY_HABIT") && (
                   <div>
                     <div className="text-xs text-muted-foreground mb-2">Ten tydzień:</div>
                     <div className="flex gap-1 justify-between">
@@ -780,16 +826,19 @@ export default function GroupChallengesPage() {
                         const isCompleted = isDayCompleted(userEntries, day)
                         const isToday = isSameDay(day, new Date())
                         const isFuture = day > new Date()
+                        const isBeforeStart = day < new Date(challenge.startDate)
+                        const isAfterEnd = day > new Date(challenge.endDate)
+                        const isOutOfRange = isBeforeStart || isAfterEnd
                         return (
                           <button
                             key={day.toISOString()}
-                            onClick={() => !isFuture && handleToggleDay(challenge.id, day)}
-                            disabled={isFuture}
+                            onClick={() => !isFuture && !isOutOfRange && handleToggleDay(challenge.id, day)}
+                            disabled={isFuture || isOutOfRange}
                             className={`
                               h-8 w-8 rounded-lg flex flex-col items-center justify-center text-[10px] transition-all
-                              ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer hover:scale-110"}
+                              ${isFuture || isOutOfRange ? "opacity-30 cursor-not-allowed" : "cursor-pointer hover:scale-110"}
                               ${isCompleted ? "text-white" : "border border-dashed border-muted-foreground/30"}
-                              ${isToday && !isCompleted ? "border-primary border-solid" : ""}
+                              ${isToday && !isCompleted && !isOutOfRange ? "border-primary border-solid" : ""}
                             `}
                             style={{
                               backgroundColor: isCompleted ? challenge.color : "transparent",
