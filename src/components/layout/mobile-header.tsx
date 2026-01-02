@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { Menu, CheckSquare, Briefcase, User, Users } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -8,7 +9,19 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { cn } from "@/lib/utils"
 
 export function MobileHeader() {
+  const router = useRouter()
   const { workspace, setWorkspace } = useWorkspaceStore()
+
+  const handleWorkspaceChange = (newWorkspace: "FRIENDS" | "WORK" | "PRIVATE") => {
+    setWorkspace(newWorkspace)
+    if (newWorkspace === "FRIENDS") {
+      router.push("/")
+    } else if (newWorkspace === "WORK") {
+      router.push("/schedule")
+    } else {
+      router.push("/schedule")
+    }
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 h-16 border-b bg-card md:hidden">
@@ -27,9 +40,9 @@ export function MobileHeader() {
         </Sheet>
 
         {/* Workspace Switcher - Mobile Compact */}
-        <div className="flex items-center gap-0.5 p-1 bg-muted rounded-lg flex-1 max-w-[220px]">
+        <div className="flex items-center gap-0.5 p-1 bg-muted rounded-lg flex-1 max-w-[200px]">
           <button
-            onClick={() => setWorkspace("FRIENDS")}
+            onClick={() => handleWorkspaceChange("FRIENDS")}
             className={cn(
               "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
               workspace === "FRIENDS"
@@ -41,7 +54,7 @@ export function MobileHeader() {
             <span>Zn.</span>
           </button>
           <button
-            onClick={() => setWorkspace("WORK")}
+            onClick={() => handleWorkspaceChange("WORK")}
             className={cn(
               "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
               workspace === "WORK"
@@ -53,7 +66,7 @@ export function MobileHeader() {
             <span>Pr.</span>
           </button>
           <button
-            onClick={() => setWorkspace("PRIVATE")}
+            onClick={() => handleWorkspaceChange("PRIVATE")}
             className={cn(
               "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
               workspace === "PRIVATE"

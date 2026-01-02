@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useRecentFriendsStore } from "@/stores/recent-friends-store"
 import { WorkspaceSwitcher } from "./workspace-switcher"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -82,6 +83,7 @@ export function SidebarContent() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { workspace } = useWorkspaceStore()
+  const { addRecentFriend } = useRecentFriendsStore()
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
 
   // Fetch friends when in FRIENDS workspace
@@ -89,6 +91,15 @@ export function SidebarContent() {
     workspace === "FRIENDS" ? "/api/friends" : null,
     fetcher
   )
+
+  const handleFriendClick = (friend: FriendUser) => {
+    setSelectedFriendId(friend.id)
+    addRecentFriend({
+      id: friend.id,
+      name: friend.name || friend.email.split("@")[0],
+      image: friend.image,
+    })
+  }
 
   const navItems = workspace === "WORK" ? workNavItems : privateNavItems
 
@@ -120,7 +131,7 @@ export function SidebarContent() {
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )}
-                onClick={() => setSelectedFriendId(friend.id)}
+                onClick={() => handleFriendClick(friend)}
               >
                 <Avatar className="h-7 w-7">
                   <AvatarImage src={friend.image || ""} />
