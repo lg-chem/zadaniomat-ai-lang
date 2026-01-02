@@ -15,6 +15,13 @@ import {
   ArrowRight,
   Briefcase,
   Heart,
+  Inbox,
+  Timer,
+  MessageSquare,
+  Flame,
+  Footprints,
+  Eye,
+  BookOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -172,33 +179,132 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* How it works */}
+      {/* Detailed Guide */}
       <section className="py-20 px-4 bg-muted/30">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Jak to działa?</h2>
+            <h2 className="text-3xl font-bold mb-4">Jak korzystać z Zadaniomatu?</h2>
+            <p className="text-muted-foreground text-lg">
+              Szczegółowa instrukcja krok po kroku dla każdej przestrzeni
+            </p>
           </div>
-          <div className="space-y-8">
-            <Step
-              number={1}
-              title="Załóż konto"
-              description="Rejestracja zajmuje kilka sekund. Wybierz przestrzeń roboczą i zacznij działać."
-            />
-            <Step
-              number={2}
-              title="Dodaj zadania i cele"
-              description="Wrzucaj zadania do backlogu, definiuj cele i planuj sprinty. AI pomoże Ci w organizacji."
-            />
-            <Step
-              number={3}
-              title="Buduj nawyki"
-              description="Ustaw nawyki które chcesz rozwijać. System śledzi smugi i motywuje do kontynuowania."
-            />
-            <Step
-              number={4}
-              title="Osiągaj i świętuj"
-              description="Realizuj cele, zdobywaj XP i obserwuj swoje postępy na wykresach."
-            />
+
+          <div className="space-y-12">
+            {/* Work Guide */}
+            <Card className="p-8 border-2 border-blue-500/30">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
+                  <Briefcase className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">Przestrzeń Pracy</h3>
+                  <p className="text-muted-foreground">Planowanie projektów i zadań</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <GuideStep
+                    icon={Timer}
+                    title="1. Ustaw okresy i sprinty"
+                    description="W zakładce Sprinty stwórz dłuższe 3-miesięczne okresy planowania. W ramach okresów dodawaj 2-tygodniowe sprinty do realizacji konkretnych zadań."
+                  />
+                  <GuideStep
+                    icon={Target}
+                    title="2. Zdefiniuj cele"
+                    description="W zakładce Cele określ co chcesz osiągnąć w danym okresie i sprincie. Cele pomagają skupić się na tym co najważniejsze."
+                  />
+                  <GuideStep
+                    icon={Inbox}
+                    title="3. Zapisuj pomysły w Backlogu"
+                    description="Masz pomysł? Wrzuć go szybko do Backlogu. To miejsce na wszystkie zadania czekające na realizację."
+                  />
+                </div>
+                <div className="space-y-6">
+                  <GuideStep
+                    icon={MessageSquare}
+                    title="4. Rozmawiaj z AI"
+                    description="Asystent AI ma dostęp do Twoich notatek i bazy wiedzy. Zderzaj z nim pomysły, planuj zadania. Z poziomu chatu możesz tworzyć zadania i cele."
+                  />
+                  <GuideStep
+                    icon={Calendar}
+                    title="5. Planuj w harmonogramie"
+                    description="Układaj zadania w harmonogramie dnia. Śledź ile czasu spędzasz na poszczególnych zadaniach."
+                  />
+                  <GuideStep
+                    icon={BookOpen}
+                    title="6. Buduj bazę wiedzy"
+                    description="Zapisuj notatki, procedury i wiedzę w dedykowanej zakładce. AI wykorzysta je przy planowaniu."
+                  />
+                </div>
+              </div>
+            </Card>
+
+            {/* Private Guide */}
+            <Card className="p-8 border-2 border-pink-500/30">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-pink-500 rounded-xl flex items-center justify-center">
+                  <Heart className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">Przestrzeń Prywatna</h3>
+                  <p className="text-muted-foreground">Nawyki, wyzwania i aktywność</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <GuideStep
+                    icon={Repeat}
+                    title="1. Dodaj codzienne nawyki"
+                    description="Stwórz listę nawyków które chcesz budować - czytanie, medytacja, ćwiczenia. System śledzi Twoje smugi i motywuje do regularności."
+                  />
+                  <GuideStep
+                    icon={Flame}
+                    title="2. Podejmij wyzwania"
+                    description="Wyzwania to cele z różną częstotliwością: 3x w tygodniu gotowanie w domu, comiesięczne odkładanie na oszczędności, czy tygodniowe cele treningowe."
+                  />
+                </div>
+                <div className="space-y-6">
+                  <GuideStep
+                    icon={Dumbbell}
+                    title="3. Śledź aktywność sportową"
+                    description="Zapisuj treningi w zakładce Sport. Ćwiczysz na siłowni? Możesz zapisać jakie partie mięśni trenowałeś danego dnia."
+                  />
+                  <GuideStep
+                    icon={Footprints}
+                    title="4. Monitoruj kroki"
+                    description="W zakładce Kroki zapisuj dzienną aktywność. Obserwuj trendy i motywuj się do większego ruchu."
+                  />
+                </div>
+              </div>
+            </Card>
+
+            {/* Friends Guide */}
+            <Card className="p-8 border-2 border-primary/30">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+                  <Users className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">Znajomi</h3>
+                  <p className="text-muted-foreground">Motywacja przez społeczność</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-8">
+                <GuideStep
+                  icon={Eye}
+                  title="Śledź postępy znajomych"
+                  description="W zakładce Znajomi możesz sprawdzić jakie postępy zrobili Twoi znajomi w ostatnim czasie. Ich nawyki, wyzwania i aktywności sportowe."
+                />
+                <GuideStep
+                  icon={Users}
+                  title="Oznacz swoje aktywności jako publiczne"
+                  description="Chcesz podzielić się postępami? Oznacz wybrane nawyki lub wyzwania jako widoczne dla innych. Motywujcie się nawzajem!"
+                />
+              </div>
+            </Card>
           </div>
         </div>
       </section>
@@ -268,23 +374,23 @@ function FeatureCard({
   )
 }
 
-function Step({
-  number,
+function GuideStep({
+  icon: Icon,
   title,
   description,
 }: {
-  number: number
+  icon: React.ElementType
   title: string
   description: string
 }) {
   return (
-    <div className="flex gap-6">
-      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-        {number}
+    <div className="flex gap-4">
+      <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
+        <Icon className="w-5 h-5 text-muted-foreground" />
       </div>
       <div>
-        <h3 className="font-bold text-lg mb-1">{title}</h3>
-        <p className="text-muted-foreground">{description}</p>
+        <h4 className="font-semibold mb-1">{title}</h4>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
     </div>
   )
