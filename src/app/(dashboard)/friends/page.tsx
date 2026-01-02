@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
   format,
   startOfWeek,
@@ -129,12 +130,30 @@ interface FriendData {
 }
 
 export default function FriendsPage() {
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const userIdFromUrl = searchParams.get("user")
+
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(userIdFromUrl)
   const [viewMode, setViewMode] = useState<ViewMode>("week")
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   )
   const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()))
+
+  // Sync URL params with state
+  useEffect(() => {
+    setSelectedUserId(userIdFromUrl)
+  }, [userIdFromUrl])
+
+  // Update URL when selecting a user
+  const handleSelectUser = (userId: string | null) => {
+    if (userId) {
+      router.push(`/friends?user=${userId}`)
+    } else {
+      router.push("/friends")
+    }
+  }
 
   // Fetch friends list (including self)
   const { data: friends = [], isLoading: isLoadingFriends } = useSWR<FriendUser[]>(
@@ -240,7 +259,7 @@ export default function FriendsPage() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setSelectedUserId(null)}
+              onClick={() => handleSelectUser(null)}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -738,7 +757,7 @@ export default function FriendsPage() {
               className={`cursor-pointer hover:border-primary/50 transition-colors ${
                 friend.isSelf ? "border-primary/30 bg-primary/5" : ""
               }`}
-              onClick={() => setSelectedUserId(friend.id)}
+              onClick={() => handleSelectUser(friend.id)}
             >
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-4">
