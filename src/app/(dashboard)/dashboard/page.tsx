@@ -12,7 +12,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import dynamic from "next/dynamic"
 
 // Dynamically import FriendsPage to avoid circular dependencies
-const FriendsPage = dynamic(() => import("./friends/page"), { ssr: false })
+const FriendsPage = dynamic(() => import("../friends/page"), { ssr: false })
 
 interface Category {
   id: string

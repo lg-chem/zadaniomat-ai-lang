@@ -13,7 +13,7 @@ export function WorkspaceSwitcher() {
     setWorkspace(newWorkspace)
     // Navigate to default page for each workspace
     if (newWorkspace === "FRIENDS") {
-      router.push("/")
+      router.push("/dashboard")
     } else if (newWorkspace === "WORK") {
       router.push("/schedule")
     } else {

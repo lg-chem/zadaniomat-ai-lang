@@ -104,7 +104,7 @@ export function SidebarContent() {
   const navItems = workspace === "WORK" ? workNavItems : privateNavItems
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/"
+    if (href === "/dashboard") return pathname === "/dashboard"
     return pathname.startsWith(href)
   }
 

@@ -38,7 +38,7 @@ export function BottomNav() {
   const navItems = workspace === "WORK" ? workBottomNav : privateBottomNav
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/"
+    if (href === "/dashboard") return pathname === "/dashboard"
     return pathname.startsWith(href)
   }
 
@@ -49,11 +49,11 @@ export function BottomNav() {
         <div className="flex h-full items-center justify-around px-1">
           {/* All Friends link */}
           <Link
-            href="/"
+            href="/dashboard"
             prefetch={false}
             className={cn(
               "flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-0 flex-1 touch-manipulation",
-              pathname === "/" ? "text-primary" : "text-muted-foreground active:text-foreground"
+              pathname === "/dashboard" ? "text-primary" : "text-muted-foreground active:text-foreground"
             )}
           >
             <Users className="h-5 w-5 flex-shrink-0" />

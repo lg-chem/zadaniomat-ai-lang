@@ -61,7 +61,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (status === "loading") return
     if (!session || !isAdmin) {
-      router.push("/")
+      router.push("/dashboard")
       return
     }
     fetchUsers()

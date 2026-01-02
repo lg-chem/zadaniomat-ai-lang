@@ -15,7 +15,7 @@ export function MobileHeader() {
   const handleWorkspaceChange = (newWorkspace: "FRIENDS" | "WORK" | "PRIVATE") => {
     setWorkspace(newWorkspace)
     if (newWorkspace === "FRIENDS") {
-      router.push("/")
+      router.push("/dashboard")
     } else if (newWorkspace === "WORK") {
       router.push("/schedule")
     } else {
