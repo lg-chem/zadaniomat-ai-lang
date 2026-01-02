@@ -1232,6 +1232,42 @@ export default function GroupChallengesPage() {
                     {isOverdue ? `${Math.abs(daysLeft)} dni po terminie` : `${daysLeft} dni`}
                   </Badge>
                 </div>
+
+                {/* Quick action buttons */}
+                <div className="flex gap-2 border-t pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-8 text-xs"
+                    onClick={() => {
+                      setViewingChallenge(challenge)
+                      setDetailTab("days")
+                    }}
+                  >
+                    <Users className="h-3.5 w-3.5 mr-1.5" />
+                    Dni innych
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-8 text-xs"
+                    onClick={() => {
+                      setViewingChallenge(challenge)
+                      setDetailTab("chat")
+                    }}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
+                    Chat
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleOpenIntegrationDialog(challenge)}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )
