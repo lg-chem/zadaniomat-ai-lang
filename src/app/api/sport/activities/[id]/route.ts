@@ -33,23 +33,17 @@ export async function PATCH(
     if (typeId !== undefined) updateData.typeId = typeId
     if (date !== undefined) updateData.date = new Date(date)
 
-    // Handle body parts update
+    // Handle body parts update - SportBodyPart is created per activity, not a lookup table
     if (bodyParts !== undefined) {
-      // First disconnect all existing body parts
-      await prisma.sportActivity.update({
-        where: { id },
-        data: {
-          bodyParts: { set: [] },
-        },
+      // Delete all existing body parts for this activity
+      await prisma.sportBodyPart.deleteMany({
+        where: { activityId: id },
       })
 
-      // Then connect new ones
+      // Create new body parts
       if (bodyParts.length > 0) {
-        const bodyPartRecords = await prisma.bodyPart.findMany({
-          where: { name: { in: bodyParts } },
-        })
         updateData.bodyParts = {
-          connect: bodyPartRecords.map((bp: { id: string }) => ({ id: bp.id })),
+          create: bodyParts.map((name: string) => ({ name })),
         }
       }
     }
