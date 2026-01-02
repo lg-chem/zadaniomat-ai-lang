@@ -1,6 +1,6 @@
 "use client"
 
-import { Briefcase, User } from "lucide-react"
+import { Briefcase, User, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
@@ -9,6 +9,18 @@ export function WorkspaceSwitcher() {
 
   return (
     <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+      <button
+        onClick={() => setWorkspace("FRIENDS")}
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all",
+          workspace === "FRIENDS"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <Users className="h-4 w-4" />
+        <span>Znajomi</span>
+      </button>
       <button
         onClick={() => setWorkspace("WORK")}
         className={cn(

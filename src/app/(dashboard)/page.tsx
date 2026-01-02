@@ -9,6 +9,10 @@ import { Progress } from "@/components/ui/progress"
 import { TaskItem } from "@/components/tasks/task-item"
 import { QuickAddTask } from "@/components/tasks/quick-add-task"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import dynamic from "next/dynamic"
+
+// Dynamically import FriendsPage to avoid circular dependencies
+const FriendsPage = dynamic(() => import("./friends/page"), { ssr: false })
 
 interface Category {
   id: string
@@ -134,6 +138,11 @@ export default function DashboardPage() {
 
   const todoTasks = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED")
   const doneTasks = tasks.filter((t) => t.status === "COMPLETED")
+
+  // Show Friends page when workspace is FRIENDS
+  if (workspace === "FRIENDS") {
+    return <FriendsPage />
+  }
 
   return (
     <div className="space-y-4 md:space-y-8">
