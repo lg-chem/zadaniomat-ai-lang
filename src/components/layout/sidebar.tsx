@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
+import { useEffect, useState } from "react"
+import useSWR from "swr"
 import {
   LayoutDashboard,
   CheckSquare,
@@ -24,6 +26,7 @@ import {
   BookOpen,
   ShieldCheck,
   Users,
+  ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -31,6 +34,21 @@ import { WorkspaceSwitcher } from "./workspace-switcher"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { prefetchPage } from "@/hooks/use-prefetch"
+
+interface FriendUser {
+  id: string
+  name: string | null
+  email: string
+  image: string | null
+  _count: {
+    habits: number
+    challenges: number
+    sportActivities: number
+    stepsEntries: number
+  }
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 const workNavItems = [
   { href: "/backlog", label: "Backlog", icon: Inbox },
@@ -64,6 +82,13 @@ export function SidebarContent() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { workspace } = useWorkspaceStore()
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
+
+  // Fetch friends when in FRIENDS workspace
+  const { data: friends = [] } = useSWR<FriendUser[]>(
+    workspace === "FRIENDS" ? "/api/friends" : null,
+    fetcher
+  )
 
   const navItems = workspace === "WORK" ? workNavItems : privateNavItems
 
@@ -71,6 +96,65 @@ export function SidebarContent() {
     if (href === "/") return pathname === "/"
     return pathname.startsWith(href)
   }
+
+  // Render friends list when in FRIENDS workspace
+  const renderFriendsSidebar = () => (
+    <>
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-3">
+          Znajomi ({friends.length})
+        </h3>
+        <div className="space-y-1">
+          {friends.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-4 text-center">
+              Brak znajomych z publicznymi aktywnościami
+            </p>
+          ) : (
+            friends.map((friend) => (
+              <Link
+                key={friend.id}
+                href={`/friends?user=${friend.id}`}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                  selectedFriendId === friend.id
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+                onClick={() => setSelectedFriendId(friend.id)}
+              >
+                <Avatar className="h-7 w-7">
+                  <AvatarImage src={friend.image || ""} />
+                  <AvatarFallback className="text-xs">
+                    {friend.name?.charAt(0) || friend.email.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">
+                    {friend.name || friend.email.split("@")[0]}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {friend._count.habits + friend._count.challenges + friend._count.sportActivities} aktywności
+                  </p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
+      <Separator />
+      <div className="p-4">
+        <Link
+          href="/friends"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          onClick={() => setSelectedFriendId(null)}
+        >
+          <Users className="h-5 w-5" />
+          Wszyscy znajomi
+        </Link>
+      </div>
+    </>
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -89,28 +173,35 @@ export function SidebarContent() {
 
       <Separator />
 
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            prefetch={false}
-            onMouseEnter={() => prefetchPage(item.href.slice(1), workspace)}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive(item.href)
-                ? workspace === "WORK"
-                  ? "bg-work/10 text-work"
-                  : "bg-private/10 text-private"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            <item.icon className="h-5 w-5" />
-            {item.label}
-          </Link>
-        ))}
-      </nav>
+      {workspace === "FRIENDS" ? (
+        /* Friends List */
+        <div className="flex-1 overflow-y-auto">
+          {renderFriendsSidebar()}
+        </div>
+      ) : (
+        /* Regular Navigation */
+        <nav className="flex-1 space-y-1 p-4">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={false}
+              onMouseEnter={() => prefetchPage(item.href.slice(1), workspace)}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                isActive(item.href)
+                  ? workspace === "WORK"
+                    ? "bg-work/10 text-work"
+                    : "bg-private/10 text-private"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <Separator />
 

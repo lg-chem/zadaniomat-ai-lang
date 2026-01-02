@@ -1,6 +1,6 @@
 "use client"
 
-import { Menu, CheckSquare, Briefcase, User } from "lucide-react"
+import { Menu, CheckSquare, Briefcase, User, Users } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { SidebarContent } from "./sidebar"
@@ -27,23 +27,35 @@ export function MobileHeader() {
         </Sheet>
 
         {/* Workspace Switcher - Mobile Compact */}
-        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg flex-1 max-w-[180px]">
+        <div className="flex items-center gap-0.5 p-1 bg-muted rounded-lg flex-1 max-w-[220px]">
+          <button
+            onClick={() => setWorkspace("FRIENDS")}
+            className={cn(
+              "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
+              workspace === "FRIENDS"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground"
+            )}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span>Zn.</span>
+          </button>
           <button
             onClick={() => setWorkspace("WORK")}
             className={cn(
-              "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
+              "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
               workspace === "WORK"
                 ? "bg-work text-work-foreground shadow-sm"
                 : "text-muted-foreground"
             )}
           >
             <Briefcase className="h-3.5 w-3.5" />
-            <span>Praca</span>
+            <span>Pr.</span>
           </button>
           <button
             onClick={() => setWorkspace("PRIVATE")}
             className={cn(
-              "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
+              "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1",
               workspace === "PRIVATE"
                 ? "bg-private text-private-foreground shadow-sm"
                 : "text-muted-foreground"
