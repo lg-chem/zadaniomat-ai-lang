@@ -154,13 +154,18 @@ export async function POST(
               lte: endOfDay(day),
             },
             ...(membership.sportActivityType
-              ? { activityType: membership.sportActivityType }
+              ? { type: { name: membership.sportActivityType } }
               : {}),
+          },
+          include: {
+            type: {
+              select: { name: true },
+            },
           },
         })
 
         if (activities.length > 0) {
-          const totalDuration = activities.reduce((sum: number, a: { duration?: number | null }) => sum + (a.duration || 0), 0)
+          const totalDuration = activities.reduce((sum, a) => sum + (a.duration || 0), 0)
           if (membership.minDuration) {
             shouldCreateEntry = totalDuration >= membership.minDuration
           } else {
@@ -170,7 +175,7 @@ export async function POST(
           if (shouldCreateEntry) {
             entryMetadata.duration = totalDuration
             // Get most common activity type or first one
-            entryMetadata.activityType = activities[0]?.activityType || membership.sportActivityType || undefined
+            entryMetadata.activityType = activities[0]?.type?.name || membership.sportActivityType || undefined
           }
         }
       } else if (membership.linkedType === "HABIT" && membership.linkedHabitId) {
