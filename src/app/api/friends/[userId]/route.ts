@@ -99,11 +99,22 @@ export async function GET(
       take: 50, // Limit to last 50 activities
     })
 
+    // Fetch public steps
+    const steps = await prisma.stepsEntry.findMany({
+      where: {
+        userId,
+        isPublic: true,
+        ...(dateFilter || {}),
+      },
+      orderBy: { date: "desc" },
+    })
+
     return NextResponse.json({
       user,
       habits,
       challenges,
       sportActivities,
+      steps,
     })
   } catch (error) {
     console.error("Error fetching friend data:", error)

@@ -26,6 +26,7 @@ export async function GET() {
             habits: { where: { isPublic: true, isActive: true } },
             challenges: { where: { isPublic: true } },
             sportActivities: { where: { isPublic: true } },
+            stepsEntries: { where: { isPublic: true } },
           },
         },
       },
@@ -37,7 +38,8 @@ export async function GET() {
       (user) =>
         user._count.habits > 0 ||
         user._count.challenges > 0 ||
-        user._count.sportActivities > 0
+        user._count.sportActivities > 0 ||
+        user._count.stepsEntries > 0
     )
 
     return NextResponse.json(usersWithPublicContent)

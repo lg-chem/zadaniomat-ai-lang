@@ -85,7 +85,7 @@ export default function HabitsPage() {
     color: COLORS[0],
     frequency: "DAILY" as HabitFrequency,
     defaultMinutes: "",
-    isPublic: false,
+    isPublic: true,
   })
   const newHabitRef = useRef<HTMLInputElement>(null)
 
@@ -110,7 +110,7 @@ export default function HabitsPage() {
       })
       if (res.ok) {
         mutateHabits()
-        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
+        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
         setIsAddingHabit(false)
       }
     } catch (error) {
@@ -180,7 +180,7 @@ export default function HabitsPage() {
       setIsAddingHabit(false)
       setEditingTime(null)
       setTimeValue("")
-      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
+      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
     }
   }
 
@@ -493,7 +493,7 @@ export default function HabitsPage() {
                         variant="outline"
                         onClick={() => {
                           setIsAddingHabit(false)
-                          setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
+                          setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
                         }}
                         className="flex-1"
                       >
@@ -749,7 +749,7 @@ export default function HabitsPage() {
                     className="h-7 w-7"
                     onClick={() => {
                       setIsAddingHabit(false)
-                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: false })
+                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
                     }}
                   >
                     <X className="h-3.5 w-3.5" />

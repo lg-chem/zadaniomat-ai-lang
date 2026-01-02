@@ -643,6 +643,7 @@ model StepsEntry {
   count       Int      // Number of steps
   notes       String?
   copiedToActivity Boolean @default(false)
+  isPublic    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
   // Relations

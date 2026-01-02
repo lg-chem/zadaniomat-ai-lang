@@ -1,7 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import { format, startOfWeek, addDays, subWeeks, addWeeks, isSameDay } from "date-fns"
+import {
+  format,
+  startOfWeek,
+  startOfMonth,
+  endOfMonth,
+  addDays,
+  subWeeks,
+  addWeeks,
+  subMonths,
+  addMonths,
+  isSameDay,
+  eachDayOfInterval,
+  getDay,
+} from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Users,
@@ -14,6 +27,8 @@ import {
   Clock,
   Calendar,
   ArrowLeft,
+  CalendarDays,
+  Footprints,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +38,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import useSWR from "swr"
 
+type ViewMode = "week" | "month"
+
 interface FriendUser {
   id: string
   name: string | null
@@ -31,7 +48,15 @@ interface FriendUser {
     habits: number
     challenges: number
     sportActivities: number
+    stepsEntries: number
   }
+}
+
+interface FriendSteps {
+  id: string
+  date: string
+  count: number
+  notes?: string | null
 }
 
 interface HabitCompletion {
@@ -97,37 +122,61 @@ interface FriendData {
   habits: FriendHabit[]
   challenges: FriendChallenge[]
   sportActivities: FriendSportActivity[]
+  steps: FriendSteps[]
 }
 
 export default function FriendsPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("week")
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   )
+  const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()))
 
   // Fetch friends list
   const { data: friends = [], isLoading: isLoadingFriends } = useSWR<FriendUser[]>(
     "/api/friends"
   )
 
+  // Calculate date range based on view mode
+  const startDate = viewMode === "week"
+    ? format(weekStart, "yyyy-MM-dd")
+    : format(monthStart, "yyyy-MM-dd")
+  const endDate = viewMode === "week"
+    ? format(addDays(weekStart, 6), "yyyy-MM-dd")
+    : format(endOfMonth(monthStart), "yyyy-MM-dd")
+
   // Fetch selected friend's data
-  const startDate = format(weekStart, "yyyy-MM-dd")
-  const endDate = format(addDays(weekStart, 6), "yyyy-MM-dd")
   const { data: friendData, isLoading: isLoadingFriend } = useSWR<FriendData>(
     selectedUserId ? `/api/friends/${selectedUserId}?startDate=${startDate}&endDate=${endDate}` : null
   )
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const monthDays = eachDayOfInterval({ start: monthStart, end: endOfMonth(monthStart) })
 
+  // Week navigation
   const handlePrevWeek = () => setWeekStart((w) => subWeeks(w, 1))
   const handleNextWeek = () => setWeekStart((w) => addWeeks(w, 1))
   const handleThisWeek = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+
+  // Month navigation
+  const handlePrevMonth = () => setMonthStart((m) => subMonths(m, 1))
+  const handleNextMonth = () => setMonthStart((m) => addMonths(m, 1))
+  const handleThisMonth = () => setMonthStart(startOfMonth(new Date()))
 
   const getCompletionOnDate = (habit: FriendHabit, date: Date): HabitCompletion | undefined => {
     const dateStr = format(date, "yyyy-MM-dd")
     return habit.completions?.find((c) => {
       const completionDate = format(new Date(c.date), "yyyy-MM-dd")
       return completionDate === dateStr
+    })
+  }
+
+  const getStepsOnDate = (steps: FriendSteps[], date: Date): FriendSteps | undefined => {
+    const dateStr = format(date, "yyyy-MM-dd")
+    return steps?.find((s) => {
+      const stepsDate = format(new Date(s.date), "yyyy-MM-dd")
+      return stepsDate === dateStr
     })
   }
 
@@ -181,20 +230,51 @@ export default function FriendsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={handlePrevWeek}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" onClick={handleThisWeek}>
-              Ten tydzień
-            </Button>
-            <div className="px-4 py-2 font-medium min-w-[200px] text-center">
-              {format(weekStart, "d MMM", { locale: pl })} -{" "}
-              {format(addDays(weekStart, 6), "d MMM yyyy", { locale: pl })}
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            {/* View mode toggle */}
+            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+              <button
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  viewMode === "week" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setViewMode("week")}
+              >
+                <Calendar className="h-4 w-4 inline mr-1" />
+                Tydzień
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  viewMode === "month" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setViewMode("month")}
+              >
+                <CalendarDays className="h-4 w-4 inline mr-1" />
+                Miesiąc
+              </button>
             </div>
-            <Button variant="outline" size="icon" onClick={handleNextWeek}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+
+            {/* Navigation */}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={viewMode === "week" ? handlePrevWeek : handlePrevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" onClick={viewMode === "week" ? handleThisWeek : handleThisMonth}>
+                {viewMode === "week" ? "Ten tydzień" : "Ten miesiąc"}
+              </Button>
+              <div className="px-4 py-2 font-medium min-w-[200px] text-center">
+                {viewMode === "week" ? (
+                  <>
+                    {format(weekStart, "d MMM", { locale: pl })} -{" "}
+                    {format(addDays(weekStart, 6), "d MMM yyyy", { locale: pl })}
+                  </>
+                ) : (
+                  format(monthStart, "LLLL yyyy", { locale: pl })
+                )}
+              </div>
+              <Button variant="outline" size="icon" onClick={viewMode === "week" ? handleNextWeek : handleNextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -234,39 +314,77 @@ export default function FriendsPage() {
                           </div>
                         </div>
 
-                        {/* Week Grid */}
-                        <div className="flex gap-2 justify-between">
-                          {weekDays.map((day) => {
-                            const completion = getCompletionOnDate(habit, day)
-                            const completed = !!completion
-                            const isToday = isSameDay(day, new Date())
+                        {/* Week/Month Grid */}
+                        {viewMode === "week" ? (
+                          <div className="flex gap-2 justify-between">
+                            {weekDays.map((day) => {
+                              const completion = getCompletionOnDate(habit, day)
+                              const completed = !!completion
+                              const isToday = isSameDay(day, new Date())
 
-                            return (
-                              <div key={day.toISOString()} className="flex flex-col items-center gap-1">
-                                <div className={`text-[10px] ${isToday ? "text-primary font-bold" : "text-muted-foreground"}`}>
-                                  <div>{format(day, "EEE", { locale: pl })}</div>
-                                  <div className="text-center">{format(day, "d")}</div>
+                              return (
+                                <div key={day.toISOString()} className="flex flex-col items-center gap-1">
+                                  <div className={`text-[10px] ${isToday ? "text-primary font-bold" : "text-muted-foreground"}`}>
+                                    <div>{format(day, "EEE", { locale: pl })}</div>
+                                    <div className="text-center">{format(day, "d")}</div>
+                                  </div>
+                                  <div
+                                    className={`
+                                      h-8 w-8 rounded-lg flex items-center justify-center
+                                      ${completed ? "text-white" : "border-2 border-dashed border-muted-foreground/30"}
+                                    `}
+                                    style={{
+                                      backgroundColor: completed ? habit.color : "transparent",
+                                    }}
+                                  >
+                                    {completed && <Check className="h-4 w-4" />}
+                                  </div>
+                                  {completed && completion.minutes && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {completion.minutes}m
+                                    </span>
+                                  )}
                                 </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-7 gap-1">
+                            {/* Day headers */}
+                            {["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"].map((day) => (
+                              <div key={day} className="text-[10px] text-center text-muted-foreground font-medium py-1">
+                                {day}
+                              </div>
+                            ))}
+                            {/* Empty cells for days before month start */}
+                            {Array.from({ length: (getDay(monthStart) + 6) % 7 }).map((_, i) => (
+                              <div key={`empty-${i}`} />
+                            ))}
+                            {/* Month days */}
+                            {monthDays.map((day) => {
+                              const completion = getCompletionOnDate(habit, day)
+                              const completed = !!completion
+                              const isToday = isSameDay(day, new Date())
+
+                              return (
                                 <div
+                                  key={day.toISOString()}
                                   className={`
-                                    h-8 w-8 rounded-lg flex items-center justify-center
-                                    ${completed ? "text-white" : "border-2 border-dashed border-muted-foreground/30"}
+                                    h-7 w-full rounded flex items-center justify-center text-[10px]
+                                    ${completed ? "text-white" : ""}
+                                    ${isToday && !completed ? "ring-1 ring-primary" : ""}
                                   `}
                                   style={{
                                     backgroundColor: completed ? habit.color : "transparent",
                                   }}
+                                  title={completed && completion.minutes ? `${completion.minutes}m` : undefined}
                                 >
-                                  {completed && <Check className="h-4 w-4" />}
+                                  {format(day, "d")}
                                 </div>
-                                {completed && completion.minutes && (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {completion.minutes}m
-                                  </span>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -376,10 +494,84 @@ export default function FriendsPage() {
               </Card>
             )}
 
+            {/* Steps Section */}
+            {friendData.steps && friendData.steps.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Footprints className="h-5 w-5 text-emerald-500" />
+                    Kroki
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {viewMode === "week" ? (
+                    <div className="flex gap-2 justify-between">
+                      {weekDays.map((day) => {
+                        const stepsEntry = getStepsOnDate(friendData.steps, day)
+                        const isToday = isSameDay(day, new Date())
+                        return (
+                          <div key={day.toISOString()} className="flex flex-col items-center gap-1">
+                            <div className={`text-[10px] ${isToday ? "text-primary font-bold" : "text-muted-foreground"}`}>
+                              <div>{format(day, "EEE", { locale: pl })}</div>
+                              <div className="text-center">{format(day, "d")}</div>
+                            </div>
+                            <div className={`
+                              min-w-[60px] h-8 rounded-lg flex items-center justify-center text-xs
+                              ${stepsEntry ? "bg-emerald-500 text-white" : "border-2 border-dashed border-muted-foreground/30"}
+                            `}>
+                              {stepsEntry ? stepsEntry.count.toLocaleString() : "-"}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-7 gap-1">
+                      {["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"].map((day) => (
+                        <div key={day} className="text-[10px] text-center text-muted-foreground font-medium py-1">
+                          {day}
+                        </div>
+                      ))}
+                      {Array.from({ length: (getDay(monthStart) + 6) % 7 }).map((_, i) => (
+                        <div key={`empty-${i}`} />
+                      ))}
+                      {monthDays.map((day) => {
+                        const stepsEntry = getStepsOnDate(friendData.steps, day)
+                        const isToday = isSameDay(day, new Date())
+                        return (
+                          <div
+                            key={day.toISOString()}
+                            className={`
+                              h-7 w-full rounded flex items-center justify-center text-[10px]
+                              ${stepsEntry ? "bg-emerald-500 text-white" : ""}
+                              ${isToday && !stepsEntry ? "ring-1 ring-primary" : ""}
+                            `}
+                            title={stepsEntry ? `${stepsEntry.count.toLocaleString()} kroków` : undefined}
+                          >
+                            {format(day, "d")}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {/* Total steps */}
+                  <div className="mt-4 pt-4 border-t text-center">
+                    <div className="text-2xl font-bold text-emerald-600">
+                      {friendData.steps.reduce((sum, s) => sum + s.count, 0).toLocaleString()}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      kroków w {viewMode === "week" ? "tym tygodniu" : "tym miesiącu"}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Empty state */}
             {friendData.habits.length === 0 &&
               friendData.challenges.length === 0 &&
-              friendData.sportActivities.length === 0 && (
+              friendData.sportActivities.length === 0 &&
+              (!friendData.steps || friendData.steps.length === 0) && (
                 <div className="text-center py-12 text-muted-foreground">
                   <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>Ten użytkownik nie ma żadnych publicznych aktywności</p>
@@ -452,6 +644,12 @@ export default function FriendsPage() {
                     <div className="flex items-center gap-1.5">
                       <Dumbbell className="h-4 w-4 text-blue-500" />
                       <span>{friend._count.sportActivities} treningów</span>
+                    </div>
+                  )}
+                  {friend._count.stepsEntries > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <Footprints className="h-4 w-4 text-emerald-500" />
+                      <span>{friend._count.stepsEntries} dni kroków</span>
                     </div>
                   )}
                 </div>

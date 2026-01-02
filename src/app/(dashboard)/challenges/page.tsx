@@ -116,7 +116,7 @@ export default function ChallengesPage() {
     unit: "",
     weeklyTarget: "",
     color: COLORS[0],
-    isPublic: false,
+    isPublic: true,
   })
 
   // Add progress
@@ -195,7 +195,7 @@ export default function ChallengesPage() {
           unit: "",
           weeklyTarget: "",
           color: COLORS[0],
-          isPublic: false,
+          isPublic: true,
         })
         setIsDialogOpen(false)
       }

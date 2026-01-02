@@ -119,7 +119,7 @@ export default function SportPage() {
     duration: "",
     notes: "",
     bodyParts: [] as string[],
-    isPublic: false,
+    isPublic: true,
   })
 
   // Add steps
@@ -155,7 +155,7 @@ export default function SportPage() {
         duration: "",
         notes: "",
         bodyParts: [],
-        isPublic: false,
+        isPublic: true,
       })
       setIsAddingActivity(false)
     } catch (error) {

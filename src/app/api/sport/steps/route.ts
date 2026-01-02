@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { date, count, notes } = body
+    const { date, count, notes, isPublic } = body
 
     if (!date || count === undefined) {
       return NextResponse.json({ error: "Data i liczba kroków są wymagane" }, { status: 400 })
@@ -65,11 +65,13 @@ export async function POST(req: Request) {
       update: {
         count,
         notes,
+        isPublic: isPublic !== undefined ? isPublic : true,
       },
       create: {
         date: entryDate,
         count,
         notes,
+        isPublic: isPublic !== undefined ? isPublic : true,
         userId: session.user.id,
       },
     })
