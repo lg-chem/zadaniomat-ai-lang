@@ -21,6 +21,8 @@ import {
   X,
   Clock,
   Users,
+  Edit2,
+  MoreHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -34,6 +36,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Label } from "@/components/ui/label"
 import { useHabits } from "@/hooks/use-habits"
 
 type HabitFrequency = "DAILY" | "WEEKLY" | "MONTHLY"
@@ -92,6 +107,16 @@ export default function HabitsPage() {
   // Time editing state
   const [editingTime, setEditingTime] = useState<{ habitId: string; date: string } | null>(null)
   const [timeValue, setTimeValue] = useState("")
+
+  // Edit habit state
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null)
+  const [editForm, setEditForm] = useState({
+    name: "",
+    color: COLORS[0],
+    frequency: "DAILY" as HabitFrequency,
+    defaultMinutes: "",
+    isPublic: true,
+  })
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
@@ -160,6 +185,38 @@ export default function HabitsPage() {
       mutateHabits()
     } catch (error) {
       console.error("Error deleting habit:", error)
+    }
+  }
+
+  const handleStartEdit = (habit: Habit) => {
+    setEditingHabit(habit)
+    setEditForm({
+      name: habit.name,
+      color: habit.color,
+      frequency: habit.frequency,
+      defaultMinutes: habit.defaultMinutes?.toString() || "",
+      isPublic: habit.isPublic ?? true,
+    })
+  }
+
+  const handleUpdateHabit = async () => {
+    if (!editingHabit) return
+    try {
+      await fetch(`/api/habits/${editingHabit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name,
+          color: editForm.color,
+          frequency: editForm.frequency,
+          defaultMinutes: editForm.defaultMinutes ? parseInt(editForm.defaultMinutes) : null,
+          isPublic: editForm.isPublic,
+        }),
+      })
+      mutateHabits()
+      setEditingHabit(null)
+    } catch (error) {
+      console.error("Error updating habit:", error)
     }
   }
 
@@ -308,14 +365,26 @@ export default function HabitsPage() {
                           {FREQUENCY_LABELS[habit.frequency]}
                         </Badge>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleDeleteHabit(habit.id)}
-                      >
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-6 w-6">
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleStartEdit(habit)}>
+                            <Edit2 className="h-3.5 w-3.5 mr-2" />
+                            Edytuj
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteHabit(habit.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-2" />
+                            Usuń
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     {/* Streak Info */}
@@ -638,16 +707,28 @@ export default function HabitsPage() {
                   )}
                 </div>
 
-                {/* Delete */}
+                {/* Actions */}
                 <div className="flex justify-center">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => handleDeleteHabit(habit.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleStartEdit(habit)}>
+                        <Edit2 className="h-3.5 w-3.5 mr-2" />
+                        Edytuj
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => handleDeleteHabit(habit.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-2" />
+                        Usuń
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             ))}
@@ -777,6 +858,84 @@ export default function HabitsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Habit Dialog */}
+      <Dialog open={!!editingHabit} onOpenChange={(open) => !open && setEditingHabit(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edytuj nawyk</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Nazwa</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Częstotliwość</Label>
+              <Select
+                value={editForm.frequency}
+                onValueChange={(v: HabitFrequency) => setEditForm({ ...editForm, frequency: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DAILY">Codziennie</SelectItem>
+                  <SelectItem value="WEEKLY">Co tydzień</SelectItem>
+                  <SelectItem value="MONTHLY">Co miesiąc</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Domyślny czas (minuty)</Label>
+              <Input
+                type="number"
+                value={editForm.defaultMinutes}
+                onChange={(e) => setEditForm({ ...editForm, defaultMinutes: e.target.value })}
+                placeholder="np. 15"
+              />
+            </div>
+
+            <div>
+              <Label>Kolor</Label>
+              <div className="flex gap-2 mt-2">
+                {COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`h-8 w-8 rounded-full border-2 transition-all ${
+                      editForm.color === color ? "border-foreground scale-110" : "border-transparent"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setEditForm({ ...editForm, color })}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Public toggle */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span>Udostępnij znajomym</span>
+              </div>
+              <Switch
+                checked={editForm.isPublic}
+                onCheckedChange={(checked) => setEditForm({ ...editForm, isPublic: checked })}
+              />
+            </div>
+
+            <Button onClick={handleUpdateHabit} className="w-full">
+              Zapisz zmiany
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

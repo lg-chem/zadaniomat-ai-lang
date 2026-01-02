@@ -134,6 +134,7 @@ export default function ChallengesPage() {
     unit: "",
     weeklyTarget: "",
     color: COLORS[0],
+    isPublic: true,
   })
 
   // Copy challenge
@@ -256,6 +257,7 @@ export default function ChallengesPage() {
       unit: challenge.unit,
       weeklyTarget: challenge.weeklyTarget?.toString() || "",
       color: challenge.color,
+      isPublic: challenge.isPublic ?? true,
     })
   }
 
@@ -1018,6 +1020,19 @@ export default function ChallengesPage() {
                 ))}
               </div>
             </div>
+
+            {/* Public toggle */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span>Udostępnij znajomym</span>
+              </div>
+              <Switch
+                checked={editForm.isPublic}
+                onCheckedChange={(checked) => setEditForm({ ...editForm, isPublic: checked })}
+              />
+            </div>
+
             <Button onClick={handleUpdateChallenge} className="w-full">
               Zapisz zmiany
             </Button>

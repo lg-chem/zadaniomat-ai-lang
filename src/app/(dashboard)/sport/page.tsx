@@ -23,6 +23,8 @@ import {
   Copy,
   Clock,
   Users,
+  Edit2,
+  MoreHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,6 +45,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 import { useSportTypes, useSportActivities, useSteps } from "@/hooks/use-sport"
 
@@ -130,6 +138,17 @@ export default function SportPage() {
   const [isAddingType, setIsAddingType] = useState(false)
   const [newTypeName, setNewTypeName] = useState("")
 
+  // Edit activity state
+  const [editingActivity, setEditingActivity] = useState<SportActivity | null>(null)
+  const [editForm, setEditForm] = useState({
+    typeId: "",
+    date: "",
+    duration: "",
+    notes: "",
+    bodyParts: [] as string[],
+    isPublic: true,
+  })
+
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   const handlePrevWeek = () => setWeekStart((w) => subWeeks(w, 1))
@@ -170,6 +189,49 @@ export default function SportPage() {
     } catch (error) {
       console.error("Error deleting activity:", error)
     }
+  }
+
+  const handleStartEditActivity = (activity: SportActivity) => {
+    setEditingActivity(activity)
+    setEditForm({
+      typeId: activity.type.id,
+      date: format(new Date(activity.date), "yyyy-MM-dd"),
+      duration: activity.duration?.toString() || "",
+      notes: activity.notes || "",
+      bodyParts: activity.bodyParts.map((bp) => bp.name),
+      isPublic: activity.isPublic ?? true,
+    })
+  }
+
+  const handleUpdateActivity = async () => {
+    if (!editingActivity) return
+    try {
+      await fetch(`/api/sport/activities/${editingActivity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          typeId: editForm.typeId,
+          date: editForm.date,
+          duration: editForm.duration ? parseInt(editForm.duration) : null,
+          notes: editForm.notes || null,
+          bodyParts: editForm.bodyParts,
+          isPublic: editForm.isPublic,
+        }),
+      })
+      mutateActivities()
+      setEditingActivity(null)
+    } catch (error) {
+      console.error("Error updating activity:", error)
+    }
+  }
+
+  const handleEditBodyPartToggle = (part: string) => {
+    setEditForm((prev) => ({
+      ...prev,
+      bodyParts: prev.bodyParts.includes(part)
+        ? prev.bodyParts.filter((p) => p !== part)
+        : [...prev.bodyParts, part],
+    }))
   }
 
   const handleSaveSteps = async (date: string) => {
@@ -445,12 +507,26 @@ export default function SportPage() {
                                     ))}
                                   </div>
                                 )}
-                                <button
-                                  onClick={() => handleDeleteActivity(activity.id)}
-                                  className="absolute top-1 right-1"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="absolute top-1 right-1">
+                                      <MoreHorizontal className="h-3.5 w-3.5" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleStartEditActivity(activity)}>
+                                      <Edit2 className="h-3.5 w-3.5 mr-2" />
+                                      Edytuj
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() => handleDeleteActivity(activity.id)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                      Usuń
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             ))}
                           </div>
@@ -517,12 +593,26 @@ export default function SportPage() {
                                 {parseInt(activity.notes).toLocaleString()} kroków
                               </div>
                             )}
-                            <button
-                              onClick={() => handleDeleteActivity(activity.id)}
-                              className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleStartEditActivity(activity)}>
+                                  <Edit2 className="h-3.5 w-3.5 mr-2" />
+                                  Edytuj
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDeleteActivity(activity.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                  Usuń
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         ))}
                       </div>
@@ -843,6 +933,107 @@ export default function SportPage() {
             </div>
             <Button onClick={handleCreateType} className="w-full">
               Dodaj typ
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Activity Dialog */}
+      <Dialog open={!!editingActivity} onOpenChange={(open) => !open && setEditingActivity(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edytuj aktywność</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Typ aktywności</Label>
+              <Select
+                value={editForm.typeId}
+                onValueChange={(v) => setEditForm({ ...editForm, typeId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz typ..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {activityTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: type.color }}
+                        />
+                        {type.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Data</Label>
+              <Input
+                type="date"
+                value={editForm.date}
+                onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Czas trwania (minuty)</Label>
+              <Input
+                type="number"
+                value={editForm.duration}
+                onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })}
+                placeholder="np. 60"
+              />
+            </div>
+
+            {activityTypes.find((t) => t.id === editForm.typeId)?.hasBodyParts && (
+              <div>
+                <Label>Partie mięśniowe</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {BODY_PARTS.map((part) => (
+                    <button
+                      key={part}
+                      type="button"
+                      onClick={() => handleEditBodyPartToggle(part)}
+                      className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                        editForm.bodyParts.includes(part)
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-muted-foreground/30 hover:border-primary"
+                      }`}
+                    >
+                      {part}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label>Notatki (opcjonalnie)</Label>
+              <Input
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                placeholder="Dodatkowe informacje..."
+              />
+            </div>
+
+            {/* Public toggle */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span>Udostępnij znajomym</span>
+              </div>
+              <Switch
+                checked={editForm.isPublic}
+                onCheckedChange={(checked) => setEditForm({ ...editForm, isPublic: checked })}
+              />
+            </div>
+
+            <Button onClick={handleUpdateActivity} className="w-full">
+              Zapisz zmiany
             </Button>
           </div>
         </DialogContent>

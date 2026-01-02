@@ -24,12 +24,35 @@ export async function PATCH(
       return NextResponse.json({ error: "Activity not found" }, { status: 404 })
     }
 
-    const { duration, notes } = body
+    const { duration, notes, isPublic, bodyParts, typeId, date } = body
     const updateData: Record<string, unknown> = {}
 
     if (duration !== undefined) updateData.duration = duration
     if (notes !== undefined) updateData.notes = notes
-    // if (isPublic !== undefined) updateData.isPublic = isPublic // TODO: uncomment after running migration
+    if (isPublic !== undefined) updateData.isPublic = isPublic
+    if (typeId !== undefined) updateData.typeId = typeId
+    if (date !== undefined) updateData.date = new Date(date)
+
+    // Handle body parts update
+    if (bodyParts !== undefined) {
+      // First disconnect all existing body parts
+      await prisma.sportActivity.update({
+        where: { id },
+        data: {
+          bodyParts: { set: [] },
+        },
+      })
+
+      // Then connect new ones
+      if (bodyParts.length > 0) {
+        const bodyPartRecords = await prisma.bodyPart.findMany({
+          where: { name: { in: bodyParts } },
+        })
+        updateData.bodyParts = {
+          connect: bodyPartRecords.map((bp: { id: string }) => ({ id: bp.id })),
+        }
+      }
+    }
 
     const activity = await prisma.sportActivity.update({
       where: { id },
