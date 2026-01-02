@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { AdminReportStatus } from "@prisma/client"
 
+const isAdmin = (role: string | undefined) => role === "ADMIN" || role === "SUPER_ADMIN"
+
 // GET - Get all reports (admin only)
 export async function GET() {
   try {
@@ -18,7 +20,7 @@ export async function GET() {
       select: { role: true },
     })
 
-    if (user?.role !== "ADMIN") {
+    if (!isAdmin(user?.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -106,7 +108,7 @@ export async function PATCH(request: Request) {
       select: { role: true },
     })
 
-    if (user?.role !== "ADMIN") {
+    if (!isAdmin(user?.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -155,7 +157,7 @@ export async function DELETE(request: Request) {
       select: { role: true },
     })
 
-    if (user?.role !== "ADMIN") {
+    if (!isAdmin(user?.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
