@@ -1,14 +1,18 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { Plus, Trash2, Star, Check, Brain, Save } from "lucide-react"
+import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useSession } from "next-auth/react"
+import { formatDistanceToNow } from "date-fns"
+import { pl } from "date-fns/locale"
 
 interface Category {
   id: string
@@ -27,6 +31,21 @@ interface AIKnowledgeBase {
   chatInstructions?: string | null
 }
 
+interface AdminReport {
+  id: string
+  content: string
+  type: "BUG" | "FEATURE" | "OTHER"
+  status: "NEW" | "IN_PROGRESS" | "RESOLVED" | "REJECTED"
+  adminNotes?: string | null
+  createdAt: string
+  user: {
+    id: string
+    name: string | null
+    email: string
+    image?: string | null
+  }
+}
+
 const COLORS = [
   "#3b82f6", "#8b5cf6", "#ec4899", "#ef4444", "#f59e0b",
   "#10b981", "#06b6d4", "#6366f1", "#84cc16", "#f97316",
@@ -34,6 +53,7 @@ const COLORS = [
 
 export default function SettingsPage() {
   const { workspace } = useWorkspaceStore()
+  const { data: session } = useSession()
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -45,6 +65,11 @@ export default function SettingsPage() {
     chatInstructions: "",
   })
   const [isSavingKnowledge, setIsSavingKnowledge] = useState(false)
+
+  // Admin Reports
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminReports, setAdminReports] = useState<AdminReport[]>([])
+  const [isLoadingReports, setIsLoadingReports] = useState(false)
 
   // Inline editing state for new row
   const [newRow, setNewRow] = useState({
@@ -92,10 +117,58 @@ export default function SettingsPage() {
     }
   }, [workspace])
 
+  const fetchAdminReports = useCallback(async () => {
+    setIsLoadingReports(true)
+    try {
+      const res = await fetch("/api/admin/reports")
+      if (res.ok) {
+        const data = await res.json()
+        setAdminReports(data)
+        setIsAdmin(true)
+      } else if (res.status === 403) {
+        setIsAdmin(false)
+      }
+    } catch (error) {
+      console.error("Error fetching admin reports:", error)
+    } finally {
+      setIsLoadingReports(false)
+    }
+  }, [])
+
+  const handleUpdateReportStatus = async (reportId: string, status: string) => {
+    try {
+      const res = await fetch("/api/admin/reports", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: reportId, status }),
+      })
+      if (res.ok) {
+        fetchAdminReports()
+      }
+    } catch (error) {
+      console.error("Error updating report:", error)
+    }
+  }
+
+  const handleDeleteReport = async (reportId: string) => {
+    if (!confirm("Czy na pewno chcesz usunąć to zgłoszenie?")) return
+    try {
+      const res = await fetch(`/api/admin/reports?id=${reportId}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        fetchAdminReports()
+      }
+    } catch (error) {
+      console.error("Error deleting report:", error)
+    }
+  }
+
   useEffect(() => {
     fetchCategories()
     fetchKnowledgeBase()
-  }, [fetchCategories, fetchKnowledgeBase])
+    fetchAdminReports()
+  }, [fetchCategories, fetchKnowledgeBase, fetchAdminReports])
 
   const handleCreateCategory = async () => {
     if (!newRow.name.trim()) return
@@ -492,6 +565,143 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Admin Reports Section - only visible to admins */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle>Zgłoszenia użytkowników</CardTitle>
+                <CardDescription>
+                  Błędy i propozycje ficzerów od użytkowników
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoadingReports ? (
+              <p className="text-muted-foreground">Ładowanie...</p>
+            ) : adminReports.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                Brak zgłoszeń
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {adminReports.map((report) => (
+                  <div
+                    key={report.id}
+                    className={`border rounded-lg p-4 space-y-3 ${
+                      report.status === "NEW"
+                        ? "border-blue-200 bg-blue-50/50"
+                        : report.status === "IN_PROGRESS"
+                        ? "border-yellow-200 bg-yellow-50/50"
+                        : report.status === "RESOLVED"
+                        ? "border-green-200 bg-green-50/50"
+                        : "border-gray-200 bg-gray-50/50"
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        {report.type === "BUG" ? (
+                          <Bug className="h-4 w-4 text-red-500" />
+                        ) : report.type === "FEATURE" ? (
+                          <Lightbulb className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <MessageSquare className="h-4 w-4 text-gray-500" />
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={
+                            report.type === "BUG"
+                              ? "border-red-200 text-red-700"
+                              : report.type === "FEATURE"
+                              ? "border-green-200 text-green-700"
+                              : "border-gray-200 text-gray-700"
+                          }
+                        >
+                          {report.type === "BUG"
+                            ? "Błąd"
+                            : report.type === "FEATURE"
+                            ? "Pomysł"
+                            : "Inne"}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(report.createdAt), {
+                            addSuffix: true,
+                            locale: pl,
+                          })}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleDeleteReport(report.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+
+                    {/* Content */}
+                    <p className="text-sm whitespace-pre-wrap">{report.content}</p>
+
+                    {/* User info */}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>Od:</span>
+                      <span className="font-medium">
+                        {report.user.name || report.user.email}
+                      </span>
+                    </div>
+
+                    {/* Status buttons */}
+                    <div className="flex flex-wrap gap-1 pt-2 border-t">
+                      <Button
+                        variant={report.status === "NEW" ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleUpdateReportStatus(report.id, "NEW")}
+                      >
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Nowe
+                      </Button>
+                      <Button
+                        variant={report.status === "IN_PROGRESS" ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleUpdateReportStatus(report.id, "IN_PROGRESS")}
+                      >
+                        <Clock className="h-3 w-3 mr-1" />
+                        W trakcie
+                      </Button>
+                      <Button
+                        variant={report.status === "RESOLVED" ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleUpdateReportStatus(report.id, "RESOLVED")}
+                      >
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Rozwiązane
+                      </Button>
+                      <Button
+                        variant={report.status === "REJECTED" ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleUpdateReportStatus(report.id, "REJECTED")}
+                      >
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Odrzucone
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

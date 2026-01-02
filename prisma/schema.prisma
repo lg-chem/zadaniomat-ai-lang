@@ -45,6 +45,7 @@ model User {
   sportActivities SportActivity[]
   stepsEntries  StepsEntry[]
   fitnessGoals  FitnessGoal[]
+  adminReports  AdminReport[]
 }
 
 model Account {
@@ -821,4 +822,37 @@ enum FitnessGoalType {
   ENDURANCE
   BODY_FAT_REDUCTION
   CUSTOM
+}
+
+// ==================== ADMIN REPORTS ====================
+
+model AdminReport {
+  id          String          @id @default(cuid())
+  content     String          @db.Text
+  type        AdminReportType
+  status      AdminReportStatus @default(NEW)
+  adminNotes  String?         @db.Text
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relations
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+}
+
+enum AdminReportType {
+  BUG
+  FEATURE
+  OTHER
+}
+
+enum AdminReportStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
 }
