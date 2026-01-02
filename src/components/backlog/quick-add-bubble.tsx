@@ -39,7 +39,7 @@ export function BacklogQuickAddBubble() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-20 md:bottom-6 right-6 z-50">
       {showQuickAdd ? (
         <div className="bg-background border rounded-lg shadow-lg p-3 w-80">
           <div className="flex items-center gap-2 mb-2">
