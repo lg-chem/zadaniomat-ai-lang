@@ -33,6 +33,7 @@ model User {
   groupChallengeMembers GroupChallengeMember[]
   groupChallengeInvitations GroupChallengeInvitation[]
   createdGroupChallenges GroupChallenge[]
+  groupChallengeMessages GroupChallengeMessage[]
   gamification  Gamification?
   backlogItems  BacklogItem[]
   aiConversations AIConversation[]
