@@ -30,6 +30,9 @@ model User {
   goals         Goal[]
   habits        Habit[]
   challenges    Challenge[]
+  groupChallengeMembers GroupChallengeMember[]
+  groupChallengeInvitations GroupChallengeInvitation[]
+  createdGroupChallenges GroupChallenge[]
   gamification  Gamification?
   backlogItems  BacklogItem[]
   aiConversations AIConversation[]
@@ -389,6 +392,94 @@ model ChallengeEntry {
   challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
 
   @@index([challengeId, date])
+}
+
+// ==================== GROUP CHALLENGES ====================
+
+model GroupChallenge {
+  id            String         @id @default(cuid())
+  name          String
+  description   String?        @db.Text
+  challengeType ChallengeType  @default(NUMERIC)
+  startDate     DateTime
+  endDate       DateTime
+  targetValue   Float
+  unit          String         // e.g., "steps", "km", "sessions"
+  weeklyTarget  Int?           // For WEEKLY_HABIT: number of days per week
+  color         String         @default("#8b5cf6")
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  creatorId     String
+  creator       User           @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  members       GroupChallengeMember[]
+  invitations   GroupChallengeInvitation[]
+
+  @@index([creatorId])
+}
+
+enum GroupChallengeMemberRole {
+  CREATOR
+  MEMBER
+}
+
+model GroupChallengeMember {
+  id            String                   @id @default(cuid())
+  role          GroupChallengeMemberRole @default(MEMBER)
+  currentValue  Float                    @default(0)
+  isCompleted   Boolean                  @default(false)
+  joinedAt      DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  // Relations
+  challengeId   String
+  challenge     GroupChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries       GroupChallengeEntry[]
+
+  @@unique([challengeId, userId])
+  @@index([challengeId])
+  @@index([userId])
+}
+
+enum GroupChallengeInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model GroupChallengeInvitation {
+  id          String                         @id @default(cuid())
+  status      GroupChallengeInvitationStatus @default(PENDING)
+  createdAt   DateTime                       @default(now())
+  respondedAt DateTime?
+
+  // Relations
+  challengeId String
+  challenge   GroupChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([userId, status])
+}
+
+model GroupChallengeEntry {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  value       Float
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  memberId    String
+  member      GroupChallengeMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, date])
+  @@index([memberId, date])
 }
 
 // ==================== GAMIFICATION ====================
