@@ -7,12 +7,25 @@ interface GroupChallengeEntry {
   notes?: string
 }
 
+export interface MemberIntegrationSettings {
+  linkedType: LinkedDataType
+  linkedHabitId?: string
+  minSteps?: number
+  sportActivityType?: string
+  minDuration?: number
+}
+
 interface GroupChallengeMember {
   id: string
   role: 'CREATOR' | 'MEMBER'
   currentValue: number
   isCompleted: boolean
   joinedAt: string
+  linkedType: LinkedDataType
+  linkedHabitId?: string
+  minSteps?: number
+  sportActivityType?: string
+  minDuration?: number
   user: {
     id: string
     name: string | null
@@ -66,6 +79,11 @@ export interface GroupChallenge {
     role: 'CREATOR' | 'MEMBER'
     currentValue: number
     isCompleted: boolean
+    linkedType: LinkedDataType
+    linkedHabitId?: string
+    minSteps?: number
+    sportActivityType?: string
+    minDuration?: number
     entries: GroupChallengeEntry[]
   } | null
   isCreator: boolean

@@ -444,6 +444,13 @@ model GroupChallengeMember {
   joinedAt      DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
 
+  // Integration settings (per-member)
+  linkedType        LinkedDataType @default(NONE)
+  linkedHabitId     String?        // Link to specific habit
+  minSteps          Int?           // For STEPS: minimum steps to count as completed
+  sportActivityType String?        // For SPORT: type of activity (e.g., "running", "gym")
+  minDuration       Int?           // For SPORT: minimum duration in minutes
+
   // Relations
   challengeId   String
   challenge     GroupChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)

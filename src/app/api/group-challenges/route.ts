@@ -86,6 +86,11 @@ export async function GET(req: Request) {
               role: userMember.role,
               currentValue: userMember.currentValue,
               isCompleted: userMember.isCompleted,
+              linkedType: userMember.linkedType,
+              linkedHabitId: userMember.linkedHabitId,
+              minSteps: userMember.minSteps,
+              sportActivityType: userMember.sportActivityType,
+              minDuration: userMember.minDuration,
               entries: userMember.entries,
             }
           : null,

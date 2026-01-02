@@ -27,6 +27,12 @@ import {
   Crown,
   LogOut,
   Bell,
+  Settings,
+  RefreshCw,
+  Footprints,
+  Dumbbell,
+  Target,
+  Link2Off,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -51,15 +57,29 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import useSWR from "swr"
 import {
   useGroupChallenges,
   useGroupChallengeInvitations,
   type GroupChallenge,
   type LinkedDataType,
+  type MemberIntegrationSettings,
 } from "@/hooks/use-group-challenges"
 
 type ChallengeType = "NUMERIC" | "WEEKLY_HABIT" | "MONTHLY_GOAL" | "DAILY_GOAL"
+
+interface Habit {
+  id: string
+  name: string
+  color: string
+}
 
 interface FriendUser {
   id: string
@@ -76,9 +96,20 @@ export default function GroupChallengesPage() {
   const { groupChallenges, isLoading, mutate: mutateGroupChallenges } = useGroupChallenges()
   const { invitations, mutate: mutateInvitations } = useGroupChallengeInvitations()
   const { data: friendUsers = [] } = useSWR<FriendUser[]>("/api/friends")
+  const { data: habits = [] } = useSWR<Habit[]>("/api/habits")
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
+  const [isIntegrationDialogOpen, setIsIntegrationDialogOpen] = useState(false)
+  const [integrationChallengeId, setIntegrationChallengeId] = useState<string | null>(null)
+  const [isSyncing, setIsSyncing] = useState<string | null>(null)
+  const [integrationSettings, setIntegrationSettings] = useState<MemberIntegrationSettings>({
+    linkedType: "NONE",
+    linkedHabitId: undefined,
+    minSteps: undefined,
+    sportActivityType: undefined,
+    minDuration: undefined,
+  })
   const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
 
@@ -301,6 +332,67 @@ export default function GroupChallengesPage() {
     setSelectedChallengeId(challengeId)
     setSelectedUserIds([])
     setIsInviteDialogOpen(true)
+  }
+
+  const handleOpenIntegrationDialog = (challenge: GroupChallenge) => {
+    setIntegrationChallengeId(challenge.id)
+    const membership = challenge.userMembership
+    if (membership) {
+      setIntegrationSettings({
+        linkedType: membership.linkedType || "NONE",
+        linkedHabitId: membership.linkedHabitId || undefined,
+        minSteps: membership.minSteps || undefined,
+        sportActivityType: membership.sportActivityType || undefined,
+        minDuration: membership.minDuration || undefined,
+      })
+    } else {
+      setIntegrationSettings({
+        linkedType: "NONE",
+        linkedHabitId: undefined,
+        minSteps: undefined,
+        sportActivityType: undefined,
+        minDuration: undefined,
+      })
+    }
+    setIsIntegrationDialogOpen(true)
+  }
+
+  const handleSaveIntegration = async () => {
+    if (!integrationChallengeId) return
+
+    try {
+      await fetch(`/api/group-challenges/${integrationChallengeId}/integration`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(integrationSettings),
+      })
+      mutateGroupChallenges()
+      setIsIntegrationDialogOpen(false)
+      setIntegrationChallengeId(null)
+    } catch (error) {
+      console.error("Error saving integration:", error)
+    }
+  }
+
+  const handleSyncData = async (challengeId: string) => {
+    setIsSyncing(challengeId)
+    try {
+      const res = await fetch(`/api/group-challenges/${challengeId}/sync`, {
+        method: "POST",
+      })
+      const data = await res.json()
+      if (res.ok) {
+        mutateGroupChallenges()
+        if (data.newEntriesCount > 0) {
+          // Could show a toast here
+          console.log(`Zsynchronizowano ${data.newEntriesCount} nowych wpisów`)
+        }
+      }
+    } catch (error) {
+      console.error("Error syncing data:", error)
+    } finally {
+      setIsSyncing(null)
+    }
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
@@ -762,6 +854,19 @@ export default function GroupChallengesPage() {
                           <Users className="h-3.5 w-3.5 mr-2" />
                           Szczegóły
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleOpenIntegrationDialog(challenge)}>
+                          <Settings className="h-3.5 w-3.5 mr-2" />
+                          Integracja
+                        </DropdownMenuItem>
+                        {challenge.userMembership?.linkedType !== "NONE" && (
+                          <DropdownMenuItem
+                            onClick={() => handleSyncData(challenge.id)}
+                            disabled={isSyncing === challenge.id}
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 mr-2 ${isSyncing === challenge.id ? "animate-spin" : ""}`} />
+                            {isSyncing === challenge.id ? "Synchronizuję..." : "Synchronizuj dane"}
+                          </DropdownMenuItem>
+                        )}
                         {availableUsersForInvite.length > 0 && (
                           <DropdownMenuItem onClick={() => handleOpenInviteDialog(challenge.id)}>
                             <UserPlus className="h-3.5 w-3.5 mr-2" />
@@ -986,6 +1091,45 @@ export default function GroupChallengesPage() {
                     </button>
                   )}
                 </div>
+
+                {/* Integration status & sync */}
+                {challenge.userMembership?.linkedType && challenge.userMembership.linkedType !== "NONE" && (
+                  <div className="flex items-center justify-between border-t pt-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {challenge.userMembership.linkedType === "STEPS" && (
+                        <>
+                          <Footprints className="h-3.5 w-3.5" />
+                          <span>Kroki {challenge.userMembership.minSteps ? `(min. ${challenge.userMembership.minSteps})` : ""}</span>
+                        </>
+                      )}
+                      {challenge.userMembership.linkedType === "SPORT" && (
+                        <>
+                          <Dumbbell className="h-3.5 w-3.5" />
+                          <span>
+                            Sport{challenge.userMembership.sportActivityType ? `: ${challenge.userMembership.sportActivityType}` : ""}
+                            {challenge.userMembership.minDuration ? ` (min. ${challenge.userMembership.minDuration} min)` : ""}
+                          </span>
+                        </>
+                      )}
+                      {challenge.userMembership.linkedType === "HABIT" && (
+                        <>
+                          <Target className="h-3.5 w-3.5" />
+                          <span>Nawyk</span>
+                        </>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => handleSyncData(challenge.id)}
+                      disabled={isSyncing === challenge.id}
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${isSyncing === challenge.id ? "animate-spin" : ""}`} />
+                      Sync
+                    </Button>
+                  </div>
+                )}
 
                 {/* Dates */}
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -1273,6 +1417,193 @@ export default function GroupChallengesPage() {
             </div>
             <Button onClick={handleUpdateChallenge} className="w-full">
               Zapisz zmiany
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Integration Settings Dialog */}
+      <Dialog open={isIntegrationDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsIntegrationDialogOpen(false)
+          setIntegrationChallengeId(null)
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Ustawienia integracji
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Skonfiguruj automatyczne zaczytywanie postępu z innych źródeł danych.
+            </p>
+
+            {/* Integration Type Selector */}
+            <div>
+              <Label>Źródło danych</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <button
+                  type="button"
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-1 ${
+                    integrationSettings.linkedType === "NONE"
+                      ? "border-primary bg-primary/5"
+                      : "border-muted hover:border-muted-foreground/50"
+                  }`}
+                  onClick={() => setIntegrationSettings({ ...integrationSettings, linkedType: "NONE" })}
+                >
+                  <Link2Off className="h-5 w-5" />
+                  <span className="text-xs font-medium">Brak</span>
+                </button>
+                <button
+                  type="button"
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-1 ${
+                    integrationSettings.linkedType === "STEPS"
+                      ? "border-primary bg-primary/5"
+                      : "border-muted hover:border-muted-foreground/50"
+                  }`}
+                  onClick={() => setIntegrationSettings({ ...integrationSettings, linkedType: "STEPS" })}
+                >
+                  <Footprints className="h-5 w-5" />
+                  <span className="text-xs font-medium">Kroki</span>
+                </button>
+                <button
+                  type="button"
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-1 ${
+                    integrationSettings.linkedType === "SPORT"
+                      ? "border-primary bg-primary/5"
+                      : "border-muted hover:border-muted-foreground/50"
+                  }`}
+                  onClick={() => setIntegrationSettings({ ...integrationSettings, linkedType: "SPORT" })}
+                >
+                  <Dumbbell className="h-5 w-5" />
+                  <span className="text-xs font-medium">Sport</span>
+                </button>
+                <button
+                  type="button"
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-1 ${
+                    integrationSettings.linkedType === "HABIT"
+                      ? "border-primary bg-primary/5"
+                      : "border-muted hover:border-muted-foreground/50"
+                  }`}
+                  onClick={() => setIntegrationSettings({ ...integrationSettings, linkedType: "HABIT" })}
+                >
+                  <Target className="h-5 w-5" />
+                  <span className="text-xs font-medium">Nawyk</span>
+                </button>
+              </div>
+            </div>
+
+            {/* STEPS settings */}
+            {integrationSettings.linkedType === "STEPS" && (
+              <div className="p-3 rounded-lg bg-muted/50 space-y-3">
+                <div>
+                  <Label>Minimalna liczba kroków</Label>
+                  <Input
+                    type="number"
+                    placeholder="np. 10000"
+                    value={integrationSettings.minSteps || ""}
+                    onChange={(e) => setIntegrationSettings({
+                      ...integrationSettings,
+                      minSteps: e.target.value ? parseInt(e.target.value) : undefined,
+                    })}
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Dzień zostanie zaliczony, jeśli osiągniesz tę liczbę kroków
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* SPORT settings */}
+            {integrationSettings.linkedType === "SPORT" && (
+              <div className="p-3 rounded-lg bg-muted/50 space-y-3">
+                <div>
+                  <Label>Typ aktywności (opcjonalnie)</Label>
+                  <Select
+                    value={integrationSettings.sportActivityType || "any"}
+                    onValueChange={(value) => setIntegrationSettings({
+                      ...integrationSettings,
+                      sportActivityType: value === "any" ? undefined : value,
+                    })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Dowolna aktywność" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Dowolna aktywność</SelectItem>
+                      <SelectItem value="Bieganie">Bieganie</SelectItem>
+                      <SelectItem value="Jazda na rowerze">Jazda na rowerze</SelectItem>
+                      <SelectItem value="Pływanie">Pływanie</SelectItem>
+                      <SelectItem value="Siłownia">Siłownia</SelectItem>
+                      <SelectItem value="Spacer">Spacer</SelectItem>
+                      <SelectItem value="Yoga">Yoga</SelectItem>
+                      <SelectItem value="Inne">Inne</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Minimalny czas trwania (minuty)</Label>
+                  <Input
+                    type="number"
+                    placeholder="np. 30"
+                    value={integrationSettings.minDuration || ""}
+                    onChange={(e) => setIntegrationSettings({
+                      ...integrationSettings,
+                      minDuration: e.target.value ? parseInt(e.target.value) : undefined,
+                    })}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* HABIT settings */}
+            {integrationSettings.linkedType === "HABIT" && (
+              <div className="p-3 rounded-lg bg-muted/50 space-y-3">
+                <div>
+                  <Label>Wybierz nawyk</Label>
+                  <Select
+                    value={integrationSettings.linkedHabitId || ""}
+                    onValueChange={(value) => setIntegrationSettings({
+                      ...integrationSettings,
+                      linkedHabitId: value || undefined,
+                    })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Wybierz nawyk..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {habits.map((habit) => (
+                        <SelectItem key={habit.id} value={habit.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: habit.color }}
+                            />
+                            {habit.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Dzień zostanie zaliczony, gdy wykonasz wybrany nawyk
+                  </p>
+                  {habits.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      Nie masz jeszcze żadnych nawyków. Dodaj nawyk w zakładce Nawyki.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <Button onClick={handleSaveIntegration} className="w-full">
+              Zapisz ustawienia
             </Button>
           </div>
         </DialogContent>
