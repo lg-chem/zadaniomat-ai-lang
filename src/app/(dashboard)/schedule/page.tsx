@@ -19,7 +19,12 @@ import {
   Copy,
   AlertTriangle,
   Clock,
+  LayoutGrid,
+  Settings2,
+  RotateCcw,
+  Edit3,
 } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +45,7 @@ import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
 import { useTaskCounts } from "@/hooks/use-task-counts"
 import { useOverdueTasks } from "@/hooks/use-overdue-tasks"
+import { useDayBlocks, useScheduleOverride, type BlockData } from "@/hooks/use-schedule-blocks"
 import { WeekStrip } from "@/components/schedule/week-strip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
@@ -110,6 +116,14 @@ export default function SchedulePage() {
   const { activeSprint } = useSprints()
   const { taskCounts } = useTaskCounts(selectedDate, 30)
   const { overdueTasks, mutate: mutateOverdue } = useOverdueTasks()
+
+  // Schedule blocks for the selected date
+  const { data: dayBlocksData, isOverride, blocks: dayBlocks, mutate: mutateDayBlocks } = useDayBlocks(dateString)
+  const { saveOverride, removeOverride } = useScheduleOverride(dateString)
+
+  // State for editing day blocks
+  const [isEditingBlocks, setIsEditingBlocks] = useState(false)
+  const [editedBlocks, setEditedBlocks] = useState<BlockData[]>([])
 
   const isLoading = tasksLoading || categoriesLoading
 
@@ -737,6 +751,186 @@ export default function SchedulePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Daily Schedule Blocks */}
+      {dayBlocks.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base md:text-lg flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5" />
+                Bloki czasowe
+                {isOverride && (
+                  <Badge variant="secondary" className="text-xs">
+                    Zmieniony
+                  </Badge>
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {isEditingBlocks ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditingBlocks(false)
+                        setEditedBlocks([])
+                      }}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Anuluj
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        await saveOverride(editedBlocks)
+                        mutateDayBlocks()
+                        setIsEditingBlocks(false)
+                        setEditedBlocks([])
+                      }}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Zapisz dla tego dnia
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {isOverride && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          await removeOverride()
+                          mutateDayBlocks()
+                        }}
+                        title="Przywróć szablon"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditedBlocks(dayBlocks.map(b => ({
+                          name: b.name,
+                          description: b.description || undefined,
+                          startTime: b.startTime,
+                          endTime: b.endTime,
+                          color: b.color || "#6366f1",
+                          order: b.order || 0,
+                        })))
+                        setIsEditingBlocks(true)
+                      }}
+                    >
+                      <Edit3 className="h-4 w-4 mr-1" />
+                      Edytuj dzień
+                    </Button>
+                    <Link href="/settings/weekly-schedule">
+                      <Button size="sm" variant="ghost">
+                        <Settings2 className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isEditingBlocks ? (
+              <div className="space-y-2">
+                {editedBlocks
+                  .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                  .map((block, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-3 p-2 border rounded-lg"
+                      style={{ borderLeftColor: block.color, borderLeftWidth: 4 }}
+                    >
+                      <Input
+                        type="time"
+                        value={block.startTime}
+                        onChange={(e) => {
+                          const updated = [...editedBlocks]
+                          updated[index] = { ...updated[index], startTime: e.target.value }
+                          setEditedBlocks(updated)
+                        }}
+                        className="w-24 h-8"
+                      />
+                      <span className="text-muted-foreground">-</span>
+                      <Input
+                        type="time"
+                        value={block.endTime}
+                        onChange={(e) => {
+                          const updated = [...editedBlocks]
+                          updated[index] = { ...updated[index], endTime: e.target.value }
+                          setEditedBlocks(updated)
+                        }}
+                        className="w-24 h-8"
+                      />
+                      <Input
+                        value={block.name}
+                        onChange={(e) => {
+                          const updated = [...editedBlocks]
+                          updated[index] = { ...updated[index], name: e.target.value }
+                          setEditedBlocks(updated)
+                        }}
+                        placeholder="Nazwa bloku"
+                        className="flex-1 h-8"
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          setEditedBlocks(editedBlocks.filter((_, i) => i !== index))
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditedBlocks([
+                      ...editedBlocks,
+                      {
+                        name: "",
+                        startTime: "09:00",
+                        endTime: "10:00",
+                        color: "#6366f1",
+                        order: editedBlocks.length,
+                      },
+                    ])
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Dodaj blok
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {dayBlocks
+                  .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                  .map((block, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/30"
+                      style={{ borderLeftColor: block.color || "#6366f1", borderLeftWidth: 3 }}
+                    >
+                      <span className="text-xs text-muted-foreground">
+                        {block.startTime} - {block.endTime}
+                      </span>
+                      <span className="font-medium text-sm">{block.name}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sprint Goals - WORK only, grouped by category */}
       {workspace === "WORK" && activeSprint && activeSprint.goals.length > 0 && (() => {

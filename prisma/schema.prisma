@@ -46,6 +46,8 @@ model User {
   stepsEntries  StepsEntry[]
   fitnessGoals  FitnessGoal[]
   adminReports  AdminReport[]
+  weeklyScheduleBlocks WeeklyScheduleBlock[]
+  dailyScheduleOverrides DailyScheduleOverride[]
 }
 
 model Account {
@@ -855,4 +857,43 @@ enum AdminReportStatus {
   IN_PROGRESS
   RESOLVED
   REJECTED
+}
+
+// ==================== WEEKLY SCHEDULE BLOCKS ====================
+
+model WeeklyScheduleBlock {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  dayOfWeek     Int           // 0=Monday, 1=Tuesday, ..., 6=Sunday
+  startTime     String        // HH:mm format
+  endTime       String        // HH:mm format
+  color         String        @default("#6366f1")
+  workspaceType WorkspaceType
+  order         Int           @default(0)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceType, dayOfWeek])
+}
+
+model DailyScheduleOverride {
+  id            String        @id @default(cuid())
+  date          DateTime      @db.Date
+  workspaceType WorkspaceType
+  blocks        Json          // Array of block objects: { name, description, startTime, endTime, color, order }
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date, workspaceType])
+  @@index([userId, workspaceType, date])
 }

@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ChevronRight } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -481,6 +482,26 @@ export default function SettingsPage() {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      {/* Weekly Schedule Blocks */}
+      <Card className="hover:border-primary/50 transition-colors">
+        <Link href="/settings/weekly-schedule">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                <div>
+                  <CardTitle>Harmonogram tygodniowy</CardTitle>
+                  <CardDescription>
+                    Ustaw bloki czasowe dla każdego dnia tygodnia
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Link>
       </Card>
 
       {/* AI Knowledge Base */}
