@@ -93,7 +93,7 @@ export default function BacklogPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: newContent,
-          workspaceType: "WORK", // Get from store if needed
+          workspaceType: workspace,
         }),
       })
       if (res.ok) {

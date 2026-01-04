@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useBacklog } from "@/hooks/use-backlog"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 
 type ReportMode = "backlog" | "admin"
 type ReportType = "BUG" | "FEATURE" | "OTHER"
@@ -20,6 +21,7 @@ export function BacklogQuickAddBubble() {
   const [feedback, setFeedback] = useState<{ type: FeedbackType; message: string } | null>(null)
   const quickAddRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { workspace } = useWorkspaceStore()
   const { mutate } = useBacklog()
 
   const showFeedback = (type: FeedbackType, message: string) => {
@@ -38,7 +40,7 @@ export function BacklogQuickAddBubble() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: quickAddContent,
-            workspaceType: "WORK",
+            workspaceType: workspace,
           }),
         })
         if (res.ok) {
