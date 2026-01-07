@@ -14,6 +14,8 @@ import {
   FolderPlus,
   Target,
   Folder,
+  Users,
+  Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -56,6 +58,7 @@ interface KnowledgeEntry {
   title: string
   content: string
   isImportant: boolean
+  visibility: "PRIVATE" | "TEAM"
   createdAt: string
   updatedAt: string
   category: KnowledgeCategory
@@ -258,6 +261,7 @@ export default function KnowledgePage() {
     content: "",
     categoryId: "",
     isImportant: false,
+    visibility: "PRIVATE" as "PRIVATE" | "TEAM",
   })
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -295,7 +299,7 @@ export default function KnowledgePage() {
         mutateEntries()
         mutateCategories()
         setShowEntryDialog(false)
-        setEntryForm({ title: "", content: "", categoryId: "", isImportant: false })
+        setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
       }
     } catch (error) {
       console.error("Error creating entry:", error)
@@ -315,7 +319,7 @@ export default function KnowledgePage() {
         mutateEntries()
         setEditingEntry(null)
         setShowEntryDialog(false)
-        setEntryForm({ title: "", content: "", categoryId: "", isImportant: false })
+        setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
       }
     } catch (error) {
       console.error("Error updating entry:", error)
@@ -354,6 +358,7 @@ export default function KnowledgePage() {
       content: entry.content,
       categoryId: entry.category.id,
       isImportant: entry.isImportant,
+      visibility: entry.visibility || "PRIVATE",
     })
     setShowEntryDialog(true)
   }
@@ -365,6 +370,7 @@ export default function KnowledgePage() {
       content: "",
       categoryId: categoryId || allCategories[0]?.id || "",
       isImportant: false,
+      visibility: "PRIVATE",
     })
     setShowEntryDialog(true)
   }
@@ -700,13 +706,24 @@ export default function KnowledgePage() {
                   <div className="whitespace-pre-wrap text-sm text-muted-foreground mb-3">
                     {entry.content}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge
                       variant="outline"
                       style={{ borderColor: entry.category.color, color: entry.category.color }}
                     >
                       {entry.category.name}
                     </Badge>
+                    {entry.visibility === "TEAM" ? (
+                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        Zespół
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs flex items-center gap-1 text-muted-foreground">
+                        <Lock className="h-3 w-3" />
+                        Prywatne
+                      </Badge>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       Zaktualizowano: {new Date(entry.updatedAt).toLocaleDateString("pl-PL")}
                     </span>
@@ -766,17 +783,50 @@ export default function KnowledgePage() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isImportant"
-                checked={entryForm.isImportant}
-                onChange={(e) => setEntryForm({ ...entryForm, isImportant: e.target.checked })}
-                className="rounded"
-              />
-              <Label htmlFor="isImportant" className="cursor-pointer">
-                Oznacz jako ważne
-              </Label>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isImportant"
+                  checked={entryForm.isImportant}
+                  onChange={(e) => setEntryForm({ ...entryForm, isImportant: e.target.checked })}
+                  className="rounded"
+                />
+                <Label htmlFor="isImportant" className="cursor-pointer">
+                  Oznacz jako ważne
+                </Label>
+              </div>
+            </div>
+
+            <div>
+              <Label>Widoczność</Label>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant={entryForm.visibility === "PRIVATE" ? "default" : "outline"}
+                  size="sm"
+                  className="flex items-center gap-2"
+                  onClick={() => setEntryForm({ ...entryForm, visibility: "PRIVATE" })}
+                >
+                  <Lock className="h-4 w-4" />
+                  Tylko ja
+                </Button>
+                <Button
+                  type="button"
+                  variant={entryForm.visibility === "TEAM" ? "default" : "outline"}
+                  size="sm"
+                  className="flex items-center gap-2"
+                  onClick={() => setEntryForm({ ...entryForm, visibility: "TEAM" })}
+                >
+                  <Users className="h-4 w-4" />
+                  Udostępnij zespołowi
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {entryForm.visibility === "TEAM"
+                  ? "Członkowie zespołu z tą samą kategorią zobaczą ten wpis"
+                  : "Tylko Ty możesz zobaczyć ten wpis"}
+              </p>
             </div>
           </div>
           <DialogFooter>

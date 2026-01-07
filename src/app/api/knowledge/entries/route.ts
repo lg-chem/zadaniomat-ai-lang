@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { title, content, categoryId, workspace, isImportant } = body
+    const { title, content, categoryId, workspace, isImportant, visibility } = body
 
     if (!title || !content || !categoryId) {
       return NextResponse.json(
@@ -77,6 +77,7 @@ export async function POST(req: Request) {
         workspaceType: workspace || "WORK",
         userId: session.user.id,
         isImportant: isImportant || false,
+        visibility: visibility || "PRIVATE",
       },
       include: {
         category: true,

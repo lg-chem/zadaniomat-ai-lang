@@ -19,6 +19,25 @@ interface ChatRequest {
 async function getMinimalContext(userId: string) {
   const today = new Date()
 
+  // Get user's team memberships for shared knowledge access
+  const userOrgs = await prisma.organizationMember.findMany({
+    where: { userId },
+    select: { organizationId: true },
+  })
+  const orgIds = userOrgs.map(o => o.organizationId)
+
+  // Get categories linked to user's teams
+  const teamCategoryIds = orgIds.length > 0
+    ? await prisma.knowledgeCategory.findMany({
+        where: {
+          linkedCategory: {
+            organizationId: { in: orgIds }
+          }
+        },
+        select: { id: true }
+      }).then(cats => cats.map(c => c.id))
+    : []
+
   const [categories, activePeriod, activeSprint, knowledgeBase, importantKnowledge] = await Promise.all([
     prisma.category.findMany({
       where: { userId, workspaceType: "WORK" },
@@ -42,10 +61,20 @@ async function getMinimalContext(userId: string) {
       where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
       select: { chatInstructions: true, companyInfo: true, systemPrompts: true, metaPrompt: true },
     }),
-    // Fetch important knowledge entries
+    // Fetch important knowledge entries (own + team shared)
     prisma.knowledgeEntry.findMany({
-      where: { userId, workspaceType: "WORK", isImportant: true },
-      select: { title: true, content: true, category: { select: { name: true } } },
+      where: {
+        workspaceType: "WORK",
+        isImportant: true,
+        OR: [
+          { userId },
+          ...(teamCategoryIds.length > 0 ? [{
+            visibility: "TEAM" as const,
+            categoryId: { in: teamCategoryIds }
+          }] : [])
+        ]
+      },
+      select: { title: true, content: true, category: { select: { name: true } }, user: { select: { name: true } }, userId: true },
       take: 25,
     }),
   ])
@@ -66,8 +95,8 @@ async function getMinimalContext(userId: string) {
 
   // Format important knowledge - no character limit for important entries
   const knowledgeSummary = importantKnowledge.length > 0
-    ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null }) =>
-        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}: ${k.content || ""}`
+    ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null; user: { name: string | null }; userId: string }) =>
+        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}${k.userId !== userId ? ` (od: ${k.user?.name || "zespół"})` : ""}: ${k.content || ""}`
       ).join("\n")
     : null
 
@@ -132,24 +161,54 @@ async function getBacklog(userId: string) {
 }
 
 async function getKnowledgeEntries(userId: string, query?: string) {
+  // Get user's team memberships to find shared knowledge
+  const userOrgs = await prisma.organizationMember.findMany({
+    where: { userId },
+    select: { organizationId: true },
+  })
+  const orgIds = userOrgs.map(o => o.organizationId)
+
+  // Get categories linked to user's teams
+  const teamCategoryIds = orgIds.length > 0
+    ? await prisma.knowledgeCategory.findMany({
+        where: {
+          linkedCategory: {
+            organizationId: { in: orgIds }
+          }
+        },
+        select: { id: true }
+      }).then(cats => cats.map(c => c.id))
+    : []
+
   const items = await prisma.knowledgeEntry.findMany({
     where: {
-      userId,
       workspaceType: "WORK",
+      OR: [
+        // User's own entries (any visibility)
+        { userId },
+        // Team shared entries from linked categories
+        ...(teamCategoryIds.length > 0 ? [{
+          visibility: "TEAM" as const,
+          categoryId: { in: teamCategoryIds }
+        }] : [])
+      ],
       ...(query ? {
-        OR: [
-          { title: { contains: query, mode: "insensitive" as const } },
-          { content: { contains: query, mode: "insensitive" as const } },
-        ]
+        AND: [{
+          OR: [
+            { title: { contains: query, mode: "insensitive" as const } },
+            { content: { contains: query, mode: "insensitive" as const } },
+          ]
+        }]
       } : { isImportant: true }),
     },
-    include: { category: true },
-    take: 10,
+    include: { category: true, user: { select: { name: true } } },
+    take: 15,
   })
-  return items.map((e: { title: string; content: string | null; category: { name: string } | null }) => ({
+  return items.map((e: { title: string; content: string | null; category: { name: string } | null; user: { name: string | null }; userId: string }) => ({
     title: e.title,
     content: e.content?.substring(0, 800),
     category: e.category?.name,
+    owner: e.userId !== userId ? e.user?.name : undefined, // Show owner if not current user
   }))
 }
 

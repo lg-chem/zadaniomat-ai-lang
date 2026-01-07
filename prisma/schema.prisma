@@ -123,6 +123,11 @@ enum WorkspaceType {
   PRIVATE
 }
 
+enum KnowledgeVisibility {
+  PRIVATE   // Only visible to owner
+  TEAM      // Visible to team members (if category is linked to team category)
+}
+
 enum TaskStatus {
   NEW           // Nowe
   IN_PROGRESS   // Rozpoczęte
@@ -730,6 +735,7 @@ model KnowledgeEntry {
   title         String
   content       String        @db.Text
   workspaceType WorkspaceType
+  visibility    KnowledgeVisibility @default(PRIVATE) // PRIVATE = only me, TEAM = shared with team
   isImportant   Boolean       @default(false) // Highlighted entries
   lastUsedAt    DateTime?     // Track when AI last used this
   createdAt     DateTime      @default(now())
@@ -743,6 +749,7 @@ model KnowledgeEntry {
 
   @@index([userId, workspaceType])
   @@index([categoryId])
+  @@index([visibility])
 }
 
 // ==================== SPORT ====================

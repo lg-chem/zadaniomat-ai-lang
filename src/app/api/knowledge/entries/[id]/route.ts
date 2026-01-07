@@ -45,7 +45,7 @@ export async function PATCH(
     }
 
     const body = await req.json()
-    const { title, content, categoryId, isImportant } = body
+    const { title, content, categoryId, isImportant, visibility } = body
 
     // Verify entry belongs to user
     const existing = await prisma.knowledgeEntry.findFirst({
@@ -66,6 +66,7 @@ export async function PATCH(
         ...(content !== undefined && { content }),
         ...(categoryId !== undefined && { categoryId }),
         ...(isImportant !== undefined && { isImportant }),
+        ...(visibility !== undefined && { visibility }),
       },
       include: {
         category: true,
