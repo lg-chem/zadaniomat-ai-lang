@@ -34,6 +34,11 @@ import {
 } from "@/components/ui/select"
 import useSWR from "swr"
 
+interface OrganizationsResponse {
+  owned: Array<{ id: string; name: string }>
+  memberOf: Array<{ id: string; name: string; members: Array<{ role: string }> }>
+}
+
 interface Organization {
   id: string
   name: string
@@ -67,7 +72,20 @@ export default function IdeasPage() {
   const currentUserId = session?.user?.id
 
   // Fetch user's organizations
-  const { data: organizations = [] } = useSWR<Organization[]>("/api/organizations")
+  const { data: orgsData } = useSWR<OrganizationsResponse>("/api/organizations")
+
+  // Transform organizations response to flat array with roles
+  const organizations: Organization[] = orgsData
+    ? [
+        ...orgsData.owned.map((org) => ({ ...org, role: "OWNER" as const })),
+        ...orgsData.memberOf.map((org) => ({
+          id: org.id,
+          name: org.name,
+          role: org.members?.[0]?.role || "MEMBER",
+        })),
+      ]
+    : []
+
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
 
