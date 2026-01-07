@@ -13,20 +13,53 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace")
 
-    const where: Record<string, unknown> = {
+    // Get user's own categories
+    const ownWhere: Record<string, unknown> = {
       userId: session.user.id,
     }
 
     if (workspace) {
-      where.workspaceType = workspace
+      ownWhere.workspaceType = workspace
     }
 
-    const categories = await prisma.category.findMany({
-      where,
+    const ownCategories = await prisma.category.findMany({
+      where: ownWhere,
+      include: {
+        organization: { select: { id: true, name: true } },
+        _count: { select: { tasks: true } }
+      },
       orderBy: { order: "asc" },
     })
 
-    return NextResponse.json(categories)
+    // Get shared categories from organizations user is a member of (but not owner)
+    const sharedCategories = await prisma.category.findMany({
+      where: {
+        organizationId: { not: null },
+        userId: { not: session.user.id }, // Not user's own category
+        assignedMembers: {
+          some: {
+            member: {
+              userId: session.user.id
+            }
+          }
+        },
+        ...(workspace ? { workspaceType: workspace } : {})
+      },
+      include: {
+        organization: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true } }, // Category owner
+        _count: { select: { tasks: true } }
+      },
+      orderBy: { order: "asc" },
+    })
+
+    // Mark shared categories
+    const categoriesWithSharedFlag = [
+      ...ownCategories.map(c => ({ ...c, isShared: !!c.organizationId, isOwner: true })),
+      ...sharedCategories.map(c => ({ ...c, isShared: true, isOwner: false }))
+    ]
+
+    return NextResponse.json(categoriesWithSharedFlag)
   } catch (error) {
     console.error("Error fetching categories:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

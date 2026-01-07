@@ -29,6 +29,7 @@ import {
   UsersRound,
   ChevronRight,
   Building2,
+  Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -60,6 +61,7 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 const workNavItems = [
   { href: "/backlog", label: "Backlog", icon: Inbox },
+  { href: "/task-stack", label: "Stos zadań", icon: Layers },
   { href: "/ai", label: "AI Asystent", icon: Sparkles },
   { href: "/knowledge", label: "Wiedza", icon: BookOpen },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },

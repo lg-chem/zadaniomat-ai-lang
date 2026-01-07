@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma"
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,7 +13,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
     const body = await req.json()
 
     const existingCategory = await prisma.category.findFirst({
@@ -24,7 +24,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Category not found" }, { status: 404 })
     }
 
-    const { name, color, icon, isStrategic } = body
+    const { name, color, icon, isStrategic, organizationId, memberIds } = body
 
     const updateData: Record<string, unknown> = {}
 
@@ -33,9 +33,67 @@ export async function PATCH(
     if (icon !== undefined) updateData.icon = icon
     if (isStrategic !== undefined) updateData.isStrategic = isStrategic
 
+    // Handle sharing with organization
+    if (organizationId !== undefined) {
+      if (organizationId === null) {
+        // Unshare - remove organization link and all member assignments
+        updateData.organizationId = null
+        await prisma.organizationMemberCategory.deleteMany({
+          where: { categoryId: id }
+        })
+      } else {
+        // Verify user owns this organization
+        const org = await prisma.organization.findFirst({
+          where: { id: organizationId, ownerId: session.user.id }
+        })
+        if (!org) {
+          return NextResponse.json({ error: "Nie jesteś właścicielem tego zespołu" }, { status: 403 })
+        }
+        updateData.organizationId = organizationId
+
+        // If memberIds provided, assign category to those members
+        if (memberIds && Array.isArray(memberIds)) {
+          // First remove existing assignments for this category
+          await prisma.organizationMemberCategory.deleteMany({
+            where: { categoryId: id }
+          })
+
+          // Get organization members
+          const members = await prisma.organizationMember.findMany({
+            where: {
+              organizationId,
+              userId: { in: memberIds }
+            }
+          })
+
+          // Create new assignments
+          if (members.length > 0) {
+            await prisma.organizationMemberCategory.createMany({
+              data: members.map(m => ({
+                memberId: m.id,
+                categoryId: id
+              }))
+            })
+          }
+        }
+      }
+    }
+
     const category = await prisma.category.update({
       where: { id },
       data: updateData,
+      include: {
+        organization: { select: { id: true, name: true } },
+        assignedMembers: {
+          include: {
+            member: {
+              include: {
+                user: { select: { id: true, name: true, email: true } }
+              }
+            }
+          }
+        }
+      }
     })
 
     return NextResponse.json(category)
@@ -47,7 +105,7 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -55,7 +113,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     const existingCategory = await prisma.category.findFirst({
       where: { id, userId: session.user.id },

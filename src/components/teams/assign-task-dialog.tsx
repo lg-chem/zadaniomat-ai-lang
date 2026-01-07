@@ -1,8 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { format } from "date-fns"
-import { CalendarIcon } from "lucide-react"
+import { Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,13 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
-import { cn } from "@/lib/utils"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Category {
   id: string
@@ -56,8 +49,8 @@ export function AssignTaskDialog({
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [categoryId, setCategoryId] = useState<string>("")
-  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(new Date())
   const [plannedMinutes, setPlannedMinutes] = useState<number | undefined>()
+  const [priority, setPriority] = useState<string>("0")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,8 +66,9 @@ export function AssignTaskDialog({
           title,
           description,
           categoryId: categoryId || undefined,
-          scheduledDate: scheduledDate?.toISOString(),
+          // No scheduledDate - task goes to the stack
           plannedMinutes,
+          priority: parseInt(priority),
           workspaceType: "WORK",
           assignedToId,
           organizationId,
@@ -85,8 +79,8 @@ export function AssignTaskDialog({
         setTitle("")
         setDescription("")
         setCategoryId("")
-        setScheduledDate(new Date())
         setPlannedMinutes(undefined)
+        setPriority("0")
         onOpenChange(false)
         onSuccess()
       }
@@ -109,6 +103,13 @@ export function AssignTaskDialog({
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            <Alert>
+              <Layers className="h-4 w-4" />
+              <AlertDescription>
+                Zadanie trafi do &quot;Stosu zadań&quot; przypisanej osoby. Sama zdecyduje kiedy je wykonać.
+              </AlertDescription>
+            </Alert>
+
             <div className="space-y-2">
               <Label htmlFor="title">Tytuł zadania</Label>
               <Input
@@ -157,33 +158,18 @@ export function AssignTaskDialog({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Data</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !scheduledDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {scheduledDate ? (
-                        format(scheduledDate, "dd.MM.yyyy")
-                      ) : (
-                        <span>Wybierz datę</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={scheduledDate}
-                      onSelect={setScheduledDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <Label>Priorytet</Label>
+                <Select value={priority} onValueChange={setPriority}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Brak</SelectItem>
+                    <SelectItem value="1">Niski</SelectItem>
+                    <SelectItem value="2">Średni</SelectItem>
+                    <SelectItem value="3">Wysoki</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
