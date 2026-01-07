@@ -12,14 +12,21 @@ import {
   ChevronLeft,
   Users,
   StickyNote,
+  Bug,
+  Lightbulb,
+  Check,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import useSWR from "swr"
 import { useSession } from "next-auth/react"
+import { useBacklog } from "@/hooks/use-backlog"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 
 interface Message {
   id: string
@@ -47,6 +54,9 @@ interface OrganizationsResponse {
 }
 
 type ViewMode = "menu" | "teams" | "chat" | "note"
+type NoteMode = "backlog" | "admin"
+type ReportType = "BUG" | "FEATURE" | "OTHER"
+type FeedbackType = "success" | "error" | null
 
 export function FloatingChat() {
   const { data: session } = useSession()
@@ -57,6 +67,16 @@ export function FloatingChat() {
   const [isSending, setIsSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Note/backlog state
+  const [noteMode, setNoteMode] = useState<NoteMode>("backlog")
+  const [noteContent, setNoteContent] = useState("")
+  const [reportType, setReportType] = useState<ReportType>("BUG")
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: FeedbackType; message: string } | null>(null)
+  const noteInputRef = useRef<HTMLInputElement>(null)
+  const { workspace } = useWorkspaceStore()
+  const { mutate: mutateBacklog } = useBacklog()
 
   // Fetch user's teams
   const { data: orgsData } = useSWR<OrganizationsResponse>(
@@ -93,8 +113,65 @@ export function FloatingChat() {
     if (!isOpen) {
       setViewMode("menu")
       setSelectedTeam(null)
+      setNoteContent("")
+      setNoteMode("backlog")
+      setReportType("BUG")
     }
   }, [isOpen])
+
+  // Focus note input when entering note mode
+  useEffect(() => {
+    if (viewMode === "note" && noteInputRef.current) {
+      noteInputRef.current.focus()
+    }
+  }, [viewMode])
+
+  const showFeedback = (type: FeedbackType, message: string) => {
+    setFeedback({ type, message })
+    setTimeout(() => setFeedback(null), 3000)
+  }
+
+  const handleSubmitNote = async () => {
+    if (!noteContent.trim() || isSubmittingNote) return
+
+    setIsSubmittingNote(true)
+    try {
+      if (noteMode === "backlog") {
+        const res = await fetch("/api/backlog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: noteContent,
+            workspaceType: workspace,
+          }),
+        })
+        if (res.ok) {
+          mutateBacklog()
+          showFeedback("success", "Dodano do backlogu")
+        }
+      } else {
+        const res = await fetch("/api/admin/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: noteContent,
+            type: reportType,
+          }),
+        })
+        if (res.ok) {
+          showFeedback("success", "Zgłoszenie wysłane!")
+        } else {
+          throw new Error("Failed to send report")
+        }
+      }
+      setNoteContent("")
+    } catch (error) {
+      console.error("Error:", error)
+      showFeedback("error", "Wystąpił błąd")
+    } finally {
+      setIsSubmittingNote(false)
+    }
+  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -352,11 +429,144 @@ export function FloatingChat() {
           )}
 
           {viewMode === "note" && (
-            <div className="flex-1 p-4 flex flex-col items-center justify-center text-muted-foreground">
-              <StickyNote className="h-12 w-12 mb-2 opacity-50" />
-              <p className="text-sm text-center">
-                Funkcja notatek wkrótce dostępna
-              </p>
+            <div className="flex-1 p-4 flex flex-col">
+              {/* Mode Toggle */}
+              <div className="flex gap-1 p-1 bg-muted rounded-md mb-3">
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                    noteMode === "backlog"
+                      ? "bg-background shadow-sm text-yellow-600"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setNoteMode("backlog")}
+                >
+                  <StickyNote className="h-3 w-3" />
+                  Backlog
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                    noteMode === "admin"
+                      ? "bg-background shadow-sm text-blue-600"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setNoteMode("admin")}
+                >
+                  <Send className="h-3 w-3" />
+                  Zgłoś do admina
+                </button>
+              </div>
+
+              {noteMode === "backlog" ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <StickyNote className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm font-medium">Szybka notatka</span>
+                  </div>
+                  <Input
+                    ref={noteInputRef}
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSubmitNote()
+                    }}
+                    placeholder="Wpisz pomysł..."
+                    className="mb-2"
+                    disabled={isSubmittingNote}
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Report Type Selection */}
+                  <div className="flex gap-1 mb-2">
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 border ${
+                        reportType === "BUG"
+                          ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800"
+                          : "border-transparent hover:bg-muted"
+                      }`}
+                      onClick={() => setReportType("BUG")}
+                    >
+                      <Bug className="h-3 w-3" />
+                      Błąd
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 border ${
+                        reportType === "FEATURE"
+                          ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800"
+                          : "border-transparent hover:bg-muted"
+                      }`}
+                      onClick={() => setReportType("FEATURE")}
+                    >
+                      <Lightbulb className="h-3 w-3" />
+                      Pomysł
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 border ${
+                        reportType === "OTHER"
+                          ? "bg-gray-50 border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700"
+                          : "border-transparent hover:bg-muted"
+                      }`}
+                      onClick={() => setReportType("OTHER")}
+                    >
+                      Inne
+                    </button>
+                  </div>
+                  <Textarea
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    placeholder={
+                      reportType === "BUG"
+                        ? "Opisz błąd..."
+                        : reportType === "FEATURE"
+                        ? "Opisz pomysł na ficzer..."
+                        : "Wpisz treść zgłoszenia..."
+                    }
+                    className="mb-2 min-h-[80px] text-sm flex-1"
+                    disabled={isSubmittingNote}
+                  />
+                </>
+              )}
+
+              <Button
+                className={`w-full ${noteMode === "admin" ? "bg-blue-600 hover:bg-blue-700" : ""}`}
+                onClick={handleSubmitNote}
+                disabled={!noteContent.trim() || isSubmittingNote}
+              >
+                {noteMode === "backlog" ? (
+                  <>
+                    <Plus className="h-4 w-4 mr-1" />
+                    {isSubmittingNote ? "Dodaję..." : "Dodaj"}
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-1" />
+                    {isSubmittingNote ? "Wysyłam..." : "Wyślij"}
+                  </>
+                )}
+              </Button>
+
+              {/* Feedback notification */}
+              {feedback && (
+                <div
+                  className={`mt-3 px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
+                    feedback.type === "success"
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  }`}
+                >
+                  {feedback.type === "success" ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4" />
+                  )}
+                  {feedback.message}
+                </div>
+              )}
             </div>
           )}
         </div>
