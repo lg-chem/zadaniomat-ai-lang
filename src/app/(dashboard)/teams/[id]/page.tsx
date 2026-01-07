@@ -7,11 +7,11 @@ import {
   Plus,
   Crown,
   Users,
-  Settings,
   Trash2,
   UserMinus,
   FolderOpen,
   ClipboardList,
+  Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
 import { AddMemberDialog } from "@/components/teams/add-member-dialog"
 import { CreateTeamCategoryDialog } from "@/components/teams/create-team-category-dialog"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
@@ -28,6 +29,7 @@ import useSWR from "swr"
 interface Member {
   id: string
   role: "OWNER" | "MEMBER"
+  restrictedToWork: boolean
   joinedAt: string
   user: {
     id: string
@@ -117,6 +119,21 @@ export default function TeamDetailPage() {
   const openAssignTask = (memberId: string) => {
     setSelectedMemberId(memberId)
     setShowAssignTask(true)
+  }
+
+  const handleToggleRestriction = async (memberId: string, currentValue: boolean) => {
+    try {
+      const res = await fetch(`/api/organizations/${teamId}/members/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restrictedToWork: !currentValue }),
+      })
+      if (res.ok) {
+        mutate()
+      }
+    } catch (error) {
+      console.error("Error updating member restriction:", error)
+    }
   }
 
   if (isLoading) {
@@ -277,13 +294,26 @@ export default function TeamDetailPage() {
                         Przydziel zadanie
                       </Button>
                       {team.isOwner && member.role !== "OWNER" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          <UserMinus className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <>
+                          <div
+                            className="flex items-center gap-2 px-2 py-1 rounded border"
+                            title="Tylko praca - użytkownik widzi tylko zakładkę Praca"
+                          >
+                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Tylko praca</span>
+                            <Switch
+                              checked={member.restrictedToWork}
+                              onCheckedChange={() => handleToggleRestriction(member.id, member.restrictedToWork)}
+                            />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveMember(member.id)}
+                          >
+                            <UserMinus className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
