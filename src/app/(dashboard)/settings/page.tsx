@@ -848,9 +848,8 @@ export default function SettingsPage() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Te ustawienia dotyczą wszystkich pracowników w zespole{" "}
-              <strong>{ownedOrganizations[0]?.name}</strong>. Ty jako właściciel
-              zawsze widzisz wszystkie zakładki.
+              Te ustawienia dotyczą wszystkich użytkowników ze statusem pracownika.
+              Ty jako właściciel zawsze widzisz wszystkie zakładki.
             </p>
           </CardContent>
         </Card>

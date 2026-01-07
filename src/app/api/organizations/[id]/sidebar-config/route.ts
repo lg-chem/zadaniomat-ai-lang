@@ -57,8 +57,21 @@ export async function GET(
       return NextResponse.json({ error: "Organization not found" }, { status: 404 })
     }
 
-    // Return config or default
-    const config = organization.sidebarConfig || DEFAULT_SIDEBAR_CONFIG
+    // Merge existing config with defaults (to include any new items added later)
+    let config = DEFAULT_SIDEBAR_CONFIG
+    if (organization.sidebarConfig && Array.isArray(organization.sidebarConfig)) {
+      const existingConfig = organization.sidebarConfig as typeof DEFAULT_SIDEBAR_CONFIG
+      // Start with existing config
+      const mergedConfig = [...existingConfig]
+      // Add any new default items that don't exist in saved config
+      for (const defaultItem of DEFAULT_SIDEBAR_CONFIG) {
+        const exists = existingConfig.some(item => item.id === defaultItem.id)
+        if (!exists) {
+          mergedConfig.push(defaultItem)
+        }
+      }
+      config = mergedConfig
+    }
 
     return NextResponse.json({
       config,
