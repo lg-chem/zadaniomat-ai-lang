@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
-import { Play, Pause, Square, Clock, Plus, Check, Minimize2, Maximize2 } from "lucide-react"
+import { useEffect, useRef, useCallback } from "react"
+import { Play, Pause, Square, Clock, Plus, Check, Minimize2, Maximize2, GripVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -28,6 +28,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     isRunning,
     isPaused,
     isMinimized,
+    position,
     taskId,
     taskTitle,
     mode,
@@ -47,6 +48,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     confirmPendingStart,
     cancelPendingStart,
     toggleMinimize,
+    setPosition,
   } = useTimerStore()
 
   // Timer tick effect - only tick when running and not paused
@@ -97,6 +99,54 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   const handleConfirmPendingStart = (minutes: number) => {
     confirmPendingStart(minutes)
   }
+
+  // Drag functionality
+  const isDragging = useRef(false)
+  const dragOffset = useRef({ x: 0, y: 0 })
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!cardRef.current) return
+    isDragging.current = true
+    const rect = cardRef.current.getBoundingClientRect()
+    dragOffset.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    }
+    e.preventDefault()
+  }, [])
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging.current) return
+    const newX = e.clientX - dragOffset.current.x
+    const newY = e.clientY - dragOffset.current.y
+    // Clamp to viewport
+    const maxX = window.innerWidth - (cardRef.current?.offsetWidth || 280)
+    const maxY = window.innerHeight - (cardRef.current?.offsetHeight || 200)
+    setPosition({
+      x: Math.max(0, Math.min(newX, maxX)),
+      y: Math.max(0, Math.min(newY, maxY)),
+    })
+  }, [setPosition])
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false
+  }, [])
+
+  // Add/remove global mouse event listeners for drag
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [handleMouseMove, handleMouseUp])
+
+  // Calculate position style
+  const positionStyle = position
+    ? { left: position.x, top: position.y, right: 'auto' }
+    : { top: '5rem', right: '1rem' }
 
   // Show pending start dialog even if timer is not running
   if (isHydrated && pendingStart) {
@@ -172,8 +222,18 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
       {/* Floating Timer Widget */}
       {isMinimized ? (
         // Minimized view - compact timer
-        <Card className="fixed top-20 right-4 z-50 p-2 shadow-lg bg-background/95 backdrop-blur">
-          <div className="flex items-center gap-2">
+        <Card
+          ref={cardRef}
+          className="fixed z-50 p-2 shadow-lg bg-background/95 backdrop-blur"
+          style={positionStyle}
+        >
+          <div className="flex items-center gap-1">
+            <div
+              className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground"
+              onMouseDown={handleMouseDown}
+            >
+              <GripVertical className="h-4 w-4" />
+            </div>
             <span className={`text-lg font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
               {formatTime(displayTime)}
             </span>
@@ -195,13 +255,23 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
         </Card>
       ) : (
         // Full view
-        <Card className="fixed top-20 right-4 z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur">
+        <Card
+          ref={cardRef}
+          className="fixed z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur"
+          style={positionStyle}
+        >
           <div className="space-y-3">
-            {/* Header with title and minimize button */}
+            {/* Header with drag handle, title and minimize button */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div
+                  className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground"
+                  onMouseDown={handleMouseDown}
+                >
+                  <GripVertical className="h-4 w-4" />
+                </div>
                 <Clock className="h-4 w-4 text-primary" />
-                <span className="font-medium text-sm truncate max-w-[180px]">
+                <span className="font-medium text-sm truncate max-w-[160px]">
                   {taskTitle || "Zadanie"}
                 </span>
               </div>
