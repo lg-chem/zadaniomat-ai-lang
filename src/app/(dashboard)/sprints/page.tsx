@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   Trash2,
+  Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,6 +58,8 @@ export default function SprintsPage() {
   const [showCreatePeriod, setShowCreatePeriod] = useState(false)
   const [showCreateSprint, setShowCreateSprint] = useState(false)
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
+  const [editingPeriod, setEditingPeriod] = useState<Period | null>(null)
+  const [editingSprint, setEditingSprint] = useState<Sprint | null>(null)
 
   const togglePeriod = (id: string) => {
     setExpandedPeriods((prev) => {
@@ -119,7 +122,28 @@ export default function SprintsPage() {
 
   const openCreateSprint = (periodId: string) => {
     setSelectedPeriodId(periodId)
+    setEditingSprint(null)
     setShowCreateSprint(true)
+  }
+
+  const openEditPeriod = (period: Period) => {
+    setEditingPeriod(period)
+    setShowCreatePeriod(true)
+  }
+
+  const openEditSprint = (sprint: Sprint) => {
+    setEditingSprint(sprint)
+    setShowCreateSprint(true)
+  }
+
+  const handlePeriodDialogClose = (open: boolean) => {
+    setShowCreatePeriod(open)
+    if (!open) setEditingPeriod(null)
+  }
+
+  const handleSprintDialogClose = (open: boolean) => {
+    setShowCreateSprint(open)
+    if (!open) setEditingSprint(null)
   }
 
   if (isLoading) {
@@ -165,7 +189,7 @@ export default function SprintsPage() {
             Zarządzaj okresami i sprintami
           </p>
         </div>
-        <Button onClick={() => setShowCreatePeriod(true)} className="w-full sm:w-auto">
+        <Button onClick={() => { setEditingPeriod(null); setShowCreatePeriod(true) }} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Nowy okres
         </Button>
@@ -180,7 +204,7 @@ export default function SprintsPage() {
             <p className="text-muted-foreground text-center mb-4">
               Stwórz pierwszy okres, aby zacząć planować sprinty
             </p>
-            <Button onClick={() => setShowCreatePeriod(true)}>
+            <Button onClick={() => { setEditingPeriod(null); setShowCreatePeriod(true) }}>
               <Plus className="h-4 w-4 mr-2" />
               Stwórz okres
             </Button>
@@ -216,6 +240,16 @@ export default function SprintsPage() {
                       <div className="text-muted-foreground">{period._count.goals} celów</div>
                     </div>
                     <Progress value={getProgress(period.startDate, period.endDate)} className="w-24" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openEditPeriod(period)
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -272,6 +306,13 @@ export default function SprintsPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  onClick={() => openEditSprint(sprint)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   onClick={() => handleDeleteSprint(sprint.id)}
                                 >
                                   <Trash2 className="h-4 w-4 text-destructive" />
@@ -303,14 +344,16 @@ export default function SprintsPage() {
       {/* Dialogs */}
       <CreatePeriodDialog
         open={showCreatePeriod}
-        onOpenChange={setShowCreatePeriod}
+        onOpenChange={handlePeriodDialogClose}
         onSuccess={mutatePeriods}
+        editPeriod={editingPeriod}
       />
       <CreateSprintDialog
         open={showCreateSprint}
-        onOpenChange={setShowCreateSprint}
+        onOpenChange={handleSprintDialogClose}
         periodId={selectedPeriodId}
         onSuccess={mutatePeriods}
+        editSprint={editingSprint}
       />
     </div>
   )

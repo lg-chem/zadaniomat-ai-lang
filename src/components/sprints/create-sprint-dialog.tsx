@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { format, addWeeks } from "date-fns"
 import {
   Dialog,
@@ -14,11 +14,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+interface EditSprint {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+}
+
 interface CreateSprintDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   periodId: string | null
   onSuccess: () => void
+  editSprint?: EditSprint | null
 }
 
 export function CreateSprintDialog({
@@ -26,6 +34,7 @@ export function CreateSprintDialog({
   onOpenChange,
   periodId,
   onSuccess,
+  editSprint,
 }: CreateSprintDialogProps) {
   const [name, setName] = useState("")
   const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
@@ -33,22 +42,38 @@ export function CreateSprintDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
+  const isEditMode = !!editSprint
+
+  // Populate form when editing
+  useEffect(() => {
+    if (editSprint) {
+      setName(editSprint.name)
+      setStartDate(format(new Date(editSprint.startDate), "yyyy-MM-dd"))
+      setEndDate(format(new Date(editSprint.endDate), "yyyy-MM-dd"))
+    } else {
+      resetForm()
+    }
+  }, [editSprint, open])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!periodId) return
+    if (!periodId && !isEditMode) return
 
     setError("")
     setIsLoading(true)
 
     try {
-      const res = await fetch("/api/sprints", {
-        method: "POST",
+      const url = isEditMode ? `/api/sprints/${editSprint.id}` : "/api/sprints"
+      const method = isEditMode ? "PATCH" : "POST"
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           startDate,
           endDate,
-          periodId,
+          ...(isEditMode ? {} : { periodId }),
         }),
       })
 
@@ -78,9 +103,11 @@ export function CreateSprintDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nowy sprint</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edytuj sprint" : "Nowy sprint"}</DialogTitle>
           <DialogDescription>
-            Stwórz nowy sprint (domyślnie 2 tygodnie)
+            {isEditMode
+              ? "Zmień nazwę lub daty sprintu"
+              : "Stwórz nowy sprint (domyślnie 2 tygodnie)"}
           </DialogDescription>
         </DialogHeader>
 
@@ -135,8 +162,10 @@ export function CreateSprintDialog({
             >
               Anuluj
             </Button>
-            <Button type="submit" disabled={isLoading || !periodId}>
-              {isLoading ? "Tworzenie..." : "Stwórz sprint"}
+            <Button type="submit" disabled={isLoading || (!periodId && !isEditMode)}>
+              {isLoading
+                ? isEditMode ? "Zapisywanie..." : "Tworzenie..."
+                : isEditMode ? "Zapisz zmiany" : "Stwórz sprint"}
             </Button>
           </DialogFooter>
         </form>

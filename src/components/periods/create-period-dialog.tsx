@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { format, addMonths } from "date-fns"
 import {
   Dialog,
@@ -15,16 +15,25 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
+interface EditPeriod {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+}
+
 interface CreatePeriodDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  editPeriod?: EditPeriod | null
 }
 
 export function CreatePeriodDialog({
   open,
   onOpenChange,
   onSuccess,
+  editPeriod,
 }: CreatePeriodDialogProps) {
   const { workspace } = useWorkspaceStore()
   const [name, setName] = useState("")
@@ -33,20 +42,36 @@ export function CreatePeriodDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
+  const isEditMode = !!editPeriod
+
+  // Populate form when editing
+  useEffect(() => {
+    if (editPeriod) {
+      setName(editPeriod.name)
+      setStartDate(format(new Date(editPeriod.startDate), "yyyy-MM-dd"))
+      setEndDate(format(new Date(editPeriod.endDate), "yyyy-MM-dd"))
+    } else {
+      resetForm()
+    }
+  }, [editPeriod, open])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setIsLoading(true)
 
     try {
-      const res = await fetch("/api/periods", {
-        method: "POST",
+      const url = isEditMode ? `/api/periods/${editPeriod.id}` : "/api/periods"
+      const method = isEditMode ? "PATCH" : "POST"
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           startDate,
           endDate,
-          workspaceType: workspace,
+          ...(isEditMode ? {} : { workspaceType: workspace }),
         }),
       })
 
@@ -76,9 +101,11 @@ export function CreatePeriodDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nowy okres</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edytuj okres" : "Nowy okres"}</DialogTitle>
           <DialogDescription>
-            Stwórz nowy okres planowania (np. kwartał, półrocze)
+            {isEditMode
+              ? "Zmień nazwę lub daty okresu"
+              : "Stwórz nowy okres planowania (np. kwartał, półrocze)"}
           </DialogDescription>
         </DialogHeader>
 
@@ -134,7 +161,9 @@ export function CreatePeriodDialog({
               Anuluj
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Tworzenie..." : "Stwórz okres"}
+              {isLoading
+                ? isEditMode ? "Zapisywanie..." : "Tworzenie..."
+                : isEditMode ? "Zapisz zmiany" : "Stwórz okres"}
             </Button>
           </DialogFooter>
         </form>
