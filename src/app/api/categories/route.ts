@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 export async function GET(req: Request) {
   try {
@@ -11,15 +12,12 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const workspace = searchParams.get("workspace")
+    const workspace = searchParams.get("workspace") as "WORK" | "PRIVATE" | null
 
     // Get user's own categories
-    const ownWhere: Record<string, unknown> = {
+    const ownWhere: Prisma.CategoryWhereInput = {
       userId: session.user.id,
-    }
-
-    if (workspace) {
-      ownWhere.workspaceType = workspace
+      ...(workspace ? { workspaceType: workspace } : {})
     }
 
     const ownCategories = await prisma.category.findMany({
@@ -32,22 +30,24 @@ export async function GET(req: Request) {
     })
 
     // Get shared categories from organizations user is a member of (but not owner)
-    const sharedCategories = await prisma.category.findMany({
-      where: {
-        organizationId: { not: null },
-        userId: { not: session.user.id }, // Not user's own category
-        assignedMembers: {
-          some: {
-            member: {
-              userId: session.user.id
-            }
+    const sharedWhere: Prisma.CategoryWhereInput = {
+      organizationId: { not: null },
+      userId: { not: session.user.id },
+      assignedMembers: {
+        some: {
+          member: {
+            userId: session.user.id
           }
-        },
-        ...(workspace ? { workspaceType: workspace } : {})
+        }
       },
+      ...(workspace ? { workspaceType: workspace } : {})
+    }
+
+    const sharedCategories = await prisma.category.findMany({
+      where: sharedWhere,
       include: {
         organization: { select: { id: true, name: true } },
-        user: { select: { id: true, name: true } }, // Category owner
+        user: { select: { id: true, name: true } },
         _count: { select: { tasks: true } }
       },
       orderBy: { order: "asc" },
