@@ -48,6 +48,12 @@ model User {
   adminReports  AdminReport[]
   weeklyScheduleBlocks WeeklyScheduleBlock[]
   dailyScheduleOverrides DailyScheduleOverride[]
+
+  // Organization relations
+  ownedOrganizations    Organization[]       @relation("OwnedOrganizations")
+  organizationMemberships OrganizationMember[] @relation("OrganizationMemberships")
+  assignedTasks         Task[]               @relation("AssignedTasks")
+  notifications         Notification[]       @relation("ReceivedNotifications")
 }
 
 model Account {
@@ -198,8 +204,14 @@ model Category {
   habits        Habit[]
   knowledgeCategories KnowledgeCategory[]
 
+  // Organization (team) category - null means personal category
+  organizationId String?
+  organization   Organization? @relation("OrganizationCategories", fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedMembers OrganizationMemberCategory[] @relation("AssignedMemberCategories")
+
   @@unique([userId, name, workspaceType])
   @@index([userId, workspaceType])
+  @@index([organizationId])
 }
 
 // ==================== GOALS ====================
@@ -254,7 +266,7 @@ model Task {
   updatedAt      DateTime      @updatedAt
 
   // Relations
-  userId         String
+  userId         String        // Task creator/owner
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId     String?
   category       Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -267,10 +279,18 @@ model Task {
   subTasks       Task[]        @relation("SubTasks")
   timeEntries    TimeEntry[]
 
+  // Task assignment (for team tasks)
+  assignedToId   String?       // User assigned to complete this task
+  assignedTo     User?         @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  organizationId String?       // Organization this task belongs to
+  organization   Organization? @relation("OrganizationTasks", fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([userId, workspaceType])
   @@index([scheduledDate])
   @@index([sprintId])
   @@index([categoryId])
+  @@index([assignedToId])
+  @@index([organizationId])
 }
 
 model TimeEntry {
@@ -857,6 +877,91 @@ enum AdminReportStatus {
   IN_PROGRESS
   RESOLVED
   REJECTED
+}
+
+// ==================== ORGANIZATIONS (TEAMS) ====================
+
+enum OrganizationRole {
+  OWNER     // Admin/właściciel zespołu
+  MEMBER    // Pracownik
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ownerId     String
+  owner       User     @relation("OwnedOrganizations", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     OrganizationMember[]
+  categories  Category[] @relation("OrganizationCategories")
+  tasks       Task[]     @relation("OrganizationTasks")
+
+  @@index([ownerId])
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  role           OrganizationRole @default(MEMBER)
+  joinedAt       DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Relations
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("OrganizationMemberships", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Assigned categories for this member
+  assignedCategories OrganizationMemberCategory[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model OrganizationMemberCategory {
+  id         String   @id @default(cuid())
+  assignedAt DateTime @default(now())
+
+  // Relations
+  memberId   String
+  member     OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category           @relation("AssignedMemberCategories", fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, categoryId])
+  @@index([memberId])
+  @@index([categoryId])
+}
+
+// ==================== NOTIFICATIONS ====================
+
+enum NotificationType {
+  TASK_DELETED        // Pracownik usunął zadanie
+  TASK_COMPLETED      // Pracownik ukończył zadanie
+  TASK_ASSIGNED       // Nowe zadanie przydzielone
+  MEMBER_JOINED       // Nowy członek dołączył
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  type        NotificationType
+  title       String
+  message     String           @db.Text
+  isRead      Boolean          @default(false)
+  metadata    Json?            // Additional data (taskId, memberId, etc.)
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  userId      String           // User who receives the notification
+  user        User             @relation("ReceivedNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
 }
 
 // ==================== WEEKLY SCHEDULE BLOCKS ====================
