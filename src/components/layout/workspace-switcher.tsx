@@ -14,7 +14,7 @@ export function WorkspaceSwitcher() {
   const { workspace, setWorkspace } = useWorkspaceStore()
 
   // Fetch user restrictions
-  const { data: restrictions } = useSWR<{ restrictedToWork: boolean }>(
+  const { data: restrictions, isLoading } = useSWR<{ restrictedToWork: boolean }>(
     "/api/user/restrictions",
     fetcher
   )
@@ -44,6 +44,17 @@ export function WorkspaceSwitcher() {
     } else {
       router.push("/schedule")
     }
+  }
+
+  // Show skeleton while loading
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-0.5 p-1 bg-muted rounded-lg w-full">
+        <div className="flex-1 h-8 rounded-md bg-muted-foreground/10 animate-pulse" />
+        <div className="flex-1 h-8 rounded-md bg-muted-foreground/10 animate-pulse" />
+        <div className="flex-1 h-8 rounded-md bg-muted-foreground/10 animate-pulse" />
+      </div>
+    )
   }
 
   // If user is restricted, only show WORK button
