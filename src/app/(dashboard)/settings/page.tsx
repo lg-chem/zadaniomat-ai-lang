@@ -1,8 +1,25 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ChevronRight } from "lucide-react"
+import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ChevronRight, GripVertical, Eye, EyeOff, Menu } from "lucide-react"
 import Link from "next/link"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -47,6 +64,71 @@ interface AdminReport {
   }
 }
 
+interface SidebarConfigItem {
+  id: string
+  label: string
+  enabled: boolean
+  order: number
+}
+
+interface Organization {
+  id: string
+  name: string
+}
+
+// Sortable item component for drag-and-drop
+function SortableSidebarItem({
+  item,
+  onToggle,
+}: {
+  item: SidebarConfigItem
+  onToggle: (id: string) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 p-3 bg-background border rounded-lg ${
+        isDragging ? "opacity-50 shadow-lg z-50" : ""
+      } ${!item.enabled ? "opacity-60" : ""}`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded touch-none"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </button>
+      <span className="flex-1 font-medium">{item.label}</span>
+      <button
+        onClick={() => onToggle(item.id)}
+        className={`p-1.5 rounded-md transition-colors ${
+          item.enabled
+            ? "bg-green-100 text-green-600 hover:bg-green-200"
+            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+        }`}
+        title={item.enabled ? "Widoczne dla pracowników" : "Ukryte dla pracowników"}
+      >
+        {item.enabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+}
+
 const COLORS = [
   "#3b82f6", "#8b5cf6", "#ec4899", "#ef4444", "#f59e0b",
   "#10b981", "#06b6d4", "#6366f1", "#84cc16", "#f97316",
@@ -71,6 +153,20 @@ export default function SettingsPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [adminReports, setAdminReports] = useState<AdminReport[]>([])
   const [isLoadingReports, setIsLoadingReports] = useState(false)
+
+  // Sidebar Configuration (for team owners)
+  const [ownedOrganizations, setOwnedOrganizations] = useState<Organization[]>([])
+  const [sidebarConfig, setSidebarConfig] = useState<SidebarConfigItem[]>([])
+  const [isSavingSidebar, setIsSavingSidebar] = useState(false)
+  const [sidebarConfigDirty, setSidebarConfigDirty] = useState(false)
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Inline editing state for new row
   const [newRow, setNewRow] = useState({
@@ -136,6 +232,27 @@ export default function SettingsPage() {
     }
   }, [])
 
+  const fetchOrganizations = useCallback(async () => {
+    try {
+      const res = await fetch("/api/organizations")
+      if (res.ok) {
+        const data = await res.json()
+        if (data.owned && data.owned.length > 0) {
+          setOwnedOrganizations(data.owned)
+          // Fetch sidebar config for first owned organization
+          const orgId = data.owned[0].id
+          const configRes = await fetch(`/api/organizations/${orgId}/sidebar-config`)
+          if (configRes.ok) {
+            const configData = await configRes.json()
+            setSidebarConfig(configData.config)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching organizations:", error)
+    }
+  }, [])
+
   const handleUpdateReportStatus = async (reportId: string, status: string) => {
     try {
       const res = await fetch("/api/admin/reports", {
@@ -169,7 +286,8 @@ export default function SettingsPage() {
     fetchCategories()
     fetchKnowledgeBase()
     fetchAdminReports()
-  }, [fetchCategories, fetchKnowledgeBase, fetchAdminReports])
+    fetchOrganizations()
+  }, [fetchCategories, fetchKnowledgeBase, fetchAdminReports, fetchOrganizations])
 
   const handleCreateCategory = async () => {
     if (!newRow.name.trim()) return
@@ -293,6 +411,58 @@ export default function SettingsPage() {
   const handleAddRowClick = () => {
     setIsAddingNew(true)
     setTimeout(() => newRowRef.current?.focus(), 0)
+  }
+
+  // Sidebar config handlers
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      setSidebarConfig((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over.id)
+
+        const newItems = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
+          ...item,
+          order: index,
+        }))
+
+        return newItems
+      })
+      setSidebarConfigDirty(true)
+    }
+  }
+
+  const handleToggleSidebarItem = (itemId: string) => {
+    setSidebarConfig((items) =>
+      items.map((item) =>
+        item.id === itemId ? { ...item, enabled: !item.enabled } : item
+      )
+    )
+    setSidebarConfigDirty(true)
+  }
+
+  const handleSaveSidebarConfig = async () => {
+    if (ownedOrganizations.length === 0) return
+
+    setIsSavingSidebar(true)
+    try {
+      const res = await fetch(
+        `/api/organizations/${ownedOrganizations[0].id}/sidebar-config`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config: sidebarConfig }),
+        }
+      )
+      if (res.ok) {
+        setSidebarConfigDirty(false)
+      }
+    } catch (error) {
+      console.error("Error saving sidebar config:", error)
+    } finally {
+      setIsSavingSidebar(false)
+    }
   }
 
   // Sort: strategic first, then by name
@@ -586,6 +756,69 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Sidebar Configuration - only for team owners in WORK workspace */}
+      {workspace === "WORK" && ownedOrganizations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Menu className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle>Menu pracowników</CardTitle>
+                <CardDescription>
+                  Ustaw które zakładki i w jakiej kolejności widzą pracownicy.
+                  Przeciągnij aby zmienić kolejność, kliknij ikonę oka aby ukryć/pokazać.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={sidebarConfig.map((item) => item.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2">
+                  {sidebarConfig
+                    .sort((a, b) => a.order - b.order)
+                    .map((item) => (
+                      <SortableSidebarItem
+                        key={item.id}
+                        item={item}
+                        onToggle={handleToggleSidebarItem}
+                      />
+                    ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                onClick={handleSaveSidebarConfig}
+                disabled={isSavingSidebar || !sidebarConfigDirty}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {isSavingSidebar ? "Zapisywanie..." : "Zapisz konfigurację menu"}
+              </Button>
+              {sidebarConfigDirty && (
+                <span className="text-sm text-muted-foreground">
+                  (Niezapisane zmiany)
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Te ustawienia dotyczą wszystkich pracowników w zespole{" "}
+              <strong>{ownedOrganizations[0]?.name}</strong>. Ty jako właściciel
+              zawsze widzisz wszystkie zakładki.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Admin Reports Section - only visible to admins */}
       {isAdmin && (
