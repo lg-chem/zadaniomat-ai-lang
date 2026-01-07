@@ -100,9 +100,9 @@ export default function IdeasPage() {
     emoji: "",
   })
 
-  // Check if user is admin
+  // Check if user is owner (can manage categories)
   const currentOrgRole = organizations.find(o => o.id === selectedOrgId)?.role
-  const isAdmin = currentOrgRole === "OWNER" || currentOrgRole === "ADMIN"
+  const isAdmin = currentOrgRole === "OWNER"
 
   const handleCreateIdea = async () => {
     if (!newIdea.trim() || !newIdeaCategoryId) return

@@ -90,7 +90,7 @@ export async function DELETE(
       where: {
         organizationId: idea.category.organizationId,
         userId: session.user.id,
-        role: { in: ["OWNER", "ADMIN"] },
+        role: "OWNER",
       },
     })
 

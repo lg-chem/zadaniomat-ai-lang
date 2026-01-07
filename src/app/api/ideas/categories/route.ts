@@ -65,12 +65,12 @@ export async function POST(req: Request) {
       )
     }
 
-    // Verify user is admin/owner of this organization
+    // Verify user is owner of this organization
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId,
         userId: session.user.id,
-        role: { in: ["OWNER", "ADMIN"] },
+        role: "OWNER",
       },
     })
 

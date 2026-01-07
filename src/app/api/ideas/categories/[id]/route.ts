@@ -26,12 +26,12 @@ export async function PATCH(
       return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    // Check if user is admin/owner
+    // Check if user is owner
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId: category.organizationId,
         userId: session.user.id,
-        role: { in: ["OWNER", "ADMIN"] },
+        role: "OWNER",
       },
     })
 
@@ -39,7 +39,7 @@ export async function PATCH(
 
     if (!membership && !isOwner) {
       return NextResponse.json(
-        { error: "Tylko admin może edytować kategorie" },
+        { error: "Tylko właściciel może edytować kategorie" },
         { status: 403 }
       )
     }
@@ -86,12 +86,12 @@ export async function DELETE(
       return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    // Check if user is admin/owner
+    // Check if user is owner
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId: category.organizationId,
         userId: session.user.id,
-        role: { in: ["OWNER", "ADMIN"] },
+        role: "OWNER",
       },
     })
 
@@ -99,7 +99,7 @@ export async function DELETE(
 
     if (!membership && !isOwner) {
       return NextResponse.json(
-        { error: "Tylko admin może usuwać kategorie" },
+        { error: "Tylko właściciel może usuwać kategorie" },
         { status: 403 }
       )
     }
