@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AddMemberDialog } from "@/components/teams/add-member-dialog"
 import { CreateTeamCategoryDialog } from "@/components/teams/create-team-category-dialog"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
+import { ShareExistingCategoryDialog } from "@/components/teams/share-existing-category-dialog"
 import useSWR from "swr"
 
 interface Member {
@@ -75,6 +76,7 @@ export default function TeamDetailPage() {
 
   const [showAddMember, setShowAddMember] = useState(false)
   const [showCreateCategory, setShowCreateCategory] = useState(false)
+  const [showShareExisting, setShowShareExisting] = useState(false)
   const [showAssignTask, setShowAssignTask] = useState(false)
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
 
@@ -265,16 +267,16 @@ export default function TeamDetailPage() {
                       </div>
                     </div>
 
-                    {team.isOwner && member.role !== "OWNER" && (
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openAssignTask(member.user.id)}
-                        >
-                          <ClipboardList className="h-4 w-4 mr-1" />
-                          Przydziel zadanie
-                        </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openAssignTask(member.user.id)}
+                      >
+                        <ClipboardList className="h-4 w-4 mr-1" />
+                        Przydziel zadanie
+                      </Button>
+                      {team.isOwner && member.role !== "OWNER" && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -282,8 +284,8 @@ export default function TeamDetailPage() {
                         >
                           <UserMinus className="h-4 w-4 text-destructive" />
                         </Button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -302,10 +304,16 @@ export default function TeamDetailPage() {
                 </CardDescription>
               </div>
               {team.isOwner && (
-                <Button onClick={() => setShowCreateCategory(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nowa kategoria
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowShareExisting(true)}>
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Dodaj istniejącą
+                  </Button>
+                  <Button onClick={() => setShowCreateCategory(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nowa kategoria
+                  </Button>
+                </div>
               )}
             </CardHeader>
             <CardContent>
@@ -360,6 +368,15 @@ export default function TeamDetailPage() {
         open={showCreateCategory}
         onOpenChange={setShowCreateCategory}
         organizationId={teamId}
+        onSuccess={mutate}
+      />
+
+      <ShareExistingCategoryDialog
+        open={showShareExisting}
+        onOpenChange={setShowShareExisting}
+        organizationId={teamId}
+        members={team.members}
+        existingCategoryIds={team.categories.map(c => c.id)}
         onSuccess={mutate}
       />
 
