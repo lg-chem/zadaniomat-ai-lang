@@ -29,6 +29,48 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Not a member of this organization" }, { status: 403 })
     }
 
+    // Auto-sync: Get team's strategic categories and create IdeaCategories if not exist
+    const teamStrategicCategories = await prisma.category.findMany({
+      where: {
+        organizationId,
+        isStrategic: true,
+        workspaceType: "WORK",
+      },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+    })
+
+    // Sync each strategic category to IdeaCategory
+    for (const stratCat of teamStrategicCategories) {
+      const existing = await prisma.ideaCategory.findFirst({
+        where: {
+          organizationId,
+          linkedCategoryId: stratCat.id,
+        },
+      })
+
+      if (!existing) {
+        // Create IdeaCategory linked to strategic category
+        await prisma.ideaCategory.create({
+          data: {
+            name: stratCat.name,
+            color: stratCat.color,
+            organizationId,
+            linkedCategoryId: stratCat.id,
+            order: stratCat.order,
+          },
+        })
+      } else if (existing.name !== stratCat.name || existing.color !== stratCat.color) {
+        // Update if name or color changed
+        await prisma.ideaCategory.update({
+          where: { id: existing.id },
+          data: {
+            name: stratCat.name,
+            color: stratCat.color,
+          },
+        })
+      }
+    }
+
     const categories = await prisma.ideaCategory.findMany({
       where: {
         organizationId,
@@ -36,6 +78,13 @@ export async function GET(req: Request) {
       include: {
         _count: {
           select: { ideas: true },
+        },
+        linkedCategory: {
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+          },
         },
       },
       orderBy: [{ order: "asc" }, { name: "asc" }],

@@ -38,7 +38,15 @@ export async function GET(req: Request) {
         ...(categoryId && { categoryId }),
       },
       include: {
-        category: true,
+        category: {
+          include: {
+            linkedCategory: {
+              select: {
+                icon: true,
+              },
+            },
+          },
+        },
         user: {
           select: {
             id: true,
@@ -105,7 +113,15 @@ export async function POST(req: Request) {
         userId: session.user.id,
       },
       include: {
-        category: true,
+        category: {
+          include: {
+            linkedCategory: {
+              select: {
+                icon: true,
+              },
+            },
+          },
+        },
         user: {
           select: {
             id: true,

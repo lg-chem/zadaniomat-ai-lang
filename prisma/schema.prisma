@@ -211,6 +211,7 @@ model Category {
   goals         Goal[]
   habits        Habit[]
   knowledgeCategories KnowledgeCategory[]
+  ideaCategories IdeaCategory[] @relation("LinkedIdeaCategories")
 
   // Organization (team) category - null means personal category
   organizationId String?
@@ -768,10 +769,16 @@ model IdeaCategory {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  // Link to strategic category (for auto-sync)
+  linkedCategoryId String?
+  linkedCategory   Category? @relation("LinkedIdeaCategories", fields: [linkedCategoryId], references: [id], onDelete: SetNull)
+
   ideas       Idea[]
 
   @@unique([organizationId, name])
+  @@unique([organizationId, linkedCategoryId])
   @@index([organizationId])
+  @@index([linkedCategoryId])
 }
 
 model Idea {

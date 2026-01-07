@@ -50,6 +50,11 @@ interface IdeaCategory {
   name: string
   color: string
   emoji?: string | null
+  linkedCategory?: {
+    id: string
+    name: string
+    icon?: string | null
+  } | null
   _count: { ideas: number }
 }
 
@@ -59,7 +64,15 @@ interface Idea {
   createdAt: string
   updatedAt: string
   userId: string
-  category: IdeaCategory
+  category: {
+    id: string
+    name: string
+    color: string
+    emoji?: string | null
+    linkedCategory?: {
+      icon?: string | null
+    } | null
+  }
   user: {
     id: string
     name: string | null
@@ -297,15 +310,18 @@ export default function IdeasPage() {
                   <SelectValue placeholder="Kategoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      <div className="flex items-center gap-2">
-                        {cat.emoji && <span>{cat.emoji}</span>}
-                        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                        {cat.name}
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {categories.map((cat) => {
+                    const icon = cat.emoji || cat.linkedCategory?.icon
+                    return (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          {icon && <span>{icon}</span>}
+                          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                          {cat.name}
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
               <Input
@@ -340,43 +356,49 @@ export default function IdeasPage() {
           </div>
 
           {/* Categories */}
-          {categories.map((cat) => (
-            <div
-              key={cat.id}
-              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors group ${
-                selectedCategoryId === cat.id ? "bg-primary/10 border border-primary/20" : "hover:bg-muted"
-              }`}
-              onClick={() => setSelectedCategoryId(cat.id)}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {cat.emoji && <span>{cat.emoji}</span>}
-                <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                <span className="font-medium text-sm truncate">{cat.name}</span>
+          {categories.map((cat) => {
+            const icon = cat.emoji || cat.linkedCategory?.icon
+            const isLinked = !!cat.linkedCategory
+            return (
+              <div
+                key={cat.id}
+                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors group ${
+                  selectedCategoryId === cat.id ? "bg-primary/10 border border-primary/20" : "hover:bg-muted"
+                }`}
+                onClick={() => setSelectedCategoryId(cat.id)}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {icon && <span>{icon}</span>}
+                  <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                  <span className="font-medium text-sm truncate">{cat.name}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Badge variant="secondary" className="text-xs">
+                    {cat._count.ideas}
+                  </Badge>
+                  {isAdmin && !isLinked && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteCategory(cat.id)
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Badge variant="secondary" className="text-xs">
-                  {cat._count.ideas}
-                </Badge>
-                {isAdmin && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteCategory(cat.id)
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
+            )
+          })}
 
-          {categories.length === 0 && isAdmin && (
+          {categories.length === 0 && (
             <p className="text-xs text-muted-foreground p-2">
-              Stwórz pierwszą kategorię, aby dodawać rozkminki
+              {isAdmin
+                ? "Stwórz kategorie strategiczne w zespole, aby dodawać rozkminki"
+                : "Brak kategorii - poczekaj aż admin doda kategorie strategiczne"}
             </p>
           )}
         </div>
@@ -430,7 +452,9 @@ export default function IdeasPage() {
                           className="text-xs"
                           style={{ borderColor: idea.category.color, color: idea.category.color }}
                         >
-                          {idea.category.emoji && <span className="mr-1">{idea.category.emoji}</span>}
+                          {(idea.category.emoji || idea.category.linkedCategory?.icon) && (
+                            <span className="mr-1">{idea.category.emoji || idea.category.linkedCategory?.icon}</span>
+                          )}
                           {idea.category.name}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
