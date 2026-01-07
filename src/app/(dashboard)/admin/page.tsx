@@ -19,6 +19,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Briefcase,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -41,6 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Switch } from "@/components/ui/switch"
 import { formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
 
@@ -50,6 +52,7 @@ interface User {
   name: string | null
   role: string
   isApproved: boolean
+  restrictedToWork: boolean
   createdAt: string
   image: string | null
 }
@@ -204,6 +207,25 @@ export default function AdminPage() {
     } finally {
       setActionLoading(null)
       setDeleteUserId(null)
+    }
+  }
+
+  const toggleRestrictedToWork = async (userId: string, currentValue: boolean) => {
+    setActionLoading(userId)
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restrictedToWork: !currentValue }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setUsers(users.map((u) => (u.id === userId ? data.user : u)))
+      }
+    } catch (error) {
+      console.error("Error toggling restrictedToWork:", error)
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -371,7 +393,7 @@ export default function AdminPage() {
                       })}
                     </span>
                     {user.id !== session?.user?.id && (
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         {isSuperAdmin && (
                           <Select
                             value={user.role}
@@ -388,6 +410,18 @@ export default function AdminPage() {
                             </SelectContent>
                           </Select>
                         )}
+                        <div
+                          className="flex items-center gap-2 px-2 py-1 rounded border"
+                          title="Tylko praca - użytkownik widzi tylko zakładkę Praca"
+                        >
+                          <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Tylko praca</span>
+                          <Switch
+                            checked={user.restrictedToWork}
+                            onCheckedChange={() => toggleRestrictedToWork(user.id, user.restrictedToWork)}
+                            disabled={actionLoading === user.id}
+                          />
+                        </div>
                         <Button
                           size="sm"
                           variant="outline"

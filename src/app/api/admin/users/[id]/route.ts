@@ -25,7 +25,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { isApproved, role } = body
+    const { isApproved, role, restrictedToWork } = body
 
     // Prevent admin from changing their own role
     if (id === session.user.id && role) {
@@ -43,12 +43,15 @@ export async function PATCH(
       )
     }
 
-    const updateData: { isApproved?: boolean; role?: UserRole } = {}
+    const updateData: { isApproved?: boolean; role?: UserRole; restrictedToWork?: boolean } = {}
     if (typeof isApproved === "boolean") {
       updateData.isApproved = isApproved
     }
     if (role && UserRoleValues.includes(role)) {
       updateData.role = role as UserRole
+    }
+    if (typeof restrictedToWork === "boolean") {
+      updateData.restrictedToWork = restrictedToWork
     }
 
     const user = await prisma.user.update({
@@ -60,6 +63,7 @@ export async function PATCH(
         name: true,
         role: true,
         isApproved: true,
+        restrictedToWork: true,
         createdAt: true,
         image: true,
       },

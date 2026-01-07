@@ -17,6 +17,7 @@ model User {
   image         String?
   role          UserRole  @default(USER)
   isApproved    Boolean   @default(false) // Requires admin approval
+  restrictedToWork Boolean @default(false) // If true, user can only see WORK workspace
   emailVerified DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -904,11 +905,10 @@ model Organization {
 }
 
 model OrganizationMember {
-  id               String           @id @default(cuid())
-  role             OrganizationRole @default(MEMBER)
-  restrictedToWork Boolean          @default(false) // If true, user can only see WORK workspace
-  joinedAt         DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id             String           @id @default(cuid())
+  role           OrganizationRole @default(MEMBER)
+  joinedAt       DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   // Relations
   organizationId String

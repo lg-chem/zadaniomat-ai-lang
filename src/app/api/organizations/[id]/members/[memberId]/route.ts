@@ -64,7 +64,7 @@ export async function PATCH(
 
     const { id, memberId } = await params
     const body = await req.json()
-    const { categoryIds, restrictedToWork } = body
+    const { categoryIds } = body
 
     // Check ownership
     const organization = await prisma.organization.findUnique({
@@ -87,14 +87,6 @@ export async function PATCH(
 
     if (!member) {
       return NextResponse.json({ error: "Członek nie znaleziony" }, { status: 404 })
-    }
-
-    // Update restrictedToWork if provided
-    if (restrictedToWork !== undefined) {
-      await prisma.organizationMember.update({
-        where: { id: memberId },
-        data: { restrictedToWork }
-      })
     }
 
     // Update assigned categories - delete existing and create new

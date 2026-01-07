@@ -10,16 +10,14 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user is a member of any organization with restrictedToWork = true
-    const restrictedMembership = await prisma.organizationMember.findFirst({
-      where: {
-        userId: session.user.id,
-        restrictedToWork: true,
-      },
+    // Check user's restrictedToWork setting
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { restrictedToWork: true },
     })
 
     return NextResponse.json({
-      restrictedToWork: !!restrictedMembership,
+      restrictedToWork: user?.restrictedToWork ?? false,
     })
   } catch (error) {
     console.error("Error fetching user restrictions:", error)

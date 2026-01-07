@@ -24,6 +24,7 @@ export async function GET() {
         name: true,
         role: true,
         isApproved: true,
+        restrictedToWork: true,
         createdAt: true,
         image: true,
       },
