@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Building2,
   Layers,
+  Lightbulb,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -65,6 +66,7 @@ const workNavItems = [
   { href: "/task-stack", label: "Stos zadań", icon: Layers },
   { href: "/ai", label: "AI Asystent", icon: Sparkles },
   { href: "/knowledge", label: "Wiedza", icon: BookOpen },
+  { href: "/ideas", label: "Rozkminki", icon: Lightbulb },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/goals", label: "Cele", icon: Target },

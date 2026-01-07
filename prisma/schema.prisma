@@ -56,6 +56,7 @@ model User {
   assignedTasks         Task[]               @relation("AssignedTasks")
   notifications         Notification[]       @relation("ReceivedNotifications")
   teamMessages          TeamMessage[]        @relation("TeamMessages")
+  ideas                 Idea[]
 }
 
 model Account {
@@ -752,6 +753,43 @@ model KnowledgeEntry {
   @@index([visibility])
 }
 
+// ==================== IDEAS (Rozkminki) ====================
+
+model IdeaCategory {
+  id          String   @id @default(cuid())
+  name        String
+  color       String   @default("#8b5cf6")
+  emoji       String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Team-owned category
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  ideas       Idea[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model Idea {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    IdeaCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([userId])
+}
+
 // ==================== SPORT ====================
 
 model SportActivityType {
@@ -909,6 +947,7 @@ model Organization {
   categories  Category[] @relation("OrganizationCategories")
   tasks       Task[]     @relation("OrganizationTasks")
   messages    TeamMessage[]
+  ideaCategories IdeaCategory[]
 
   @@index([ownerId])
 }
