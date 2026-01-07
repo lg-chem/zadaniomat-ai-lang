@@ -145,7 +145,7 @@ export function SidebarContent() {
   const pendingInvitationsCount = groupChallengeInvitations.length
 
   // Fetch user's organizations to get sidebar config
-  const { data: orgsData } = useSWR<OrganizationsResponse>(
+  const { data: orgsData, isLoading: isLoadingOrgs } = useSWR<OrganizationsResponse>(
     workspace === "WORK" ? "/api/organizations" : null,
     fetcher
   )
@@ -190,6 +190,9 @@ export function SidebarContent() {
       })
   }
 
+  // For WORK workspace, wait for org data to load before showing nav items
+  // This prevents flash of all items before filtering
+  const isWorkspaceLoading = workspace === "WORK" && isLoadingOrgs
   const navItems = workspace === "WORK" ? getFilteredWorkNavItems() : privateNavItems
 
   const isActive = (href: string) => {
@@ -278,6 +281,19 @@ export function SidebarContent() {
         <div className="flex-1 overflow-y-auto">
           {renderFriendsSidebar()}
         </div>
+      ) : isWorkspaceLoading ? (
+        /* Loading skeleton for WORK workspace */
+        <nav className="flex-1 space-y-1 p-4">
+          {[...Array(8)].map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 rounded-lg px-3 py-2"
+            >
+              <div className="h-5 w-5 rounded bg-muted animate-pulse" />
+              <div className="h-4 flex-1 rounded bg-muted animate-pulse" />
+            </div>
+          ))}
+        </nav>
       ) : (
         /* Regular Navigation */
         <nav className="flex-1 space-y-1 p-4">
