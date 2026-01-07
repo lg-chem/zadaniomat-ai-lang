@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 // GET - Get task stack (unscheduled assigned tasks)
 export async function GET(req: Request) {
@@ -12,16 +13,18 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const workspace = searchParams.get("workspace")
+    const workspace = searchParams.get("workspace") as "WORK" | "PRIVATE" | null
 
     // Get tasks assigned to current user that are not yet scheduled
+    const where: Prisma.TaskWhereInput = {
+      assignedToId: session.user.id,
+      scheduledDate: null,
+      status: { not: "COMPLETED" },
+      ...(workspace ? { workspaceType: workspace } : {})
+    }
+
     const tasks = await prisma.task.findMany({
-      where: {
-        assignedToId: session.user.id,
-        scheduledDate: null,
-        status: { not: "COMPLETED" },
-        ...(workspace ? { workspaceType: workspace } : {})
-      },
+      where,
       include: {
         category: { select: { id: true, name: true, color: true } },
         user: { select: { id: true, name: true, email: true } }, // Task creator
