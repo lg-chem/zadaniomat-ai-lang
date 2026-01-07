@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { Play, Pause, Square, Clock, Plus, Check } from "lucide-react"
+import { Play, Pause, Square, Clock, Plus, Check, Minimize2, Maximize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -27,6 +27,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   const {
     isRunning,
     isPaused,
+    isMinimized,
     taskId,
     taskTitle,
     mode,
@@ -45,6 +46,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     dismissNotification,
     confirmPendingStart,
     cancelPendingStart,
+    toggleMinimize,
   } = useTimerStore()
 
   // Timer tick effect - only tick when running and not paused
@@ -168,62 +170,93 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   return (
     <>
       {/* Floating Timer Widget */}
-      <Card className="fixed top-20 right-4 z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur">
-        <div className="space-y-3">
-          {/* Task title */}
+      {isMinimized ? (
+        // Minimized view - compact timer
+        <Card className="fixed top-20 right-4 z-50 p-2 shadow-lg bg-background/95 backdrop-blur">
           <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary" />
-            <span className="font-medium text-sm truncate max-w-[200px]">
-              {taskTitle || "Zadanie"}
-            </span>
-          </div>
-
-          {/* Timer display */}
-          <div className="text-center">
-            <span className={`text-3xl font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
+            <span className={`text-lg font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
               {formatTime(displayTime)}
             </span>
-            {mode === 'countdown' && plannedSeconds > 0 && (
-              <div className="text-xs text-muted-foreground mt-1">
-                z {formatTime(plannedSeconds)} planowanych
-              </div>
-            )}
-          </div>
 
-          {/* Progress bar (only for countdown) */}
-          {mode === 'countdown' && plannedSeconds > 0 && (
-            <Progress value={progress} className="h-2" />
-          )}
-
-          {/* Elapsed time info */}
-          <div className="text-xs text-muted-foreground text-center">
-            Przepracowano: {formatTime(elapsedSeconds)}
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center justify-center gap-2">
             {isPaused && !isTimeUp ? (
-              <Button size="sm" onClick={resumeTimer} className="flex-1">
-                <Play className="h-4 w-4 mr-1" />
-                Wznów
+              <Button size="icon" variant="ghost" onClick={resumeTimer} className="h-7 w-7">
+                <Play className="h-4 w-4" />
               </Button>
             ) : !isTimeUp ? (
-              <Button size="sm" variant="outline" onClick={pauseTimer} className="flex-1">
-                <Pause className="h-4 w-4 mr-1" />
-                Pauza
+              <Button size="icon" variant="ghost" onClick={pauseTimer} className="h-7 w-7">
+                <Pause className="h-4 w-4" />
               </Button>
             ) : null}
 
-            <Button size="sm" variant="destructive" onClick={handleStop}>
-              <Square className="h-4 w-4" />
-            </Button>
-
-            <Button size="sm" variant="default" onClick={handleComplete}>
-              <Check className="h-4 w-4" />
+            <Button size="icon" variant="ghost" onClick={toggleMinimize} className="h-7 w-7">
+              <Maximize2 className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-      </Card>
+        </Card>
+      ) : (
+        // Full view
+        <Card className="fixed top-20 right-4 z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur">
+          <div className="space-y-3">
+            {/* Header with title and minimize button */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" />
+                <span className="font-medium text-sm truncate max-w-[180px]">
+                  {taskTitle || "Zadanie"}
+                </span>
+              </div>
+              <Button size="icon" variant="ghost" onClick={toggleMinimize} className="h-7 w-7">
+                <Minimize2 className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Timer display */}
+            <div className="text-center">
+              <span className={`text-3xl font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
+                {formatTime(displayTime)}
+              </span>
+              {mode === 'countdown' && plannedSeconds > 0 && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  z {formatTime(plannedSeconds)} planowanych
+                </div>
+              )}
+            </div>
+
+            {/* Progress bar (only for countdown) */}
+            {mode === 'countdown' && plannedSeconds > 0 && (
+              <Progress value={progress} className="h-2" />
+            )}
+
+            {/* Elapsed time info */}
+            <div className="text-xs text-muted-foreground text-center">
+              Przepracowano: {formatTime(elapsedSeconds)}
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center justify-center gap-2">
+              {isPaused && !isTimeUp ? (
+                <Button size="sm" onClick={resumeTimer} className="flex-1">
+                  <Play className="h-4 w-4 mr-1" />
+                  Wznów
+                </Button>
+              ) : !isTimeUp ? (
+                <Button size="sm" variant="outline" onClick={pauseTimer} className="flex-1">
+                  <Pause className="h-4 w-4 mr-1" />
+                  Pauza
+                </Button>
+              ) : null}
+
+              <Button size="sm" variant="destructive" onClick={handleStop}>
+                <Square className="h-4 w-4" />
+              </Button>
+
+              <Button size="sm" variant="default" onClick={handleComplete}>
+                <Check className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Time Up Notification Dialog */}
       <Dialog open={showNotification} onOpenChange={dismissNotification}>

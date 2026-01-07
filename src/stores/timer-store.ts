@@ -13,6 +13,7 @@ interface TimerState {
   // Core state
   isRunning: boolean
   isPaused: boolean
+  isMinimized: boolean
   taskId: string | null
   taskTitle: string | null
 
@@ -56,6 +57,7 @@ interface TimerState {
   confirmPendingStart: (additionalMinutes: number) => void
   cancelPendingStart: () => void
   clearTaskTimeState: (taskId: string) => void
+  toggleMinimize: () => void
 }
 
 // Helper to request notification permission
@@ -84,6 +86,7 @@ export const useTimerStore = create<TimerState>()(
       // Initial state
       isRunning: false,
       isPaused: false,
+      isMinimized: false,
       taskId: null,
       taskTitle: null,
       mode: 'countdown',
@@ -195,6 +198,10 @@ export const useTimerStore = create<TimerState>()(
         const newTaskTimeStates = { ...taskTimeStates }
         delete newTaskTimeStates[taskId]
         set({ taskTimeStates: newTaskTimeStates })
+      },
+
+      toggleMinimize: () => {
+        set((state) => ({ isMinimized: !state.isMinimized }))
       },
 
       pauseTimer: () => {
@@ -348,6 +355,7 @@ export const useTimerStore = create<TimerState>()(
       partialize: (state) => ({
         isRunning: state.isRunning,
         isPaused: state.isPaused,
+        isMinimized: state.isMinimized,
         taskId: state.taskId,
         taskTitle: state.taskTitle,
         mode: state.mode,
