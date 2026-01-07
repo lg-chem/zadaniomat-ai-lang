@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       where: {
         linkedCategoryId: { in: teamCategoryIds },
       },
-      select: { id: true },
+      select: { id: true, linkedCategoryId: true },
     })
     const teamKnowledgeCategoryIds = teamKnowledgeCategories.map(c => c.id)
 
@@ -57,10 +57,36 @@ export async function GET(req: Request) {
       ],
     } : {}
 
+    // If filtering by categoryId, also include entries from other knowledge categories
+    // that link to the same strategic category (for team sharing)
+    let categoryFilter: { categoryId?: string | { in: string[] } } = {}
+    if (categoryId) {
+      // Get the selected category's linkedCategoryId
+      const selectedCategory = await prisma.knowledgeCategory.findUnique({
+        where: { id: categoryId },
+        select: { linkedCategoryId: true },
+      })
+
+      if (selectedCategory?.linkedCategoryId) {
+        // Find all knowledge categories that link to the same strategic category
+        const relatedCategories = await prisma.knowledgeCategory.findMany({
+          where: {
+            linkedCategoryId: selectedCategory.linkedCategoryId,
+          },
+          select: { id: true },
+        })
+        const relatedCategoryIds = relatedCategories.map(c => c.id)
+        categoryFilter = { categoryId: { in: relatedCategoryIds } }
+      } else {
+        // Custom category - just filter by exact categoryId
+        categoryFilter = { categoryId }
+      }
+    }
+
     const entries = await prisma.knowledgeEntry.findMany({
       where: {
         workspaceType: workspace as "WORK" | "PRIVATE",
-        ...(categoryId && { categoryId }),
+        ...categoryFilter,
         ...baseSearch,
         // User's own entries OR team-shared entries in team categories
         OR: [
