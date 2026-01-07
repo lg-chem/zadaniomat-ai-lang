@@ -70,6 +70,12 @@ export async function PATCH(
       },
       include: {
         category: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     })
 

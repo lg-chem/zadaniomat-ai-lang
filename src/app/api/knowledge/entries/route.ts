@@ -15,20 +15,70 @@ export async function GET(req: Request) {
     const categoryId = searchParams.get("categoryId")
     const search = searchParams.get("search")
 
-    const entries = await prisma.knowledgeEntry.findMany({
+    // Get team categories assigned to this user via OrganizationMemberCategory
+    const teamMemberships = await prisma.organizationMember.findMany({
       where: {
         userId: session.user.id,
+      },
+      include: {
+        assignedCategories: {
+          include: {
+            category: true,
+          },
+        },
+      },
+    })
+
+    // Collect team strategic category IDs
+    const teamCategoryIds: string[] = []
+    for (const membership of teamMemberships) {
+      for (const assignedCat of membership.assignedCategories) {
+        const cat = assignedCat.category
+        if (cat.isStrategic && cat.organizationId) {
+          teamCategoryIds.push(cat.id)
+        }
+      }
+    }
+
+    // Get knowledge category IDs linked to team categories
+    const teamKnowledgeCategories = await prisma.knowledgeCategory.findMany({
+      where: {
+        linkedCategoryId: { in: teamCategoryIds },
+      },
+      select: { id: true },
+    })
+    const teamKnowledgeCategoryIds = teamKnowledgeCategories.map(c => c.id)
+
+    // Build the where clause
+    const baseSearch = search ? {
+      OR: [
+        { title: { contains: search, mode: "insensitive" as const } },
+        { content: { contains: search, mode: "insensitive" as const } },
+      ],
+    } : {}
+
+    const entries = await prisma.knowledgeEntry.findMany({
+      where: {
         workspaceType: workspace as "WORK" | "PRIVATE",
         ...(categoryId && { categoryId }),
-        ...(search && {
-          OR: [
-            { title: { contains: search, mode: "insensitive" } },
-            { content: { contains: search, mode: "insensitive" } },
-          ],
-        }),
+        ...baseSearch,
+        // User's own entries OR team-shared entries in team categories
+        OR: [
+          { userId: session.user.id },
+          {
+            visibility: "TEAM",
+            categoryId: { in: teamKnowledgeCategoryIds },
+          },
+        ],
       },
       include: {
         category: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
       orderBy: [{ isImportant: "desc" }, { updatedAt: "desc" }],
     })
@@ -81,6 +131,12 @@ export async function POST(req: Request) {
       },
       include: {
         category: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     })
 

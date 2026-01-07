@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useSession } from "next-auth/react"
 import {
   Plus,
   BookOpen,
@@ -62,6 +63,11 @@ interface KnowledgeEntry {
   createdAt: string
   updatedAt: string
   category: KnowledgeCategory
+  userId: string
+  user?: {
+    id: string
+    name: string | null
+  }
 }
 
 // Helper to count total entries in category tree
@@ -222,6 +228,8 @@ interface CategoriesResponse {
 }
 
 export default function KnowledgePage() {
+  const { data: session } = useSession()
+  const currentUserId = session?.user?.id
   const { workspace } = useWorkspaceStore()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -665,7 +673,9 @@ export default function KnowledgePage() {
               </CardContent>
             </Card>
           ) : (
-            entries.map((entry) => (
+            entries.map((entry) => {
+              const isOwner = entry.userId === currentUserId
+              return (
               <Card key={entry.id} className={entry.isImportant ? "border-yellow-500/50" : ""}>
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
@@ -673,6 +683,7 @@ export default function KnowledgePage() {
                       {entry.isImportant && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
                       <CardTitle className="text-lg">{entry.title}</CardTitle>
                     </div>
+                    {isOwner && (
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
@@ -700,6 +711,7 @@ export default function KnowledgePage() {
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -724,13 +736,19 @@ export default function KnowledgePage() {
                         Prywatne
                       </Badge>
                     )}
+                    {!isOwner && entry.user?.name && (
+                      <span className="text-xs text-muted-foreground">
+                        Autor: {entry.user.name}
+                      </span>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       Zaktualizowano: {new Date(entry.updatedAt).toLocaleDateString("pl-PL")}
                     </span>
                   </div>
                 </CardContent>
               </Card>
-            ))
+              )
+            })
           )}
         </div>
       </div>

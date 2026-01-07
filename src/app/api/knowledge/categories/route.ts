@@ -13,8 +13,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
 
-    // Get strategic categories from main categories
-    const strategicCategories = await prisma.category.findMany({
+    // Get user's own strategic categories
+    const ownStrategicCategories = await prisma.category.findMany({
       where: {
         userId: session.user.id,
         workspaceType: workspace as "WORK" | "PRIVATE",
@@ -24,12 +24,47 @@ export async function GET(req: Request) {
         id: true,
         name: true,
         color: true,
+        organizationId: true,
       },
       orderBy: { name: "asc" },
     })
 
+    // Get team categories assigned to this user via OrganizationMemberCategory
+    const teamMemberships = await prisma.organizationMember.findMany({
+      where: {
+        userId: session.user.id,
+      },
+      include: {
+        assignedCategories: {
+          include: {
+            category: true,
+          },
+        },
+      },
+    })
+
+    // Collect team strategic categories assigned to user
+    const teamStrategicCategories: { id: string; name: string; color: string; organizationId: string | null }[] = []
+    for (const membership of teamMemberships) {
+      for (const assignedCat of membership.assignedCategories) {
+        const cat = assignedCat.category
+        // Only include strategic team categories not owned by user
+        if (cat.isStrategic && cat.userId !== session.user.id && cat.organizationId) {
+          teamStrategicCategories.push({
+            id: cat.id,
+            name: cat.name,
+            color: cat.color,
+            organizationId: cat.organizationId,
+          })
+        }
+      }
+    }
+
+    // Combine own + team strategic categories
+    const allStrategicCategories = [...ownStrategicCategories, ...teamStrategicCategories]
+
     // Auto-sync: create KnowledgeCategory for each strategic category if not exists
-    for (const stratCat of strategicCategories) {
+    for (const stratCat of allStrategicCategories) {
       const existing = await prisma.knowledgeCategory.findFirst({
         where: {
           userId: session.user.id,
