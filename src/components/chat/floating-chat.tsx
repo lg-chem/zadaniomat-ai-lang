@@ -149,26 +149,30 @@ export function FloatingChat() {
   return (
     <>
       {/* Floating Button */}
-      <Button
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "fixed bottom-20 right-4 md:bottom-6 md:right-6 h-12 w-12 md:h-14 md:w-14 rounded-full shadow-lg z-40",
-          "bg-primary hover:bg-primary/90 text-primary-foreground",
-          "transition-transform duration-200",
-          isOpen && "rotate-45"
-        )}
-        size="icon"
-      >
-        {isOpen ? (
-          <X className="h-5 w-5 md:h-6 md:w-6" />
-        ) : (
+      {!isOpen && (
+        <Button
+          onClick={() => setIsOpen(true)}
+          className={cn(
+            "fixed bottom-20 right-4 md:bottom-6 md:right-6 h-12 w-12 md:h-14 md:w-14 rounded-full shadow-lg z-40",
+            "bg-primary hover:bg-primary/90 text-primary-foreground"
+          )}
+          size="icon"
+        >
           <Plus className="h-5 w-5 md:h-6 md:w-6" />
-        )}
-      </Button>
+        </Button>
+      )}
+
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
 
       {/* Panel */}
       {isOpen && (
-        <div className="fixed bottom-36 right-4 md:bottom-24 md:right-6 w-72 sm:w-80 h-[420px] bg-background border rounded-lg shadow-xl z-40 flex flex-col overflow-hidden">
+        <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 w-72 sm:w-80 h-[420px] bg-background border rounded-lg shadow-xl z-40 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="bg-primary text-primary-foreground p-3 flex items-center gap-2">
             {viewMode !== "menu" && (
@@ -194,6 +198,14 @@ export function FloatingChat() {
                 </p>
               )}
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/20"
+              onClick={() => setIsOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
 
           {/* Content */}
