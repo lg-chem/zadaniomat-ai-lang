@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { SidebarContent } from "./sidebar"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { cn } from "@/lib/utils"
+import { NotificationsDropdown } from "@/components/notifications/notifications-dropdown"
 
 export function MobileHeader() {
   const router = useRouter()
@@ -79,8 +80,9 @@ export function MobileHeader() {
           </button>
         </div>
 
-        {/* Logo - Compact */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Notifications & Logo */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <NotificationsDropdown />
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
             <CheckSquare className="h-4 w-4 text-primary-foreground" />
           </div>

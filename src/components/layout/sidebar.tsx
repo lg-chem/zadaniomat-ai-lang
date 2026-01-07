@@ -28,6 +28,7 @@ import {
   Users,
   UsersRound,
   ChevronRight,
+  Building2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -66,6 +67,7 @@ const workNavItems = [
   { href: "/goals", label: "Cele", icon: Target },
   { href: "/sprints", label: "Sprinty", icon: Timer },
   { href: "/recurring", label: "Cykliczne", icon: Repeat2 },
+  { href: "/teams", label: "Zespoły", icon: Building2 },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },
 ]
 
