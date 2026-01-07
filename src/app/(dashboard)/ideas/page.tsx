@@ -3,15 +3,15 @@
 import { useState } from "react"
 import { useSession } from "next-auth/react"
 import {
-  Plus,
   Lightbulb,
-  Pencil,
   Trash2,
   FolderPlus,
   Send,
+  MessageSquare,
+  ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -60,6 +60,7 @@ interface IdeaCategory {
 
 interface Idea {
   id: string
+  title?: string | null
   content: string
   createdAt: string
   updatedAt: string
@@ -73,6 +74,20 @@ interface Idea {
       icon?: string | null
     } | null
   }
+  user: {
+    id: string
+    name: string | null
+    image: string | null
+  }
+  _count: {
+    replies: number
+  }
+}
+
+interface IdeaReply {
+  id: string
+  content: string
+  createdAt: string
   user: {
     id: string
     name: string | null
@@ -101,6 +116,7 @@ export default function IdeasPage() {
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null)
 
   // Set first org as default when loaded
   if (organizations.length > 0 && !selectedOrgId) {
@@ -118,13 +134,22 @@ export default function IdeasPage() {
     : null
   const { data: ideas = [], isLoading, mutate: mutateIdeas } = useSWR<Idea[]>(ideasUrl)
 
+  // Fetch replies for selected idea
+  const { data: replies = [], mutate: mutateReplies } = useSWR<IdeaReply[]>(
+    selectedIdea ? `/api/ideas/${selectedIdea.id}/replies` : null
+  )
+
   // Dialogs
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<IdeaCategory | null>(null)
+  const [showNewIdeaDialog, setShowNewIdeaDialog] = useState(false)
 
   // Forms
-  const [newIdea, setNewIdea] = useState("")
-  const [newIdeaCategoryId, setNewIdeaCategoryId] = useState("")
+  const [newIdeaForm, setNewIdeaForm] = useState({
+    title: "",
+    content: "",
+    categoryId: "",
+  })
+  const [replyContent, setReplyContent] = useState("")
   const [categoryForm, setCategoryForm] = useState({
     name: "",
     color: "#8b5cf6",
@@ -136,36 +161,61 @@ export default function IdeasPage() {
   const isAdmin = currentOrgRole === "OWNER"
 
   const handleCreateIdea = async () => {
-    if (!newIdea.trim() || !newIdeaCategoryId) return
+    if (!newIdeaForm.content.trim() || !newIdeaForm.categoryId) return
 
     try {
       const res = await fetch("/api/ideas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: newIdea,
-          categoryId: newIdeaCategoryId,
+          title: newIdeaForm.title || null,
+          content: newIdeaForm.content,
+          categoryId: newIdeaForm.categoryId,
         }),
       })
       if (res.ok) {
         mutateIdeas()
         mutateCategories()
-        setNewIdea("")
+        setNewIdeaForm({ title: "", content: "", categoryId: "" })
+        setShowNewIdeaDialog(false)
       }
     } catch (error) {
       console.error("Error creating idea:", error)
     }
   }
 
-  const handleDeleteIdea = async (id: string) => {
+  const handleDeleteIdea = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
     if (!confirm("Czy na pewno chcesz usunąć tę rozkminkę?")) return
 
     try {
       await fetch(`/api/ideas/${id}`, { method: "DELETE" })
       mutateIdeas()
       mutateCategories()
+      if (selectedIdea?.id === id) {
+        setSelectedIdea(null)
+      }
     } catch (error) {
       console.error("Error deleting idea:", error)
+    }
+  }
+
+  const handleCreateReply = async () => {
+    if (!replyContent.trim() || !selectedIdea) return
+
+    try {
+      const res = await fetch(`/api/ideas/${selectedIdea.id}/replies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: replyContent }),
+      })
+      if (res.ok) {
+        mutateReplies()
+        mutateIdeas()
+        setReplyContent("")
+      }
+    } catch (error) {
+      console.error("Error creating reply:", error)
     }
   }
 
@@ -210,6 +260,128 @@ export default function IdeasPage() {
 
   const totalIdeas = categories.reduce((sum, cat) => sum + cat._count.ideas, 0)
 
+  // Detail view when idea is selected
+  if (selectedIdea) {
+    const icon = selectedIdea.category.emoji || selectedIdea.category.linkedCategory?.icon
+    return (
+      <div className="space-y-4 md:space-y-6 animate-fade-in">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => setSelectedIdea(null)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">
+              {selectedIdea.title || "Rozkminka"}
+            </h1>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge
+                variant="outline"
+                style={{ borderColor: selectedIdea.category.color, color: selectedIdea.category.color }}
+              >
+                {icon && <span className="mr-1">{icon}</span>}
+                {selectedIdea.category.name}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        {/* Main idea */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-start gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={selectedIdea.user.image || undefined} />
+                <AvatarFallback>{selectedIdea.user.name?.charAt(0) || "?"}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-medium">{selectedIdea.user.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {new Date(selectedIdea.createdAt).toLocaleDateString("pl-PL", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  {selectedIdea.userId === currentUserId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleDeleteIdea(selectedIdea.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap">{selectedIdea.content}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Replies */}
+        <div className="space-y-3">
+          <h2 className="font-semibold flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Odpowiedzi ({replies.length})
+          </h2>
+
+          {replies.map((reply) => (
+            <Card key={reply.id}>
+              <CardContent className="pt-4">
+                <div className="flex items-start gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={reply.user.image || undefined} />
+                    <AvatarFallback className="text-xs">{reply.user.name?.charAt(0) || "?"}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{reply.user.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(reply.createdAt).toLocaleDateString("pl-PL", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm whitespace-pre-wrap">{reply.content}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          {/* Reply form */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex gap-2">
+                <Textarea
+                  placeholder="Napisz odpowiedź..."
+                  value={replyContent}
+                  onChange={(e) => setReplyContent(e.target.value)}
+                  className="flex-1 min-h-[80px]"
+                />
+              </div>
+              <div className="flex justify-end mt-2">
+                <Button onClick={handleCreateReply} disabled={!replyContent.trim()}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Odpowiedz
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   if (organizations.length === 0) {
     return (
       <div className="space-y-4 md:space-y-6 animate-fade-in">
@@ -253,9 +425,9 @@ export default function IdeasPage() {
               ))}
             </CardContent>
           </Card>
-          <div className="lg:col-span-3 grid gap-3 sm:grid-cols-2">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-32 w-full" />
+          <div className="lg:col-span-3 space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
             ))}
           </div>
         </div>
@@ -299,45 +471,6 @@ export default function IdeasPage() {
           )}
         </div>
       </div>
-
-      {/* Quick add */}
-      {categories.length > 0 && (
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex gap-2">
-              <Select value={newIdeaCategoryId} onValueChange={setNewIdeaCategoryId}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Kategoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((cat) => {
-                    const icon = cat.emoji || cat.linkedCategory?.icon
-                    return (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        <div className="flex items-center gap-2">
-                          {icon && <span>{icon}</span>}
-                          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                          {cat.name}
-                        </div>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="Napisz swoją rozkminkę..."
-                value={newIdea}
-                onChange={(e) => setNewIdea(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCreateIdea()}
-                className="flex-1"
-              />
-              <Button onClick={handleCreateIdea} disabled={!newIdea.trim() || !newIdeaCategoryId}>
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Categories sidebar */}
@@ -401,10 +534,24 @@ export default function IdeasPage() {
                 : "Brak kategorii - poczekaj aż admin doda kategorie strategiczne"}
             </p>
           )}
+
+          {/* New idea button */}
+          {categories.length > 0 && (
+            <Button
+              className="w-full mt-4"
+              onClick={() => {
+                setNewIdeaForm({ ...newIdeaForm, categoryId: selectedCategoryId || categories[0]?.id || "" })
+                setShowNewIdeaDialog(true)
+              }}
+            >
+              <Lightbulb className="h-4 w-4 mr-2" />
+              Nowa rozkminka
+            </Button>
+          )}
         </div>
 
-        {/* Ideas grid */}
-        <div className="lg:col-span-3">
+        {/* Ideas list (forum style) */}
+        <div className="lg:col-span-3 space-y-3">
           {ideas.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -418,57 +565,134 @@ export default function IdeasPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {ideas.map((idea) => {
-                const isOwner = idea.userId === currentUserId
-                return (
-                  <Card key={idea.id} className="group">
-                    <CardContent className="pt-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={idea.user.image || undefined} />
-                            <AvatarFallback className="text-xs">
-                              {idea.user.name?.charAt(0) || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm font-medium">{idea.user.name}</span>
-                        </div>
-                        {isOwner && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                            onClick={() => handleDeleteIdea(idea.id)}
-                          >
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap mb-3">{idea.content}</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge
-                          variant="outline"
-                          className="text-xs"
-                          style={{ borderColor: idea.category.color, color: idea.category.color }}
-                        >
-                          {(idea.category.emoji || idea.category.linkedCategory?.icon) && (
-                            <span className="mr-1">{idea.category.emoji || idea.category.linkedCategory?.icon}</span>
+            ideas.map((idea) => {
+              const isOwner = idea.userId === currentUserId
+              const icon = idea.category.emoji || idea.category.linkedCategory?.icon
+              return (
+                <Card
+                  key={idea.id}
+                  className="cursor-pointer hover:border-primary/50 transition-colors"
+                  onClick={() => setSelectedIdea(idea)}
+                >
+                  <CardContent className="pt-4">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={idea.user.image || undefined} />
+                        <AvatarFallback>{idea.user.name?.charAt(0) || "?"}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            {idea.title && (
+                              <h3 className="font-semibold truncate">{idea.title}</h3>
+                            )}
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span>{idea.user.name}</span>
+                              <span>•</span>
+                              <span>{new Date(idea.createdAt).toLocaleDateString("pl-PL")}</span>
+                            </div>
+                          </div>
+                          {isOwner && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 flex-shrink-0"
+                              onClick={(e) => handleDeleteIdea(idea.id, e)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
                           )}
-                          {idea.category.name}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(idea.createdAt).toLocaleDateString("pl-PL")}
-                        </span>
+                        </div>
+                        <p className="mt-2 text-sm line-clamp-2">{idea.content}</p>
+                        <div className="flex items-center gap-3 mt-3">
+                          <Badge
+                            variant="outline"
+                            className="text-xs"
+                            style={{ borderColor: idea.category.color, color: idea.category.color }}
+                          >
+                            {icon && <span className="mr-1">{icon}</span>}
+                            {idea.category.name}
+                          </Badge>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <MessageSquare className="h-3 w-3" />
+                            {idea._count.replies}
+                          </div>
+                        </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })
           )}
         </div>
       </div>
+
+      {/* New Idea Dialog */}
+      <Dialog open={showNewIdeaDialog} onOpenChange={setShowNewIdeaDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nowa rozkminka</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Kategoria</Label>
+              <Select
+                value={newIdeaForm.categoryId}
+                onValueChange={(val) => setNewIdeaForm({ ...newIdeaForm, categoryId: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz kategorię" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => {
+                    const icon = cat.emoji || cat.linkedCategory?.icon
+                    return (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          {icon && <span>{icon}</span>}
+                          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                          {cat.name}
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Tytuł (opcjonalnie)</Label>
+              <Input
+                value={newIdeaForm.title}
+                onChange={(e) => setNewIdeaForm({ ...newIdeaForm, title: e.target.value })}
+                placeholder="np. Pomysł na nową funkcję"
+              />
+            </div>
+
+            <div>
+              <Label>Treść</Label>
+              <Textarea
+                value={newIdeaForm.content}
+                onChange={(e) => setNewIdeaForm({ ...newIdeaForm, content: e.target.value })}
+                placeholder="Opisz swoją rozkminkę..."
+                className="min-h-[120px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewIdeaDialog(false)}>
+              Anuluj
+            </Button>
+            <Button
+              onClick={handleCreateIdea}
+              disabled={!newIdeaForm.content.trim() || !newIdeaForm.categoryId}
+            >
+              Dodaj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Category Dialog */}
       <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>

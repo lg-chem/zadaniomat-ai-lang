@@ -54,6 +54,9 @@ export async function GET(req: Request) {
             image: true,
           },
         },
+        _count: {
+          select: { replies: true },
+        },
       },
       orderBy: { createdAt: "desc" },
     })
@@ -73,7 +76,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { content, categoryId } = body
+    const { title, content, categoryId } = body
 
     if (!content || !categoryId) {
       return NextResponse.json(
@@ -108,6 +111,7 @@ export async function POST(req: Request) {
 
     const idea = await prisma.idea.create({
       data: {
+        title: title || null,
         content,
         categoryId,
         userId: session.user.id,
@@ -128,6 +132,9 @@ export async function POST(req: Request) {
             name: true,
             image: true,
           },
+        },
+        _count: {
+          select: { replies: true },
         },
       },
     })

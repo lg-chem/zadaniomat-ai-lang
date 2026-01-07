@@ -57,6 +57,7 @@ model User {
   notifications         Notification[]       @relation("ReceivedNotifications")
   teamMessages          TeamMessage[]        @relation("TeamMessages")
   ideas                 Idea[]
+  ideaReplies           IdeaReply[]
 }
 
 model Account {
@@ -783,6 +784,7 @@ model IdeaCategory {
 
 model Idea {
   id          String   @id @default(cuid())
+  title       String?  // Optional title for forum-like posts
   content     String   @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -792,8 +794,25 @@ model Idea {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId  String
   category    IdeaCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  replies     IdeaReply[]
 
   @@index([categoryId])
+  @@index([userId])
+}
+
+model IdeaReply {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ideaId      String
+  idea        Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@index([ideaId])
   @@index([userId])
 }
 
