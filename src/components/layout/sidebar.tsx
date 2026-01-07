@@ -58,21 +58,52 @@ interface GroupChallengeInvitation {
   status: string
 }
 
+interface SidebarConfigItem {
+  id: string
+  label: string
+  enabled: boolean
+  order: number
+}
+
+interface OrganizationMembership {
+  id: string
+  role: "OWNER" | "MEMBER"
+  organizationId: string
+  organization: {
+    id: string
+    name: string
+    sidebarConfig: SidebarConfigItem[] | null
+  }
+}
+
+interface OrganizationsResponse {
+  owned: Array<{ id: string; name: string }>
+  memberOf: Array<{
+    id: string
+    name: string
+    sidebarConfig: SidebarConfigItem[] | null
+    members: Array<{ role: string }>
+  }>
+}
+
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
+// Map href to config id (strip leading slash)
+const hrefToConfigId = (href: string) => href.slice(1)
+
 const workNavItems = [
-  { href: "/teams", label: "Zespoły", icon: Building2 },
-  { href: "/backlog", label: "Backlog", icon: Inbox },
-  { href: "/task-stack", label: "Stos zadań", icon: Layers },
-  { href: "/ai", label: "AI Asystent", icon: Sparkles },
-  { href: "/knowledge", label: "Wiedza", icon: BookOpen },
-  { href: "/ideas", label: "Rozkminki", icon: Lightbulb },
-  { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
-  { href: "/calendar", label: "Kalendarz", icon: Calendar },
-  { href: "/goals", label: "Cele", icon: Target },
-  { href: "/sprints", label: "Sprinty", icon: Timer },
-  { href: "/recurring", label: "Cykliczne", icon: Repeat2 },
-  { href: "/stats", label: "Statystyki", icon: BarChart3 },
+  { href: "/teams", label: "Zespoły", icon: Building2, id: "teams" },
+  { href: "/backlog", label: "Backlog", icon: Inbox, id: "backlog" },
+  { href: "/task-stack", label: "Stos zadań", icon: Layers, id: "task-stack" },
+  { href: "/ai", label: "AI Asystent", icon: Sparkles, id: "ai" },
+  { href: "/knowledge", label: "Wiedza", icon: BookOpen, id: "knowledge" },
+  { href: "/ideas", label: "Rozkminki", icon: Lightbulb, id: "ideas" },
+  { href: "/schedule", label: "Harmonogram", icon: CalendarDays, id: "schedule" },
+  { href: "/calendar", label: "Kalendarz", icon: Calendar, id: "calendar" },
+  { href: "/goals", label: "Cele", icon: Target, id: "goals" },
+  { href: "/sprints", label: "Sprinty", icon: Timer, id: "sprints" },
+  { href: "/recurring", label: "Cykliczne", icon: Repeat2, id: "recurring" },
+  { href: "/stats", label: "Statystyki", icon: BarChart3, id: "stats" },
 ]
 
 const privateNavItems = [
@@ -113,6 +144,12 @@ export function SidebarContent() {
   )
   const pendingInvitationsCount = groupChallengeInvitations.length
 
+  // Fetch user's organizations to get sidebar config
+  const { data: orgsData } = useSWR<OrganizationsResponse>(
+    workspace === "WORK" ? "/api/organizations" : null,
+    fetcher
+  )
+
   const handleFriendClick = (friend: FriendUser) => {
     setSelectedFriendId(friend.id)
     addRecentFriend({
@@ -122,7 +159,38 @@ export function SidebarContent() {
     })
   }
 
-  const navItems = workspace === "WORK" ? workNavItems : privateNavItems
+  // Determine if user is admin in any organization (owner sees all tabs)
+  const isTeamOwner = orgsData?.owned && orgsData.owned.length > 0
+  const memberOrgs = orgsData?.memberOf || []
+
+  // Get sidebar config from first org where user is member (not owner)
+  const sidebarConfig = memberOrgs.length > 0 && !isTeamOwner
+    ? memberOrgs[0]?.sidebarConfig
+    : null
+
+  // Apply sidebar config to nav items for members
+  const getFilteredWorkNavItems = () => {
+    // Admins/owners see all tabs
+    if (isTeamOwner || !sidebarConfig || !Array.isArray(sidebarConfig)) {
+      return workNavItems
+    }
+
+    // Members see only enabled tabs in configured order
+    return workNavItems
+      .filter((item) => {
+        const config = sidebarConfig.find((c) => c.id === item.id)
+        return !config || config.enabled // Show if no config or if enabled
+      })
+      .sort((a, b) => {
+        const configA = sidebarConfig.find((c) => c.id === a.id)
+        const configB = sidebarConfig.find((c) => c.id === b.id)
+        const orderA = configA?.order ?? 999
+        const orderB = configB?.order ?? 999
+        return orderA - orderB
+      })
+  }
+
+  const navItems = workspace === "WORK" ? getFilteredWorkNavItems() : privateNavItems
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard"

@@ -53,9 +53,15 @@ export async function GET() {
       orderBy: { createdAt: "desc" }
     })
 
+    // Add sidebarConfig to memberOrganizations response
+    const memberOrgsWithConfig = memberOrganizations.map(org => ({
+      ...org,
+      sidebarConfig: org.sidebarConfig
+    }))
+
     return NextResponse.json({
       owned: ownedOrganizations,
-      memberOf: memberOrganizations
+      memberOf: memberOrgsWithConfig
     })
   } catch (error) {
     console.error("Error fetching organizations:", error)

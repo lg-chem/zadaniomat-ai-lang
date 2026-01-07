@@ -12,6 +12,10 @@ import {
   FolderOpen,
   ClipboardList,
   MessageSquare,
+  Settings,
+  GripVertical,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,6 +23,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { AddMemberDialog } from "@/components/teams/add-member-dialog"
 import { CreateTeamCategoryDialog } from "@/components/teams/create-team-category-dialog"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
@@ -70,6 +76,18 @@ interface Organization {
   }
 }
 
+interface SidebarConfigItem {
+  id: string
+  label: string
+  enabled: boolean
+  order: number
+}
+
+interface SidebarConfigResponse {
+  config: SidebarConfigItem[]
+  isDefault: boolean
+}
+
 export default function TeamDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -80,9 +98,23 @@ export default function TeamDetailPage() {
   const [showShareExisting, setShowShareExisting] = useState(false)
   const [showAssignTask, setShowAssignTask] = useState(false)
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [sidebarConfig, setSidebarConfig] = useState<SidebarConfigItem[]>([])
+  const [savingSidebar, setSavingSidebar] = useState(false)
 
   const { data: team, isLoading, mutate } = useSWR<Organization>(
     teamId ? `/api/organizations/${teamId}` : null
+  )
+
+  // Fetch sidebar config
+  const { data: sidebarData } = useSWR<SidebarConfigResponse>(
+    teamId ? `/api/organizations/${teamId}/sidebar-config` : null,
+    {
+      onSuccess: (data) => {
+        if (data?.config) {
+          setSidebarConfig(data.config)
+        }
+      },
+    }
   )
 
   const handleRemoveMember = async (memberId: string) => {
@@ -118,6 +150,52 @@ export default function TeamDetailPage() {
   const openAssignTask = (memberId: string) => {
     setSelectedMemberId(memberId)
     setShowAssignTask(true)
+  }
+
+  const handleToggleSidebarItem = (id: string) => {
+    setSidebarConfig((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, enabled: !item.enabled } : item
+      )
+    )
+  }
+
+  const handleMoveSidebarItem = (id: string, direction: "up" | "down") => {
+    setSidebarConfig((prev) => {
+      const index = prev.findIndex((item) => item.id === id)
+      if (index === -1) return prev
+      if (direction === "up" && index === 0) return prev
+      if (direction === "down" && index === prev.length - 1) return prev
+
+      const newConfig = [...prev]
+      const swapIndex = direction === "up" ? index - 1 : index + 1
+
+      // Swap items
+      const temp = newConfig[index]
+      newConfig[index] = newConfig[swapIndex]
+      newConfig[swapIndex] = temp
+
+      // Update order values
+      return newConfig.map((item, i) => ({ ...item, order: i }))
+    })
+  }
+
+  const handleSaveSidebarConfig = async () => {
+    setSavingSidebar(true)
+    try {
+      const res = await fetch(`/api/organizations/${teamId}/sidebar-config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: sidebarConfig }),
+      })
+      if (res.ok) {
+        // Success - could add toast notification
+      }
+    } catch (error) {
+      console.error("Error saving sidebar config:", error)
+    } finally {
+      setSavingSidebar(false)
+    }
   }
 
   if (isLoading) {
@@ -207,6 +285,12 @@ export default function TeamDetailPage() {
             <MessageSquare className="h-4 w-4" />
             Czat
           </TabsTrigger>
+          {team.isOwner && (
+            <TabsTrigger value="settings" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Ustawienia
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Members Tab */}
@@ -376,6 +460,85 @@ export default function TeamDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Settings Tab - Only for owners */}
+        {team.isOwner && (
+          <TabsContent value="settings" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Ustawienia zespołu
+                </CardTitle>
+                <CardDescription>
+                  Konfiguruj widoczność i kolejność zakładek dla członków zespołu
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-medium mb-4">Zakładki w menu bocznym (dla pracowników)</h3>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Włącz lub wyłącz zakładki oraz ustaw ich kolejność. Zmiany dotyczą tylko członków zespołu - admini widzą wszystkie zakładki.
+                    </p>
+                    <div className="space-y-2">
+                      {sidebarConfig
+                        .sort((a, b) => a.order - b.order)
+                        .map((item, index) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between p-3 border rounded-lg"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex flex-col gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  disabled={index === 0}
+                                  onClick={() => handleMoveSidebarItem(item.id, "up")}
+                                >
+                                  <GripVertical className="h-3 w-3 rotate-90" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  disabled={index === sidebarConfig.length - 1}
+                                  onClick={() => handleMoveSidebarItem(item.id, "down")}
+                                >
+                                  <GripVertical className="h-3 w-3 rotate-90" />
+                                </Button>
+                              </div>
+                              <span className={item.enabled ? "" : "text-muted-foreground"}>
+                                {item.label}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {item.enabled ? (
+                                <Eye className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <EyeOff className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <Switch
+                                checked={item.enabled}
+                                onCheckedChange={() => handleToggleSidebarItem(item.id)}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-end mt-4">
+                      <Button onClick={handleSaveSidebarConfig} disabled={savingSidebar}>
+                        {savingSidebar ? "Zapisywanie..." : "Zapisz zmiany"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Dialogs */}
