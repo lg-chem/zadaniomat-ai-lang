@@ -153,14 +153,18 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Zespół nie znaleziony" }, { status: 404 })
       }
 
-      // Only owner can assign tasks
-      if (organization.ownerId !== session.user.id) {
-        return NextResponse.json({ error: "Tylko właściciel zespołu może przydzielać zadania" }, { status: 403 })
+      // Check if current user is owner or member
+      const isOwner = organization.ownerId === session.user.id
+      const isCurrentUserMember = organization.members.some(m => m.userId === session.user.id)
+
+      if (!isOwner && !isCurrentUserMember) {
+        return NextResponse.json({ error: "Nie jesteś członkiem tego zespołu" }, { status: 403 })
       }
 
-      // Check if assignee is a member
-      const isMember = organization.members.some(m => m.userId === assignedToId)
-      if (!isMember) {
+      // Check if assignee is a member (or owner)
+      const isAssigneeMember = organization.members.some(m => m.userId === assignedToId)
+      const isAssigneeOwner = organization.ownerId === assignedToId
+      if (!isAssigneeMember && !isAssigneeOwner) {
         return NextResponse.json({ error: "Użytkownik nie jest członkiem zespołu" }, { status: 400 })
       }
     }

@@ -34,6 +34,7 @@ interface UseTasksOptions {
   date?: string
   from?: string
   to?: string
+  includeAssigned?: boolean
 }
 
 export function useTasks(options: UseTasksOptions = {}) {
@@ -44,6 +45,8 @@ export function useTasks(options: UseTasksOptions = {}) {
   if (options.date) params.append('date', options.date)
   if (options.from) params.append('from', options.from)
   if (options.to) params.append('to', options.to)
+  // Always include assigned tasks by default
+  params.append('includeAssigned', options.includeAssigned !== false ? 'true' : 'false')
 
   const url = `/api/tasks?${params.toString()}`
 
