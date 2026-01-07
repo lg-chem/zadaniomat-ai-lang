@@ -11,6 +11,7 @@ import {
   UserMinus,
   FolderOpen,
   ClipboardList,
+  MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +23,7 @@ import { AddMemberDialog } from "@/components/teams/add-member-dialog"
 import { CreateTeamCategoryDialog } from "@/components/teams/create-team-category-dialog"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
 import { ShareExistingCategoryDialog } from "@/components/teams/share-existing-category-dialog"
+import { TeamChat } from "@/components/teams/team-chat"
 import useSWR from "swr"
 
 interface Member {
@@ -201,6 +203,10 @@ export default function TeamDetailPage() {
             <FolderOpen className="h-4 w-4" />
             Kategorie
           </TabsTrigger>
+          <TabsTrigger value="chat" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Czat
+          </TabsTrigger>
         </TabsList>
 
         {/* Members Tab */}
@@ -349,6 +355,24 @@ export default function TeamDetailPage() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Chat Tab */}
+        <TabsContent value="chat" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Czat zespołowy
+              </CardTitle>
+              <CardDescription>
+                Komunikuj się z członkami zespołu
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <TeamChat organizationId={teamId} />
             </CardContent>
           </Card>
         </TabsContent>

@@ -55,6 +55,7 @@ model User {
   organizationMemberships OrganizationMember[] @relation("OrganizationMemberships")
   assignedTasks         Task[]               @relation("AssignedTasks")
   notifications         Notification[]       @relation("ReceivedNotifications")
+  teamMessages          TeamMessage[]        @relation("TeamMessages")
 }
 
 model Account {
@@ -900,8 +901,24 @@ model Organization {
   members     OrganizationMember[]
   categories  Category[] @relation("OrganizationCategories")
   tasks       Task[]     @relation("OrganizationTasks")
+  messages    TeamMessage[]
 
   @@index([ownerId])
+}
+
+model TeamMessage {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  // Relations
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("TeamMessages", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([userId])
 }
 
 model OrganizationMember {

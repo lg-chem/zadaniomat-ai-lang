@@ -60,6 +60,7 @@ interface GroupChallengeInvitation {
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 const workNavItems = [
+  { href: "/teams", label: "Zespoły", icon: Building2 },
   { href: "/backlog", label: "Backlog", icon: Inbox },
   { href: "/task-stack", label: "Stos zadań", icon: Layers },
   { href: "/ai", label: "AI Asystent", icon: Sparkles },
@@ -69,7 +70,6 @@ const workNavItems = [
   { href: "/goals", label: "Cele", icon: Target },
   { href: "/sprints", label: "Sprinty", icon: Timer },
   { href: "/recurring", label: "Cykliczne", icon: Repeat2 },
-  { href: "/teams", label: "Zespoły", icon: Building2 },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },
 ]
 

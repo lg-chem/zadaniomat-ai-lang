@@ -10,6 +10,9 @@ import {
   Clock,
   CheckCircle2,
   Building2,
+  MoreVertical,
+  Pencil,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,8 +25,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import useSWR from "swr"
 
 interface Task {
@@ -62,6 +72,9 @@ export default function TaskStackPage() {
 
   const [schedulingTask, setSchedulingTask] = useState<Task | null>(null)
   const [scheduleDate, setScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [editTitle, setEditTitle] = useState("")
+  const [editDescription, setEditDescription] = useState("")
 
   const handleScheduleTask = async () => {
     if (!schedulingTask) return
@@ -100,6 +113,50 @@ export default function TaskStackPage() {
     } catch (error) {
       console.error("Error completing task:", error)
     }
+  }
+
+  const handleEditTask = async () => {
+    if (!editingTask) return
+
+    try {
+      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle,
+          description: editDescription || null,
+        }),
+      })
+
+      if (res.ok) {
+        mutate()
+        setEditingTask(null)
+      }
+    } catch (error) {
+      console.error("Error editing task:", error)
+    }
+  }
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("Czy na pewno chcesz usunąć to zadanie?")) return
+
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "DELETE",
+      })
+
+      if (res.ok) {
+        mutate()
+      }
+    } catch (error) {
+      console.error("Error deleting task:", error)
+    }
+  }
+
+  const openEditDialog = (task: Task) => {
+    setEditingTask(task)
+    setEditTitle(task.title)
+    setEditDescription(task.description || "")
   }
 
   if (isLoading) {
@@ -226,14 +283,6 @@ export default function TaskStackPage() {
                   <div className="flex items-center gap-2 ml-4">
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => handleCompleteTask(task.id)}
-                    >
-                      <CheckCircle2 className="h-4 w-4 mr-1" />
-                      Gotowe
-                    </Button>
-                    <Button
-                      size="sm"
                       onClick={() => {
                         setSchedulingTask(task)
                         setScheduleDate(format(new Date(), "yyyy-MM-dd"))
@@ -242,6 +291,30 @@ export default function TaskStackPage() {
                       <Calendar className="h-4 w-4 mr-1" />
                       Zaplanuj
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Oznacz jako gotowe
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditDialog(task)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edytuj
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDeleteTask(task.id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Usuń
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               ))}
@@ -291,6 +364,46 @@ export default function TaskStackPage() {
             <Button onClick={handleScheduleTask}>
               <Calendar className="h-4 w-4 mr-2" />
               Zaplanuj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edytuj zadanie</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Tytuł</Label>
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Tytuł zadania"
+              />
+            </div>
+
+            <div>
+              <Label>Opis (opcjonalnie)</Label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Opis zadania..."
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTask(null)}>
+              Anuluj
+            </Button>
+            <Button onClick={handleEditTask} disabled={!editTitle.trim()}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Zapisz
             </Button>
           </DialogFooter>
         </DialogContent>
