@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma"
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,12 +13,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const { id } = await params
     const body = await req.json()
-    const { content, categoryId } = body
+    const { title, content, categoryId } = body
 
     // Get idea and verify ownership
     const idea = await prisma.idea.findUnique({
-      where: { id: params.id },
+      where: { id },
     })
 
     if (!idea) {
@@ -34,19 +35,31 @@ export async function PATCH(
     }
 
     const updated = await prisma.idea.update({
-      where: { id: params.id },
+      where: { id },
       data: {
+        ...(title !== undefined && { title: title || null }),
         ...(content !== undefined && { content }),
         ...(categoryId !== undefined && { categoryId }),
       },
       include: {
-        category: true,
+        category: {
+          include: {
+            linkedCategory: {
+              select: {
+                icon: true,
+              },
+            },
+          },
+        },
         user: {
           select: {
             id: true,
             name: true,
             image: true,
           },
+        },
+        _count: {
+          select: { replies: true },
         },
       },
     })
@@ -60,7 +73,7 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -68,9 +81,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const { id } = await params
+
     // Get idea
     const idea = await prisma.idea.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         category: {
           include: { organization: true },
@@ -102,7 +117,7 @@ export async function DELETE(
     }
 
     await prisma.idea.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ success: true })

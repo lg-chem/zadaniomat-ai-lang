@@ -9,6 +9,7 @@ import {
   Send,
   MessageSquare,
   ArrowLeft,
+  Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -142,12 +143,17 @@ export default function IdeasPage() {
   // Dialogs
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showNewIdeaDialog, setShowNewIdeaDialog] = useState(false)
+  const [showEditIdeaDialog, setShowEditIdeaDialog] = useState(false)
 
   // Forms
   const [newIdeaForm, setNewIdeaForm] = useState({
     title: "",
     content: "",
     categoryId: "",
+  })
+  const [editIdeaForm, setEditIdeaForm] = useState({
+    title: "",
+    content: "",
   })
   const [replyContent, setReplyContent] = useState("")
   const [categoryForm, setCategoryForm] = useState({
@@ -216,6 +222,39 @@ export default function IdeasPage() {
       }
     } catch (error) {
       console.error("Error creating reply:", error)
+    }
+  }
+
+  const handleEditIdea = async () => {
+    if (!editIdeaForm.content.trim() || !selectedIdea) return
+
+    try {
+      const res = await fetch(`/api/ideas/${selectedIdea.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editIdeaForm.title || null,
+          content: editIdeaForm.content,
+        }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setSelectedIdea(updated)
+        mutateIdeas()
+        setShowEditIdeaDialog(false)
+      }
+    } catch (error) {
+      console.error("Error editing idea:", error)
+    }
+  }
+
+  const openEditDialog = () => {
+    if (selectedIdea) {
+      setEditIdeaForm({
+        title: selectedIdea.title || "",
+        content: selectedIdea.content,
+      })
+      setShowEditIdeaDialog(true)
     }
   }
 
@@ -308,14 +347,24 @@ export default function IdeasPage() {
                     </span>
                   </div>
                   {selectedIdea.userId === currentUserId && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleDeleteIdea(selectedIdea.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={openEditDialog}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleDeleteIdea(selectedIdea.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   )}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap">{selectedIdea.content}</p>
@@ -744,6 +793,46 @@ export default function IdeasPage() {
             </Button>
             <Button onClick={handleCreateCategory} disabled={!categoryForm.name.trim()}>
               Utwórz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Idea Dialog */}
+      <Dialog open={showEditIdeaDialog} onOpenChange={setShowEditIdeaDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edytuj rozkminkę</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Tytuł (opcjonalnie)</Label>
+              <Input
+                value={editIdeaForm.title}
+                onChange={(e) => setEditIdeaForm({ ...editIdeaForm, title: e.target.value })}
+                placeholder="np. Pomysł na nową funkcję"
+              />
+            </div>
+
+            <div>
+              <Label>Treść</Label>
+              <Textarea
+                value={editIdeaForm.content}
+                onChange={(e) => setEditIdeaForm({ ...editIdeaForm, content: e.target.value })}
+                placeholder="Opisz swoją rozkminkę..."
+                className="min-h-[120px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditIdeaDialog(false)}>
+              Anuluj
+            </Button>
+            <Button
+              onClick={handleEditIdea}
+              disabled={!editIdeaForm.content.trim()}
+            >
+              Zapisz
             </Button>
           </DialogFooter>
         </DialogContent>
