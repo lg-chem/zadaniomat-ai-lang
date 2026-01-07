@@ -283,7 +283,7 @@ export function SidebarContent() {
         </div>
       ) : isWorkspaceLoading ? (
         /* Loading skeleton for WORK workspace */
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="flex-1 overflow-y-auto space-y-1 p-4">
           {[...Array(8)].map((_, i) => (
             <div
               key={i}
@@ -296,7 +296,7 @@ export function SidebarContent() {
         </nav>
       ) : (
         /* Regular Navigation */
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="flex-1 overflow-y-auto space-y-1 p-4">
           {navItems.map((item) => {
             const showBadge = item.href === "/group-challenges" && pendingInvitationsCount > 0
             return (

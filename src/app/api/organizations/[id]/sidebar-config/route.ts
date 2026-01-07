@@ -17,6 +17,11 @@ const DEFAULT_SIDEBAR_CONFIG = [
   { id: "sprints", label: "Sprinty", enabled: true, order: 9 },
   { id: "recurring", label: "Cykliczne", enabled: true, order: 10 },
   { id: "stats", label: "Statystyki", enabled: true, order: 11 },
+  // AI Chat tabs (prefixed with ai-tab-)
+  { id: "ai-tab-general", label: "AI: Ogólny", enabled: true, order: 100 },
+  { id: "ai-tab-daily_tasks", label: "AI: Zadania", enabled: true, order: 101 },
+  { id: "ai-tab-sprint_goals", label: "AI: Sprint", enabled: true, order: 102 },
+  { id: "ai-tab-period_goals", label: "AI: Okres", enabled: true, order: 103 },
 ]
 
 export async function GET(

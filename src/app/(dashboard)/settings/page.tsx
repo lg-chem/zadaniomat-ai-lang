@@ -772,29 +772,65 @@ export default function SettingsPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={sidebarConfig.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
+          <CardContent className="space-y-6">
+            {/* Sidebar nav items */}
+            <div>
+              <h3 className="text-sm font-medium mb-3">Zakładki w menu bocznym</h3>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <div className="space-y-2">
-                  {sidebarConfig
-                    .sort((a, b) => a.order - b.order)
-                    .map((item) => (
-                      <SortableSidebarItem
-                        key={item.id}
-                        item={item}
-                        onToggle={handleToggleSidebarItem}
-                      />
-                    ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+                <SortableContext
+                  items={sidebarConfig.filter(item => !item.id.startsWith("ai-tab-")).map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {sidebarConfig
+                      .filter(item => !item.id.startsWith("ai-tab-"))
+                      .sort((a, b) => a.order - b.order)
+                      .map((item) => (
+                        <SortableSidebarItem
+                          key={item.id}
+                          item={item}
+                          onToggle={handleToggleSidebarItem}
+                        />
+                      ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+
+            {/* AI Chat tabs */}
+            <div>
+              <h3 className="text-sm font-medium mb-3">Zakładki w AI Asystencie</h3>
+              <div className="space-y-2">
+                {sidebarConfig
+                  .filter(item => item.id.startsWith("ai-tab-"))
+                  .sort((a, b) => a.order - b.order)
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center gap-3 p-3 bg-background border rounded-lg ${
+                        !item.enabled ? "opacity-60" : ""
+                      }`}
+                    >
+                      <span className="flex-1 font-medium">{item.label.replace("AI: ", "")}</span>
+                      <button
+                        onClick={() => handleToggleSidebarItem(item.id)}
+                        className={`p-1.5 rounded-md transition-colors ${
+                          item.enabled
+                            ? "bg-green-100 text-green-600 hover:bg-green-200"
+                            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                        }`}
+                        title={item.enabled ? "Widoczne dla pracowników" : "Ukryte dla pracowników"}
+                      >
+                        {item.enabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
 
             <div className="flex items-center gap-2 pt-2">
               <Button
@@ -802,7 +838,7 @@ export default function SettingsPage() {
                 disabled={isSavingSidebar || !sidebarConfigDirty}
               >
                 <Save className="h-4 w-4 mr-2" />
-                {isSavingSidebar ? "Zapisywanie..." : "Zapisz konfigurację menu"}
+                {isSavingSidebar ? "Zapisywanie..." : "Zapisz konfigurację"}
               </Button>
               {sidebarConfigDirty && (
                 <span className="text-sm text-muted-foreground">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent, useCallback } from "react"
-import { mutate } from "swr"
+import useSWR, { mutate } from "swr"
 import { format, formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
 import ReactMarkdown from "react-markdown"
@@ -168,6 +168,24 @@ interface Conversation {
   updatedAt: string
 }
 
+interface SidebarConfigItem {
+  id: string
+  label: string
+  enabled: boolean
+  order: number
+}
+
+interface OrganizationsResponse {
+  owned: Array<{ id: string; name: string }>
+  memberOf: Array<{
+    id: string
+    name: string
+    sidebarConfig: SidebarConfigItem[] | null
+  }>
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
+
 const MODE_CONFIG: Record<ChatMode, { label: string; icon: React.ReactNode; description: string; color: string }> = {
   general: {
     label: "Ogólny",
@@ -211,6 +229,41 @@ export default function AIPage() {
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [periods, setPeriods] = useState<Period[]>([])
   const [lastAssistantIndex, setLastAssistantIndex] = useState<number>(-1)
+
+  // Fetch organizations to get sidebar config for AI tab visibility
+  const { data: orgsData } = useSWR<OrganizationsResponse>("/api/organizations", fetcher)
+
+  // Determine if user is admin (owner) - admins see all tabs
+  const isTeamOwner = orgsData?.owned && orgsData.owned.length > 0
+  const memberOrgs = orgsData?.memberOf || []
+  const sidebarConfig = memberOrgs.length > 0 && !isTeamOwner
+    ? memberOrgs[0]?.sidebarConfig
+    : null
+
+  // Filter visible AI modes based on config
+  const getVisibleModes = (): ChatMode[] => {
+    const allModes: ChatMode[] = ["general", "daily_tasks", "sprint_goals", "period_goals"]
+
+    // Admins/owners see all tabs
+    if (isTeamOwner || !sidebarConfig || !Array.isArray(sidebarConfig)) {
+      return allModes
+    }
+
+    // Members see only enabled tabs
+    return allModes.filter((modeKey) => {
+      const configItem = sidebarConfig.find((c) => c.id === `ai-tab-${modeKey}`)
+      return !configItem || configItem.enabled // Show if no config or if enabled
+    })
+  }
+
+  const visibleModes = getVisibleModes()
+
+  // If current mode is not visible, switch to first visible mode
+  useEffect(() => {
+    if (visibleModes.length > 0 && !visibleModes.includes(mode)) {
+      setMode(visibleModes[0])
+    }
+  }, [visibleModes, mode])
 
   // Conversation history
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -736,26 +789,29 @@ export default function AIPage() {
 
       {/* Mode selector - pill style */}
       <div className="flex gap-2 pb-3 overflow-x-auto scrollbar-hide">
-        {(Object.entries(MODE_CONFIG) as [ChatMode, typeof MODE_CONFIG[ChatMode]][]).map(([key, config]) => (
-          <button
-            key={key}
-            onClick={() => {
-              if (mode !== key) {
-                setMode(key)
-                startNewConversation()
-              }
-            }}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
-              mode === key
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted hover:bg-muted/80 text-muted-foreground"
-            )}
-          >
-            {config.icon}
-            {config.label}
-          </button>
-        ))}
+        {visibleModes.map((key) => {
+          const config = MODE_CONFIG[key]
+          return (
+            <button
+              key={key}
+              onClick={() => {
+                if (mode !== key) {
+                  setMode(key)
+                  startNewConversation()
+                }
+              }}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
+                mode === key
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              )}
+            >
+              {config.icon}
+              {config.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Chat area */}
