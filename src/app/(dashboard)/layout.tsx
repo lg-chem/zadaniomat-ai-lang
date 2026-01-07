@@ -8,6 +8,7 @@ import { SessionProvider } from "@/components/providers/session-provider"
 import { SWRProvider } from "@/components/providers/swr-provider"
 import { DashboardClient } from "@/components/layout/dashboard-client"
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
+import { FloatingChat } from "@/components/chat/floating-chat"
 
 export default async function DashboardLayout({
   children,
@@ -33,6 +34,7 @@ export default async function DashboardLayout({
           </main>
           <BottomNav />
           <PWAInstallPrompt />
+          <FloatingChat />
         </div>
       </SWRProvider>
     </SessionProvider>
