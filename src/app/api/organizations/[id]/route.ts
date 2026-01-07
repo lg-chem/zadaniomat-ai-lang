@@ -29,7 +29,10 @@ export async function GET(
           }
         },
         categories: {
-          orderBy: { order: "asc" }
+          orderBy: { order: "asc" },
+          include: {
+            _count: { select: { tasks: true } }
+          }
         },
         _count: { select: { tasks: true, members: true } }
       }
