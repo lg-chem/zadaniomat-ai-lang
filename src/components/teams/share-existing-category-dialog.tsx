@@ -110,21 +110,13 @@ export function ShareExistingCategoryDialog({
 
     setIsSubmitting(true)
     try {
-      // Get current organizations and add the new one
-      const selectedCat = availableCategories.find(c => c.id === selectedCategoryId)
-      const currentOrgIds = selectedCat?.organizations?.map(o => o.organization.id) || []
-      // If using legacy format
-      if (selectedCat?.organizationId && !currentOrgIds.includes(selectedCat.organizationId)) {
-        currentOrgIds.push(selectedCat.organizationId)
-      }
-      // Add the new organization
-      const newOrgIds = [...currentOrgIds, organizationId]
-
+      // Just send the single new organizationId - the API will handle adding it
+      // Don't try to preserve old organization links, they might point to deleted teams
       const res = await fetch(`/api/categories/${selectedCategoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organizationIds: newOrgIds,
+          organizationIds: [organizationId], // Just the new team
           memberIds: selectedMemberIds,
         }),
       })
@@ -132,6 +124,9 @@ export function ShareExistingCategoryDialog({
       if (res.ok) {
         onOpenChange(false)
         onSuccess()
+      } else {
+        const data = await res.json()
+        console.error("Error response:", data)
       }
     } catch (error) {
       console.error("Error sharing category:", error)

@@ -66,6 +66,32 @@ export async function PATCH(
         })
       }
 
+      // Handle member assignments if provided
+      if (memberIds && Array.isArray(memberIds) && organizationIds.length > 0) {
+        // Remove existing member assignments for this category
+        await prisma.organizationMemberCategory.deleteMany({
+          where: { categoryId: id }
+        })
+
+        // Get members from all organizations that match the memberIds
+        const members = await prisma.organizationMember.findMany({
+          where: {
+            organizationId: { in: organizationIds },
+            userId: { in: memberIds }
+          }
+        })
+
+        // Create new assignments
+        if (members.length > 0) {
+          await prisma.organizationMemberCategory.createMany({
+            data: members.map(m => ({
+              memberId: m.id,
+              categoryId: id
+            }))
+          })
+        }
+      }
+
       // Clear old single organizationId field
       updateData.organizationId = null
     }
