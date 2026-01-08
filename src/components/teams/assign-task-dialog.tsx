@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Layers, Plus, Trash2, ListChecks } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface SubtaskInput {
   title: string
@@ -33,12 +34,24 @@ interface Category {
   color: string
 }
 
+interface TeamMember {
+  id: string
+  role: "OWNER" | "MEMBER"
+  user: {
+    id: string
+    name: string
+    email: string
+    image?: string
+  }
+}
+
 interface AssignTaskDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   organizationId: string
-  assignedToId: string | null
+  assignedToId?: string | null
   categories: Category[]
+  members?: TeamMember[]
   onSuccess: () => void
 }
 
@@ -46,19 +59,35 @@ export function AssignTaskDialog({
   open,
   onOpenChange,
   organizationId,
-  assignedToId,
+  assignedToId: initialAssignedToId,
   categories,
+  members = [],
   onSuccess,
 }: AssignTaskDialogProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [categoryId, setCategoryId] = useState<string>("")
+  const [assignedToId, setAssignedToId] = useState<string>(initialAssignedToId || "")
   const [plannedMinutes, setPlannedMinutes] = useState<number | undefined>()
   const [priority, setPriority] = useState<string>("0")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [subtasks, setSubtasks] = useState<SubtaskInput[]>([])
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
   const [showChecklist, setShowChecklist] = useState(false)
+
+  // Reset assignedToId when initialAssignedToId changes
+  useEffect(() => {
+    if (initialAssignedToId) {
+      setAssignedToId(initialAssignedToId)
+    }
+  }, [initialAssignedToId])
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      setAssignedToId(initialAssignedToId || "")
+    }
+  }, [open, initialAssignedToId])
 
   const handleAddSubtask = () => {
     if (!newSubtaskTitle.trim()) return
@@ -109,6 +138,7 @@ export function AssignTaskDialog({
         setTitle("")
         setDescription("")
         setCategoryId("")
+        setAssignedToId("")
         setPlannedMinutes(undefined)
         setPriority("0")
         setSubtasks([])
@@ -123,6 +153,16 @@ export function AssignTaskDialog({
       setIsSubmitting(false)
     }
   }
+
+  const getInitials = (name: string, email: string) => {
+    if (name) {
+      return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
+    }
+    return email[0].toUpperCase()
+  }
+
+  // Show all members for assignment (including yourself for testing)
+  const assignableMembers = members
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -142,6 +182,75 @@ export function AssignTaskDialog({
                 Zadanie trafi do &quot;Stosu zadań&quot; przypisanej osoby. Sama zdecyduje kiedy je wykonać.
               </AlertDescription>
             </Alert>
+
+            {/* Member selector - show only if no initial assignedToId */}
+            {!initialAssignedToId && assignableMembers.length > 0 && (
+              <div className="space-y-2">
+                <Label>Przypisz do</Label>
+                <Select value={assignedToId} onValueChange={setAssignedToId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Wybierz osobę">
+                      {assignedToId && (
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const member = members.find(m => m.user.id === assignedToId)
+                            if (!member) return null
+                            return (
+                              <>
+                                <Avatar className="h-5 w-5">
+                                  <AvatarImage src={member.user.image} />
+                                  <AvatarFallback className="text-xs">
+                                    {getInitials(member.user.name, member.user.email)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{member.user.name || member.user.email}</span>
+                              </>
+                            )
+                          })()}
+                        </div>
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignableMembers.map((member) => (
+                      <SelectItem key={member.user.id} value={member.user.id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={member.user.image} />
+                            <AvatarFallback className="text-xs">
+                              {getInitials(member.user.name, member.user.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{member.user.name || member.user.email}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Show who it's assigned to when initialAssignedToId is provided */}
+            {initialAssignedToId && (
+              <div className="text-sm text-muted-foreground">
+                {(() => {
+                  const member = members.find(m => m.user.id === initialAssignedToId)
+                  if (!member) return `Przypisane do: ${initialAssignedToId}`
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span>Przypisane do:</span>
+                      <Avatar className="h-5 w-5">
+                        <AvatarImage src={member.user.image} />
+                        <AvatarFallback className="text-xs">
+                          {getInitials(member.user.name, member.user.email)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium">{member.user.name || member.user.email}</span>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="title">Tytuł zadania</Label>
@@ -295,7 +404,7 @@ export function AssignTaskDialog({
             >
               Anuluj
             </Button>
-            <Button type="submit" disabled={isSubmitting || !title.trim()}>
+            <Button type="submit" disabled={isSubmitting || !title.trim() || !assignedToId}>
               {isSubmitting ? "Tworzenie..." : "Przydziel zadanie"}
             </Button>
           </DialogFooter>

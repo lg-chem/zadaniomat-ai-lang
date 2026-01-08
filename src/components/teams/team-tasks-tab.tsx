@@ -462,6 +462,7 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
         organizationId={teamId}
         assignedToId={selectedMemberId}
         categories={categories}
+        members={members}
         onSuccess={handleTaskSuccess}
       />
     </div>
