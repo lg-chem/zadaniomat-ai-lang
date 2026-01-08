@@ -33,15 +33,17 @@ export async function GET() {
     }
 
     // Find any admin's settings with employeeSidebarConfig set
-    const adminSettings = await prisma.userSettings.findFirst({
+    const allAdminSettings = await prisma.userSettings.findMany({
       where: {
-        employeeSidebarConfig: { not: null },
         user: {
           role: { in: ["ADMIN", "SUPER_ADMIN"] }
         }
       },
       select: { employeeSidebarConfig: true }
     })
+
+    // Find first one that has config set
+    const adminSettings = allAdminSettings.find(s => s.employeeSidebarConfig !== null)
 
     let config = DEFAULT_SIDEBAR_CONFIG
 
