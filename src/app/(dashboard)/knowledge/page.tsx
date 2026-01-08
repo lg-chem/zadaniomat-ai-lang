@@ -477,16 +477,38 @@ export default function KnowledgePage() {
   }
 
   // Build entry counts map for accurate counting (includes team-shared entries)
+  // Team entries have the AUTHOR's KnowledgeCategory ID, not the viewer's
+  // We need to map through linkedCategoryId to find the viewer's category
   const entryCounts = useMemo(() => {
     const counts = new Map<string, number>()
+
+    // Build a map from linkedCategoryId -> viewer's KnowledgeCategory ID
+    const linkedToViewerCat = new Map<string, string>()
+    for (const cat of allCategories) {
+      if (cat.linkedCategoryId) {
+        linkedToViewerCat.set(cat.linkedCategoryId, cat.id)
+      }
+    }
+
     for (const entry of entries) {
-      const catId = entry.category?.id
-      if (catId) {
-        counts.set(catId, (counts.get(catId) || 0) + 1)
+      const entryLinkedCategoryId = entry.category?.linkedCategoryId
+
+      if (entryLinkedCategoryId) {
+        // This is a strategic category entry - map to viewer's category
+        const viewerCatId = linkedToViewerCat.get(entryLinkedCategoryId)
+        if (viewerCatId) {
+          counts.set(viewerCatId, (counts.get(viewerCatId) || 0) + 1)
+        }
+      } else {
+        // Custom category - use the entry's category ID directly
+        const catId = entry.category?.id
+        if (catId) {
+          counts.set(catId, (counts.get(catId) || 0) + 1)
+        }
       }
     }
     return counts
-  }, [entries])
+  }, [entries, allCategories])
 
   // Stats - use actual entries count (includes team shared)
   const totalEntries = entries.length
