@@ -90,7 +90,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (status === "loading") return
     if (!session || !isAdmin) {
-      router.push("/dashboard")
+      router.push("/schedule")
       return
     }
     fetchUsers()

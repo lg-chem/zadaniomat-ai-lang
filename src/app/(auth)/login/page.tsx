@@ -37,7 +37,7 @@ export default function LoginPage() {
           setError(result.error)
         }
       } else {
-        router.push("/dashboard")
+        router.push("/schedule")
         router.refresh()
       }
     } catch {
