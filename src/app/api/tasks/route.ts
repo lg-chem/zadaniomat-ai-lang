@@ -19,11 +19,16 @@ export async function GET(req: Request) {
     const categoryId = searchParams.get("categoryId")
     const includeAssigned = searchParams.get("includeAssigned") === "true"
     const assignedOnly = searchParams.get("assignedOnly") === "true"
+    const createdByMe = searchParams.get("createdByMe") === "true"
+    const assignedToMe = searchParams.get("assignedToMe") === "true"
     const organizationId = searchParams.get("organizationId")
 
     // Base filters
-    const baseFilters: Record<string, unknown> = {
-      workspaceType: workspace,
+    const baseFilters: Record<string, unknown> = {}
+
+    // Only add workspace filter if not filtering by organization
+    if (!organizationId) {
+      baseFilters.workspaceType = workspace
     }
 
     if (date) {
@@ -50,7 +55,20 @@ export async function GET(req: Request) {
     // Build where clause based on mode
     let where: Record<string, unknown>
 
-    if (assignedOnly) {
+    if (createdByMe && organizationId) {
+      // Tasks created by me for this organization (assigned to employees)
+      where = {
+        ...baseFilters,
+        userId: session.user.id,
+        assignedToId: { not: null }, // Tasks assigned to someone else
+      }
+    } else if (assignedToMe && organizationId) {
+      // Tasks assigned to me in this organization
+      where = {
+        ...baseFilters,
+        assignedToId: session.user.id,
+      }
+    } else if (assignedOnly) {
       // Only tasks assigned to this user (team tasks)
       where = {
         ...baseFilters,
@@ -91,7 +109,10 @@ export async function GET(req: Request) {
           select: { id: true, name: true, email: true, image: true }
         },
         user: {
-          select: { id: true, name: true, email: true }
+          select: { id: true, name: true, email: true, image: true }
+        },
+        _count: {
+          select: { comments: true }
         },
         organization: {
           select: { id: true, name: true }

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import {
   ArrowLeft,
   Plus,
@@ -24,6 +25,7 @@ import { CreateTeamCategoryDialog } from "@/components/teams/create-team-categor
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
 import { ShareExistingCategoryDialog } from "@/components/teams/share-existing-category-dialog"
 import { TeamChat } from "@/components/teams/team-chat"
+import { TeamTasksTab } from "@/components/teams/team-tasks-tab"
 import useSWR from "swr"
 
 interface Member {
@@ -73,6 +75,7 @@ interface Organization {
 export default function TeamDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { data: session } = useSession()
   const teamId = params.id as string
 
   const [showAddMember, setShowAddMember] = useState(false)
@@ -193,8 +196,12 @@ export default function TeamDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="members" className="w-full">
+      <Tabs defaultValue="tasks" className="w-full">
         <TabsList>
+          <TabsTrigger value="tasks" className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Zadania
+          </TabsTrigger>
           <TabsTrigger value="members" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Członkowie
@@ -208,6 +215,19 @@ export default function TeamDetailPage() {
             Czat
           </TabsTrigger>
         </TabsList>
+
+        {/* Tasks Tab */}
+        <TabsContent value="tasks" className="mt-4">
+          {session?.user?.id && (
+            <TeamTasksTab
+              teamId={teamId}
+              categories={team.categories}
+              members={team.members}
+              isOwner={team.isOwner}
+              currentUserId={session.user.id}
+            />
+          )}
+        </TabsContent>
 
         {/* Members Tab */}
         <TabsContent value="members" className="mt-4">

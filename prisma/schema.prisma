@@ -54,6 +54,7 @@ model User {
   ownedOrganizations    Organization[]       @relation("OwnedOrganizations")
   organizationMemberships OrganizationMember[] @relation("OrganizationMemberships")
   assignedTasks         Task[]               @relation("AssignedTasks")
+  taskComments          TaskComment[]        @relation("TaskComments")
   notifications         Notification[]       @relation("ReceivedNotifications")
   teamMessages          TeamMessage[]        @relation("TeamMessages")
   ideas                 Idea[]
@@ -310,6 +311,7 @@ model Task {
   subTasks       Task[]        @relation("SubTasks")
   timeEntries    TimeEntry[]
   subtasks       Subtask[]     // Checklist items
+  comments       TaskComment[] // Discussion/comments
 
   // Task assignment (for team tasks)
   assignedToId   String?       // User assigned to complete this task
@@ -353,6 +355,22 @@ model Subtask {
   task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("TaskComments", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
 }
 
 // ==================== HABITS & CHALLENGES (PRIVATE) ====================
@@ -1076,6 +1094,7 @@ enum NotificationType {
   TASK_DELETED        // Pracownik usunął zadanie
   TASK_COMPLETED      // Pracownik ukończył zadanie
   TASK_ASSIGNED       // Nowe zadanie przydzielone
+  TASK_COMMENT        // Nowy komentarz do zadania
   MEMBER_JOINED       // Nowy członek dołączył
 }
 
