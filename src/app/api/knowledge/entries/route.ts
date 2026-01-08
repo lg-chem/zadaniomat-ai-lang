@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const categoryId = searchParams.get("categoryId")
     const search = searchParams.get("search")
 
-    // Get team categories assigned to this user via OrganizationMemberCategory
+    // Get team categories assigned to this user via OrganizationMemberCategory (legacy)
     const teamMemberships = await prisma.organizationMember.findMany({
       where: {
         userId: session.user.id,
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       },
     })
 
-    // Collect team strategic category IDs
+    // Collect team strategic category IDs (legacy way)
     const teamCategoryIds: string[] = []
     for (const membership of teamMemberships) {
       for (const assignedCat of membership.assignedCategories) {
@@ -37,6 +37,34 @@ export async function GET(req: Request) {
         if (cat.isStrategic && cat.organizationId) {
           teamCategoryIds.push(cat.id)
         }
+      }
+    }
+
+    // Also get categories shared via new many-to-many CategoryOrganization
+    const categoriesViaOrg = await prisma.category.findMany({
+      where: {
+        isStrategic: true,
+        workspaceType: workspace as "WORK" | "PRIVATE",
+        organizations: {
+          some: {
+            organization: {
+              members: {
+                some: {
+                  userId: session.user.id
+                }
+              }
+            }
+          }
+        }
+      },
+      select: { id: true }
+    })
+
+    // Add to teamCategoryIds (avoid duplicates)
+    const existingIds = new Set(teamCategoryIds)
+    for (const cat of categoriesViaOrg) {
+      if (!existingIds.has(cat.id)) {
+        teamCategoryIds.push(cat.id)
       }
     }
 
