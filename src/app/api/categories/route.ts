@@ -23,30 +23,60 @@ export async function GET(req: Request) {
     const ownCategories = await prisma.category.findMany({
       where: ownWhere,
       include: {
-        organization: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } }, // Legacy single org
+        organizations: {
+          include: {
+            organization: { select: { id: true, name: true } }
+          }
+        },
         _count: { select: { tasks: true } }
       },
       orderBy: { order: "asc" },
     })
 
     // Get shared categories from organizations user is a member of (but not owner)
+    // Check both legacy organizationId and new many-to-many organizations
     const sharedWhere: Prisma.CategoryWhereInput = {
-      organizationId: { not: null },
       userId: { not: session.user.id },
-      assignedMembers: {
-        some: {
-          member: {
-            userId: session.user.id
+      OR: [
+        // Legacy: single organizationId
+        {
+          organizationId: { not: null },
+          assignedMembers: {
+            some: {
+              member: {
+                userId: session.user.id
+              }
+            }
+          }
+        },
+        // New: many-to-many via CategoryOrganization
+        {
+          organizations: {
+            some: {
+              organization: {
+                members: {
+                  some: {
+                    userId: session.user.id
+                  }
+                }
+              }
+            }
           }
         }
-      },
+      ],
       ...(workspace ? { workspaceType: workspace } : {})
     }
 
     const sharedCategories = await prisma.category.findMany({
       where: sharedWhere,
       include: {
-        organization: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } }, // Legacy
+        organizations: {
+          include: {
+            organization: { select: { id: true, name: true } }
+          }
+        },
         user: { select: { id: true, name: true } },
         _count: { select: { tasks: true } }
       },
@@ -54,8 +84,13 @@ export async function GET(req: Request) {
     })
 
     // Mark shared categories
+    // Check both legacy organizationId and new organizations array
     const categoriesWithSharedFlag = [
-      ...ownCategories.map(c => ({ ...c, isShared: !!c.organizationId, isOwner: true })),
+      ...ownCategories.map(c => ({
+        ...c,
+        isShared: !!c.organizationId || (c.organizations && c.organizations.length > 0),
+        isOwner: true
+      })),
       ...sharedCategories.map(c => ({ ...c, isShared: true, isOwner: false }))
     ]
 

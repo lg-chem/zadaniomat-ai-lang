@@ -215,12 +215,32 @@ model Category {
   ideaCategories IdeaCategory[] @relation("LinkedIdeaCategories")
 
   // Organization (team) category - null means personal category
+  // DEPRECATED: use organizations relation instead (many-to-many)
   organizationId String?
   organization   Organization? @relation("OrganizationCategories", fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Many-to-many: category can belong to multiple organizations
+  organizations  CategoryOrganization[]
   assignedMembers OrganizationMemberCategory[] @relation("AssignedMemberCategories")
 
   @@unique([userId, name, workspaceType])
   @@index([userId, workspaceType])
+  @@index([organizationId])
+}
+
+// Junction table for Category <-> Organization many-to-many
+model CategoryOrganization {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now())
+
+  categoryId     String
+  category       Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation("CategoryOrganizations", fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, organizationId])
+  @@index([categoryId])
   @@index([organizationId])
 }
 
@@ -974,7 +994,8 @@ model Organization {
   ownerId     String
   owner       User     @relation("OwnedOrganizations", fields: [ownerId], references: [id], onDelete: Cascade)
   members     OrganizationMember[]
-  categories  Category[] @relation("OrganizationCategories")
+  categories  Category[] @relation("OrganizationCategories") // DEPRECATED
+  categoryLinks CategoryOrganization[] @relation("CategoryOrganizations") // New many-to-many
   tasks       Task[]     @relation("OrganizationTasks")
   messages    TeamMessage[]
   ideaCategories IdeaCategory[]

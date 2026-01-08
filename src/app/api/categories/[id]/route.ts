@@ -24,7 +24,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Category not found" }, { status: 404 })
     }
 
-    const { name, color, icon, isStrategic, organizationId, memberIds } = body
+    const { name, color, icon, isStrategic, organizationId, organizationIds, memberIds } = body
 
     const updateData: Record<string, unknown> = {}
 
@@ -33,12 +33,51 @@ export async function PATCH(
     if (icon !== undefined) updateData.icon = icon
     if (isStrategic !== undefined) updateData.isStrategic = isStrategic
 
-    // Handle sharing with organization
-    if (organizationId !== undefined) {
+    // Handle sharing with organizations (new many-to-many approach)
+    if (organizationIds !== undefined && Array.isArray(organizationIds)) {
+      // Verify user owns all these organizations
+      const ownedOrgs = await prisma.organization.findMany({
+        where: {
+          id: { in: organizationIds },
+          ownerId: session.user.id
+        },
+        select: { id: true }
+      })
+
+      const ownedOrgIds = new Set(ownedOrgs.map(o => o.id))
+      const invalidOrgs = organizationIds.filter((orgId: string) => !ownedOrgIds.has(orgId))
+
+      if (invalidOrgs.length > 0) {
+        return NextResponse.json({ error: "Nie jesteś właścicielem wszystkich wybranych zespołów" }, { status: 403 })
+      }
+
+      // Remove existing organization links
+      await prisma.categoryOrganization.deleteMany({
+        where: { categoryId: id }
+      })
+
+      // Add new organization links
+      if (organizationIds.length > 0) {
+        await prisma.categoryOrganization.createMany({
+          data: organizationIds.map((orgId: string) => ({
+            categoryId: id,
+            organizationId: orgId
+          }))
+        })
+      }
+
+      // Clear old single organizationId field
+      updateData.organizationId = null
+    }
+    // Backward compatibility: handle single organizationId
+    else if (organizationId !== undefined) {
       if (organizationId === null) {
         // Unshare - remove organization link and all member assignments
         updateData.organizationId = null
         await prisma.organizationMemberCategory.deleteMany({
+          where: { categoryId: id }
+        })
+        await prisma.categoryOrganization.deleteMany({
           where: { categoryId: id }
         })
       } else {
@@ -49,7 +88,14 @@ export async function PATCH(
         if (!org) {
           return NextResponse.json({ error: "Nie jesteś właścicielem tego zespołu" }, { status: 403 })
         }
-        updateData.organizationId = organizationId
+
+        // Use new many-to-many table
+        await prisma.categoryOrganization.deleteMany({
+          where: { categoryId: id }
+        })
+        await prisma.categoryOrganization.create({
+          data: { categoryId: id, organizationId }
+        })
 
         // If memberIds provided, assign category to those members
         if (memberIds && Array.isArray(memberIds)) {
@@ -83,7 +129,11 @@ export async function PATCH(
       where: { id },
       data: updateData,
       include: {
-        organization: { select: { id: true, name: true } },
+        organizations: {
+          include: {
+            organization: { select: { id: true, name: true } }
+          }
+        },
         assignedMembers: {
           include: {
             member: {
