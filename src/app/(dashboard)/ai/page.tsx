@@ -302,6 +302,7 @@ export default function AIPage() {
     title: "",
     categoryId: "",
     plannedMinutes: "25",
+    scheduledDate: format(new Date(), "yyyy-MM-dd"),
   })
 
   // Knowledge save
@@ -616,6 +617,7 @@ export default function AIPage() {
       title: task.title,
       categoryId: category?.id || "",
       plannedMinutes: task.plannedMinutes?.toString() || "25",
+      scheduledDate: format(new Date(), "yyyy-MM-dd"),
     })
   }
 
@@ -629,13 +631,13 @@ export default function AIPage() {
           title: taskForm.title,
           categoryId: taskForm.categoryId || undefined,
           plannedMinutes: parseInt(taskForm.plannedMinutes) || 25,
-          scheduledDate: format(new Date(), "yyyy-MM-dd"),
+          scheduledDate: taskForm.scheduledDate,
           workspaceType: "WORK",
           status: "NEW",
         }),
       })
       setAddingTask(null)
-      setTaskForm({ title: "", categoryId: "", plannedMinutes: "25" })
+      setTaskForm({ title: "", categoryId: "", plannedMinutes: "25", scheduledDate: format(new Date(), "yyyy-MM-dd") })
     } catch (error) {
       console.error("Error adding task:", error)
     }
@@ -1275,12 +1277,20 @@ export default function AIPage() {
       <Dialog open={!!addingTask} onOpenChange={(open) => !open && setAddingTask(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dodaj zadanie na dziś</DialogTitle>
+            <DialogTitle>Dodaj zadanie</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div>
               <Label>Tytuł</Label>
               <Input value={taskForm.title} onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })} />
+            </div>
+            <div>
+              <Label>Data</Label>
+              <Input
+                type="date"
+                value={taskForm.scheduledDate}
+                onChange={(e) => setTaskForm({ ...taskForm, scheduledDate: e.target.value })}
+              />
             </div>
             <div>
               <Label>Kategoria</Label>

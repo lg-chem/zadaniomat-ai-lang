@@ -38,6 +38,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimerStore, formatMinutes } from "@/stores/timer-store"
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
@@ -137,6 +144,21 @@ export default function SchedulePage() {
   const [isAddingTask, setIsAddingTask] = useState(false)
   const newTaskRef = useRef<HTMLInputElement>(null)
 
+  // Dialog for adding task with custom date
+  const [customDateTask, setCustomDateTask] = useState<{
+    open: boolean
+    title: string
+    categoryId: string
+    plannedMinutes: string
+    scheduledDate: string
+  }>({
+    open: false,
+    title: "",
+    categoryId: "",
+    plannedMinutes: "25",
+    scheduledDate: format(new Date(), "yyyy-MM-dd"),
+  })
+
   // Template inputs for strategic categories - keyed by categoryId
   const [templateInputs, setTemplateInputs] = useState<Record<string, {
     title: string
@@ -233,6 +255,44 @@ export default function SchedulePage() {
           return res.json()
         }
       )
+    } catch (error) {
+      console.error("Error creating task:", error)
+    }
+  }
+
+  // Handle creating task with custom date
+  const handleCreateCustomDateTask = async () => {
+    if (!customDateTask.title.trim()) return
+
+    const category = categories.find(c => c.id === customDateTask.categoryId)
+
+    // Close dialog immediately
+    const taskData = { ...customDateTask }
+    setCustomDateTask({
+      open: false,
+      title: "",
+      categoryId: "",
+      plannedMinutes: "25",
+      scheduledDate: format(new Date(), "yyyy-MM-dd"),
+    })
+
+    try {
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskData.title,
+          categoryId: taskData.categoryId || undefined,
+          plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+          scheduledDate: taskData.scheduledDate,
+          workspaceType: workspace,
+          status: "NEW",
+        }),
+      })
+      // Refresh tasks if the selected date matches the custom date
+      if (taskData.scheduledDate === dateString) {
+        mutateTasks()
+      }
     } catch (error) {
       console.error("Error creating task:", error)
     }
@@ -1336,14 +1396,23 @@ export default function SchedulePage() {
                 </CardContent>
               </Card>
             ) : (
-              <Button
-                onClick={handleAddRowClick}
-                variant="outline"
-                className="w-full"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Dodaj zadanie
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleAddRowClick}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Dodaj zadanie
+                </Button>
+                <Button
+                  onClick={() => setCustomDateTask((prev) => ({ ...prev, open: true, scheduledDate: format(new Date(), "yyyy-MM-dd") }))}
+                  variant="outline"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Inny termin
+                </Button>
+              </div>
             )}
           </div>
 
@@ -1756,13 +1825,22 @@ export default function SchedulePage() {
                 </div>
               </div>
             ) : (
-              <button
-                onClick={handleAddRowClick}
-                className="w-full p-3 text-left text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Dodaj zadanie...
-              </button>
+              <div className="flex items-center">
+                <button
+                  onClick={handleAddRowClick}
+                  className="flex-1 p-3 text-left text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj zadanie...
+                </button>
+                <button
+                  onClick={() => setCustomDateTask((prev) => ({ ...prev, open: true, scheduledDate: format(new Date(), "yyyy-MM-dd") }))}
+                  className="p-3 text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2 border-l"
+                >
+                  <Calendar className="h-4 w-4" />
+                  Inny termin
+                </button>
+              </div>
             )}
           </div>
 
@@ -1776,6 +1854,74 @@ export default function SchedulePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog for adding task with custom date */}
+      <Dialog
+        open={customDateTask.open}
+        onOpenChange={(open) => setCustomDateTask((prev) => ({ ...prev, open }))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dodaj zadanie na inny termin</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Tytuł</Label>
+              <Input
+                value={customDateTask.title}
+                onChange={(e) => setCustomDateTask((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="Co chcesz zrobić?"
+              />
+            </div>
+            <div>
+              <Label>Data</Label>
+              <Input
+                type="date"
+                value={customDateTask.scheduledDate}
+                onChange={(e) => setCustomDateTask((prev) => ({ ...prev, scheduledDate: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Kategoria</Label>
+              <Select
+                value={customDateTask.categoryId || "none"}
+                onValueChange={(v) => setCustomDateTask((prev) => ({ ...prev, categoryId: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Wybierz kategorię" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Brak kategorii</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                        {cat.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Czas (minuty)</Label>
+              <Input
+                type="number"
+                value={customDateTask.plannedMinutes}
+                onChange={(e) => setCustomDateTask((prev) => ({ ...prev, plannedMinutes: e.target.value }))}
+              />
+            </div>
+            <Button
+              onClick={handleCreateCustomDateTask}
+              className="w-full"
+              disabled={!customDateTask.title.trim()}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Dodaj zadanie
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
