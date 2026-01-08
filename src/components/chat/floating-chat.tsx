@@ -67,6 +67,12 @@ interface OrganizationsResponse {
   memberOf: Organization[]
 }
 
+interface Category {
+  id: string
+  name: string
+  color: string
+}
+
 type ViewMode = "menu" | "teams" | "chat" | "note" | "assign-teams" | "assign-members" | "assign-task"
 type NoteMode = "backlog" | "admin"
 type ReportType = "BUG" | "FEATURE" | "OTHER"
@@ -96,6 +102,7 @@ export function FloatingChat() {
   const [assignTeam, setAssignTeam] = useState<Organization | null>(null)
   const [assignMember, setAssignMember] = useState<TeamMember | null>(null)
   const [taskTitle, setTaskTitle] = useState("")
+  const [taskCategoryId, setTaskCategoryId] = useState<string>("")
   const [isSubmittingTask, setIsSubmittingTask] = useState(false)
   const taskInputRef = useRef<HTMLInputElement>(null)
 
@@ -140,6 +147,7 @@ export function FloatingChat() {
       setAssignTeam(null)
       setAssignMember(null)
       setTaskTitle("")
+      setTaskCategoryId("")
     }
   }, [isOpen])
 
@@ -162,6 +170,11 @@ export function FloatingChat() {
     assignTeam ? `/api/organizations/${assignTeam.id}` : null
   )
 
+  // Fetch categories for the team (user's WORK categories)
+  const { data: categories = [] } = useSWR<Category[]>(
+    assignTeam ? "/api/categories?workspace=WORK" : null
+  )
+
   const showFeedback = (type: FeedbackType, message: string) => {
     setFeedback({ type, message })
     setTimeout(() => setFeedback(null), 3000)
@@ -180,12 +193,14 @@ export function FloatingChat() {
           workspaceType: "WORK",
           assignedToId: assignMember.user.id,
           organizationId: assignTeam.id,
+          categoryId: taskCategoryId || undefined,
         }),
       })
 
       if (res.ok) {
         showFeedback("success", "Zadanie przydzielone!")
         setTaskTitle("")
+        setTaskCategoryId("")
         setAssignMember(null)
         setViewMode("assign-members")
       } else {
@@ -772,18 +787,58 @@ export function FloatingChat() {
                 </div>
               </div>
 
-              <div className="flex-1">
+              <div className="flex-1 space-y-3">
                 <Input
                   ref={taskInputRef}
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSubmitTask()
+                    if (e.key === "Enter" && !e.shiftKey) handleSubmitTask()
                   }}
                   placeholder="Co ma być zrobione?"
-                  className="mb-3"
                   disabled={isSubmittingTask}
                 />
+
+                {/* Category selector */}
+                {categories.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setTaskCategoryId("")}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-xs font-medium transition-colors",
+                        !taskCategoryId
+                          ? "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400"
+                      )}
+                    >
+                      Brak
+                    </button>
+                    {categories.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setTaskCategoryId(cat.id)}
+                        className={cn(
+                          "px-2 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1",
+                          taskCategoryId === cat.id
+                            ? "ring-2 ring-offset-1 ring-primary"
+                            : "opacity-70 hover:opacity-100"
+                        )}
+                        style={{
+                          backgroundColor: `${cat.color}20`,
+                          color: cat.color,
+                        }}
+                      >
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <Button
