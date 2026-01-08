@@ -15,28 +15,72 @@ interface ChatRequest {
   history?: { role: "user" | "assistant"; content: string }[]
 }
 
+// Helper function to get team knowledge category IDs for a user
+async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
+  // Get team memberships and assigned categories (legacy way)
+  const teamMemberships = await prisma.organizationMember.findMany({
+    where: { userId },
+    include: {
+      assignedCategories: {
+        include: { category: true },
+      },
+    },
+  })
+
+  // Collect team strategic category IDs (legacy way)
+  const teamCategoryIds: string[] = []
+  for (const membership of teamMemberships) {
+    for (const assignedCat of membership.assignedCategories) {
+      const cat = assignedCat.category
+      if (cat.isStrategic && cat.organizationId) {
+        teamCategoryIds.push(cat.id)
+      }
+    }
+  }
+
+  // Also get categories shared via new many-to-many CategoryOrganization
+  const categoriesViaOrg = await prisma.category.findMany({
+    where: {
+      isStrategic: true,
+      workspaceType: "WORK",
+      organizations: {
+        some: {
+          organization: {
+            members: {
+              some: { userId }
+            }
+          }
+        }
+      }
+    },
+    select: { id: true }
+  })
+
+  // Add to teamCategoryIds (avoid duplicates)
+  const existingIds = new Set(teamCategoryIds)
+  for (const cat of categoriesViaOrg) {
+    if (!existingIds.has(cat.id)) {
+      teamCategoryIds.push(cat.id)
+    }
+  }
+
+  // Get knowledge category IDs linked to team categories
+  const teamKnowledgeCategories = await prisma.knowledgeCategory.findMany({
+    where: {
+      linkedCategoryId: { in: teamCategoryIds },
+    },
+    select: { id: true },
+  })
+
+  return teamKnowledgeCategories.map(c => c.id)
+}
+
 // Minimal context - just essentials
 async function getMinimalContext(userId: string) {
   const today = new Date()
 
-  // Get user's team memberships for shared knowledge access
-  const userOrgs = await prisma.organizationMember.findMany({
-    where: { userId },
-    select: { organizationId: true },
-  })
-  const orgIds = userOrgs.map(o => o.organizationId)
-
-  // Get categories linked to user's teams
-  const teamCategoryIds = orgIds.length > 0
-    ? await prisma.knowledgeCategory.findMany({
-        where: {
-          linkedCategory: {
-            organizationId: { in: orgIds }
-          }
-        },
-        select: { id: true }
-      }).then(cats => cats.map(c => c.id))
-    : []
+  // Get team knowledge category IDs for shared knowledge access
+  const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
 
   const [categories, activePeriod, activeSprint, knowledgeBase, importantKnowledge] = await Promise.all([
     prisma.category.findMany({
@@ -161,24 +205,8 @@ async function getBacklog(userId: string) {
 }
 
 async function getKnowledgeEntries(userId: string, query?: string) {
-  // Get user's team memberships to find shared knowledge
-  const userOrgs = await prisma.organizationMember.findMany({
-    where: { userId },
-    select: { organizationId: true },
-  })
-  const orgIds = userOrgs.map(o => o.organizationId)
-
-  // Get categories linked to user's teams
-  const teamCategoryIds = orgIds.length > 0
-    ? await prisma.knowledgeCategory.findMany({
-        where: {
-          linkedCategory: {
-            organizationId: { in: orgIds }
-          }
-        },
-        select: { id: true }
-      }).then(cats => cats.map(c => c.id))
-    : []
+  // Get team knowledge category IDs for shared knowledge access
+  const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
 
   const items = await prisma.knowledgeEntry.findMany({
     where: {
