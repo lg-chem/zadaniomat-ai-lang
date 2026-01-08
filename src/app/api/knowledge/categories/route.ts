@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       orderBy: { name: "asc" },
     })
 
-    // Get team categories assigned to this user via OrganizationMemberCategory
+    // Get team categories assigned to this user via OrganizationMemberCategory (legacy)
     const teamMemberships = await prisma.organizationMember.findMany({
       where: {
         userId: session.user.id,
@@ -43,7 +43,32 @@ export async function GET(req: Request) {
       },
     })
 
-    // Collect team strategic categories assigned to user
+    // Also get categories shared via new many-to-many CategoryOrganization
+    const sharedCategoriesViaOrg = await prisma.category.findMany({
+      where: {
+        userId: { not: session.user.id },
+        isStrategic: true,
+        workspaceType: workspace as "WORK" | "PRIVATE",
+        organizations: {
+          some: {
+            organization: {
+              members: {
+                some: {
+                  userId: session.user.id
+                }
+              }
+            }
+          }
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+      },
+    })
+
+    // Collect team strategic categories assigned to user (legacy way)
     const teamStrategicCategories: { id: string; name: string; color: string; organizationId: string | null }[] = []
     for (const membership of teamMemberships) {
       for (const assignedCat of membership.assignedCategories) {
@@ -57,6 +82,19 @@ export async function GET(req: Request) {
             organizationId: cat.organizationId,
           })
         }
+      }
+    }
+
+    // Add categories from new many-to-many (avoid duplicates)
+    const existingIds = new Set([...ownStrategicCategories.map(c => c.id), ...teamStrategicCategories.map(c => c.id)])
+    for (const cat of sharedCategoriesViaOrg) {
+      if (!existingIds.has(cat.id)) {
+        teamStrategicCategories.push({
+          id: cat.id,
+          name: cat.name,
+          color: cat.color,
+          organizationId: null,
+        })
       }
     }
 
