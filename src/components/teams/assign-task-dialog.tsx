@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Layers } from "lucide-react"
+import { Layers, Plus, Trash2, ListChecks } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,6 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+
+interface SubtaskInput {
+  title: string
+}
 
 interface Category {
   id: string
@@ -52,6 +56,19 @@ export function AssignTaskDialog({
   const [plannedMinutes, setPlannedMinutes] = useState<number | undefined>()
   const [priority, setPriority] = useState<string>("0")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [subtasks, setSubtasks] = useState<SubtaskInput[]>([])
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
+  const [showChecklist, setShowChecklist] = useState(false)
+
+  const handleAddSubtask = () => {
+    if (!newSubtaskTitle.trim()) return
+    setSubtasks([...subtasks, { title: newSubtaskTitle.trim() }])
+    setNewSubtaskTitle("")
+  }
+
+  const handleRemoveSubtask = (index: number) => {
+    setSubtasks(subtasks.filter((_, i) => i !== index))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,11 +93,27 @@ export function AssignTaskDialog({
       })
 
       if (res.ok) {
+        const task = await res.json()
+
+        // Create subtasks if any
+        if (subtasks.length > 0) {
+          for (const subtask of subtasks) {
+            await fetch(`/api/tasks/${task.id}/subtasks`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: subtask.title }),
+            })
+          }
+        }
+
         setTitle("")
         setDescription("")
         setCategoryId("")
         setPlannedMinutes(undefined)
         setPriority("0")
+        setSubtasks([])
+        setNewSubtaskTitle("")
+        setShowChecklist(false)
         onOpenChange(false)
         onSuccess()
       }
@@ -130,6 +163,72 @@ export function AssignTaskDialog({
                 placeholder="Szczegóły zadania..."
                 rows={3}
               />
+            </div>
+
+            {/* Checklist / Subtasks */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <ListChecks className="h-4 w-4" />
+                  Lista kontrolna
+                </Label>
+                {!showChecklist && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowChecklist(true)}
+                  >
+                    Dodaj checklistę
+                  </Button>
+                )}
+              </div>
+
+              {showChecklist && (
+                <div className="border rounded-lg p-3 bg-muted/30 space-y-2">
+                  {/* Existing subtasks */}
+                  {subtasks.map((subtask, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <div className="h-4 w-4 border rounded-sm flex-shrink-0" />
+                      <span className="flex-1 text-sm">{subtask.title}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleRemoveSubtask(index)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  {/* Add new subtask */}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={newSubtaskTitle}
+                      onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          handleAddSubtask()
+                        }
+                      }}
+                      placeholder="Dodaj punkt..."
+                      className="flex-1 h-8 text-sm"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddSubtask}
+                      disabled={!newSubtaskTitle.trim()}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {categories.length > 0 && (

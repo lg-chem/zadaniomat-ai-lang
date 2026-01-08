@@ -309,6 +309,7 @@ model Task {
   parentTask     Task?         @relation("SubTasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
   subTasks       Task[]        @relation("SubTasks")
   timeEntries    TimeEntry[]
+  subtasks       Subtask[]     // Checklist items
 
   // Task assignment (for team tasks)
   assignedToId   String?       // User assigned to complete this task
@@ -331,6 +332,21 @@ model TimeEntry {
   duration    Int?      // minutes
   notes       String?
   createdAt   DateTime  @default(now())
+
+  // Relations
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model Subtask {
+  id          String    @id @default(cuid())
+  title       String
+  isCompleted Boolean   @default(false)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Relations
   taskId      String

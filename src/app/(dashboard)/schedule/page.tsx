@@ -23,6 +23,7 @@ import {
   Settings2,
   RotateCcw,
   Edit3,
+  FileText,
 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -56,6 +57,8 @@ import { useDayBlocks, useScheduleOverride, type BlockData } from "@/hooks/use-s
 import { WeekStrip } from "@/components/schedule/week-strip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { TaskEditDialog } from "@/components/tasks/task-edit-dialog"
+import { SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
 
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
 
@@ -186,6 +189,9 @@ export default function SchedulePage() {
 
   // Transfer overdue task state (separate from copy)
   const [transferTaskId, setTransferTaskId] = useState<string | null>(null)
+
+  // Full task edit dialog state
+  const [editingFullTask, setEditingFullTask] = useState<Task | null>(null)
 
   // Generate recurring tasks on date change and reset hidden templates
   useEffect(() => {
@@ -641,6 +647,27 @@ export default function SchedulePage() {
     } catch (error) {
       console.error("Error updating overdue task:", error)
     }
+  }
+
+  // Handle full task save from dialog
+  const handleSaveFullTask = async (taskId: string, updates: Record<string, unknown>) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      mutateTasks()
+    } catch (error) {
+      console.error("Error saving task:", error)
+      throw error
+    }
+  }
+
+  // Handle subtasks change from dialog
+  const handleSubtasksChange = (taskId: string, subtasks: Subtask[]) => {
+    // Update local state for immediate feedback
+    mutateTasks()
   }
 
   const strategicCategories = categories.filter((c) => c.isStrategic)
@@ -1183,9 +1210,19 @@ export default function SchedulePage() {
                           )}
                           {task.plannedMinutes && <span className="text-muted-foreground">• {task.plannedMinutes} min</span>}
                         </div>
+                        {/* Subtask progress */}
+                        {task.subtasks && task.subtasks.length > 0 && (
+                          <div className="pt-1">
+                            <SubtaskProgress subtasks={task.subtasks} />
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 pt-1">
                           <Button size="sm" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} className="h-7 text-xs">
                             Zakończ
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingFullTask(task)} className="h-7 text-xs">
+                            <FileText className="h-3 w-3 mr-1" />
+                            Szczegóły
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
@@ -1235,6 +1272,12 @@ export default function SchedulePage() {
                           )}
                           {task.plannedMinutes && <span className="text-muted-foreground">• {task.plannedMinutes} min</span>}
                         </div>
+                        {/* Subtask progress */}
+                        {task.subtasks && task.subtasks.length > 0 && (
+                          <div className="pt-1">
+                            <SubtaskProgress subtasks={task.subtasks} />
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 pt-1">
                           <Button size="sm" variant="outline" onClick={() => handleStartTimer(task)} className="h-7 text-xs">
                             <Play className="h-3 w-3 mr-1" />
@@ -1242,6 +1285,9 @@ export default function SchedulePage() {
                           </Button>
                           <Button size="sm" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} className="h-7 text-xs">
                             Zakończ
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingFullTask(task)} className="h-7 text-xs">
+                            <FileText className="h-3 w-3" />
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
@@ -1568,6 +1614,7 @@ export default function SchedulePage() {
                         <Check className="h-4 w-4 mr-1 text-green-500" />
                         Gotowe
                       </Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setEditingFullTask(task)} title="Szczegóły i checklista"><FileText className="h-4 w-4" /></Button>
                       <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
                         <PopoverTrigger asChild>
                           <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
@@ -1648,6 +1695,7 @@ export default function SchedulePage() {
                         <Check className="h-4 w-4 mr-1 text-green-500" />
                         Gotowe
                       </Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setEditingFullTask(task)} title="Szczegóły i checklista"><FileText className="h-4 w-4" /></Button>
                       <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
                         <PopoverTrigger asChild>
                           <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
@@ -1922,6 +1970,16 @@ export default function SchedulePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Task Edit Dialog with description and subtasks */}
+      <TaskEditDialog
+        open={!!editingFullTask}
+        onOpenChange={(open) => !open && setEditingFullTask(null)}
+        task={editingFullTask}
+        categories={categories}
+        onSave={handleSaveFullTask}
+        onSubtasksChange={handleSubtasksChange}
+      />
     </div>
   )
 }

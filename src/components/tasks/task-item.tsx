@@ -5,6 +5,7 @@ import { Check, Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TaskTimer } from "@/components/timer/task-timer"
+import { SubtaskProgress, Subtask } from "./subtask-list"
 import { cn } from "@/lib/utils"
 
 interface Category {
@@ -23,6 +24,7 @@ interface Task {
   actualMinutes: number
   scheduledTime?: string | null
   category?: Category | null
+  subtasks?: Subtask[]
 }
 
 interface TaskItemProps {
@@ -103,7 +105,7 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
           </p>
         )}
 
-        {/* Time info */}
+        {/* Time info and subtask progress */}
         <div className="flex items-center gap-2 md:gap-3 mt-1 text-[10px] md:text-xs text-muted-foreground flex-wrap">
           {task.scheduledTime && (
             <span className="flex items-center gap-1">
@@ -121,6 +123,9 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
                 </span>
               )}
             </span>
+          )}
+          {task.subtasks && task.subtasks.length > 0 && (
+            <SubtaskProgress subtasks={task.subtasks} />
           )}
         </div>
       </div>

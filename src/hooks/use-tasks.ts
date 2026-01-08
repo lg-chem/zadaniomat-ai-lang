@@ -4,16 +4,23 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
 
 export type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 
+export interface Subtask {
+  id: string
+  title: string
+  isCompleted: boolean
+  order: number
+}
+
 export interface Task {
   id: string
   title: string
-  description?: string
+  description?: string | null
   status: TaskStatus
   priority: number
-  plannedMinutes?: number
+  plannedMinutes?: number | null
   actualMinutes: number
-  scheduledDate?: string
-  scheduledTime?: string
+  scheduledDate?: string | null
+  scheduledTime?: string | null
   orderInDay: number
   categoryId?: string | null
   goalId?: string | null
@@ -23,11 +30,12 @@ export interface Task {
     id: string
     name: string
     color: string
-  }
+  } | null
   goal?: {
     id: string
     title: string
   } | null
+  subtasks?: Subtask[]
 }
 
 interface UseTasksOptions {

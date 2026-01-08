@@ -28,6 +28,9 @@ export async function GET(
         category: true,
         timeEntries: true,
         subTasks: true,
+        subtasks: {
+          orderBy: { order: "asc" },
+        },
         assignedTo: {
           select: { id: true, name: true, email: true, image: true }
         },
@@ -181,6 +184,9 @@ export async function PATCH(
       data: updateData,
       include: {
         category: true,
+        subtasks: {
+          orderBy: { order: "asc" },
+        },
         assignedTo: {
           select: { id: true, name: true, email: true, image: true }
         },

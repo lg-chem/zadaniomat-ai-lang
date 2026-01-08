@@ -84,6 +84,9 @@ export async function GET(req: Request) {
           orderBy: { startTime: "desc" },
           take: 5,
         },
+        subtasks: {
+          orderBy: { order: "asc" },
+        },
         assignedTo: {
           select: { id: true, name: true, email: true, image: true }
         },
@@ -193,6 +196,9 @@ export async function POST(req: Request) {
         category: true,
         goal: {
           select: { id: true, title: true },
+        },
+        subtasks: {
+          orderBy: { order: "asc" },
         },
         assignedTo: {
           select: { id: true, name: true, email: true, image: true }
