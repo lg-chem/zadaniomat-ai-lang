@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton, SkeletonStats, SkeletonTable } from "@/components/ui/skeleton"
 import {
@@ -58,7 +59,8 @@ import { WeekStrip } from "@/components/schedule/week-strip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { TaskEditDialog } from "@/components/tasks/task-edit-dialog"
-import { SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
+import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
+import { ChevronDown, ChevronUp } from "lucide-react"
 
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
 
@@ -192,6 +194,9 @@ export default function SchedulePage() {
 
   // Full task edit dialog state
   const [editingFullTask, setEditingFullTask] = useState<Task | null>(null)
+
+  // Expanded task state (for inline editing)
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   // Generate recurring tasks on date change and reset hidden templates
   useEffect(() => {
@@ -1209,25 +1214,46 @@ export default function SchedulePage() {
                             </div>
                           )}
                           {task.plannedMinutes && <span className="text-muted-foreground">• {task.plannedMinutes} min</span>}
+                          {task.subtasks && task.subtasks.length > 0 && <SubtaskProgress subtasks={task.subtasks} />}
                         </div>
-                        {/* Subtask progress */}
-                        {task.subtasks && task.subtasks.length > 0 && (
-                          <div className="pt-1">
-                            <SubtaskProgress subtasks={task.subtasks} />
-                          </div>
-                        )}
                         <div className="flex items-center gap-1 pt-1">
                           <Button size="sm" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} className="h-7 text-xs">
                             Zakończ
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditingFullTask(task)} className="h-7 text-xs">
-                            <FileText className="h-3 w-3 mr-1" />
+                          <Button size="sm" variant={expandedTaskId === task.id ? "default" : "outline"} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} className="h-7 text-xs">
+                            {expandedTaskId === task.id ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
                             Szczegóły
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
+                        {/* Expanded section */}
+                        {expandedTaskId === task.id && (
+                          <div className="pt-2 space-y-3 border-t mt-2">
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
+                              <Textarea
+                                value={task.description || ""}
+                                onChange={async (e) => {
+                                  await fetch(`/api/tasks/${task.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ description: e.target.value || null }),
+                                  })
+                                  mutateTasks()
+                                }}
+                                placeholder="Dodaj opis..."
+                                rows={2}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
+                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={() => mutateTasks()} />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1271,13 +1297,8 @@ export default function SchedulePage() {
                             </div>
                           )}
                           {task.plannedMinutes && <span className="text-muted-foreground">• {task.plannedMinutes} min</span>}
+                          {task.subtasks && task.subtasks.length > 0 && <SubtaskProgress subtasks={task.subtasks} />}
                         </div>
-                        {/* Subtask progress */}
-                        {task.subtasks && task.subtasks.length > 0 && (
-                          <div className="pt-1">
-                            <SubtaskProgress subtasks={task.subtasks} />
-                          </div>
-                        )}
                         <div className="flex items-center gap-1 pt-1">
                           <Button size="sm" variant="outline" onClick={() => handleStartTimer(task)} className="h-7 text-xs">
                             <Play className="h-3 w-3 mr-1" />
@@ -1286,13 +1307,39 @@ export default function SchedulePage() {
                           <Button size="sm" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")} className="h-7 text-xs">
                             Zakończ
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditingFullTask(task)} className="h-7 text-xs">
-                            <FileText className="h-3 w-3" />
+                          <Button size="sm" variant={expandedTaskId === task.id ? "default" : "outline"} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} className="h-7 text-xs">
+                            {expandedTaskId === task.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
+                        {/* Expanded section */}
+                        {expandedTaskId === task.id && (
+                          <div className="pt-2 space-y-3 border-t mt-2">
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
+                              <Textarea
+                                value={task.description || ""}
+                                onChange={async (e) => {
+                                  await fetch(`/api/tasks/${task.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ description: e.target.value || null }),
+                                  })
+                                  mutateTasks()
+                                }}
+                                placeholder="Dodaj opis..."
+                                rows={2}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
+                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={() => mutateTasks()} />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1559,72 +1606,108 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.IN_PROGRESS.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-primary/5 border-l-2 border-l-blue-500">
-                    <div>
-                      <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue>
-                            {task.category ? (
-                              <div className="flex items-center gap-2">
-                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
-                                <span className="truncate">{task.category.name}</span>
-                              </div>
-                            ) : (<span className="text-muted-foreground">Brak</span>)}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
-                          {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
-                        </SelectContent>
-                      </Select>
+                  <div key={task.id} className="border-b border-l-2 border-l-blue-500">
+                    <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
+                      <div>
+                        <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue>
+                              {task.category ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                                  <span className="truncate">{task.category.name}</span>
+                                </div>
+                              ) : (<span className="text-muted-foreground">Brak</span>)}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
+                            {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {editingTaskId === task.id ? (
+                          <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
+                        ) : (
+                          <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 flex-1" onClick={() => handleStartEdit(task)}>
+                            {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                            <span className="truncate">{task.title}</span>
+                          </div>
+                        )}
+                        {task.subtasks && task.subtasks.length > 0 && <SubtaskProgress subtasks={task.subtasks} />}
+                      </div>
+                      {/* Planned Time - click to edit */}
+                      <div>
+                        {editingTimeTaskId === task.id ? (
+                          <Input type="number" min="5" step="5" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} onBlur={() => handleSaveTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveTime(task.id); if (e.key === "Escape") setEditingTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                        ) : (
+                          <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
+                        )}
+                      </div>
+                      {/* Actual Time - click to edit */}
+                      <div>
+                        {editingActualTimeTaskId === task.id ? (
+                          <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                        ) : (
+                          <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
+                        )}
+                      </div>
+                      {/* Actions - bigger buttons */}
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant={timerStore.taskId === task.id ? "default" : "outline"} className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
+                          {timerStore.taskId === task.id ? (timerStore.isPaused ? <Play className="h-4 w-4 mr-1" /> : <Pause className="h-4 w-4 mr-1" />) : <Play className="h-4 w-4 mr-1" />}
+                          {timerStore.taskId === task.id ? (timerStore.isPaused ? "Wznów" : "Pauza") : "Start"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}>
+                          <Check className="h-4 w-4 mr-1 text-green-500" />
+                          Gotowe
+                        </Button>
+                        <Button size="sm" variant={expandedTaskId === task.id ? "default" : "ghost"} className="h-9 px-2" onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} title="Rozwiń szczegóły">
+                          {expandedTaskId === task.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                        <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
+                          <PopoverTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="end">
+                            <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
+                          </PopoverContent>
+                        </Popover>
+                        <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      </div>
                     </div>
-                    <div>
-                      {editingTaskId === task.id ? (
-                        <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
-                      ) : (
-                        <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2" onClick={() => handleStartEdit(task)}>
-                          {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                          <span className="truncate">{task.title}</span>
+                    {/* Expanded section with description and subtasks */}
+                    {expandedTaskId === task.id && (
+                      <div className="px-4 py-3 bg-muted/30 border-t space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
+                          <Textarea
+                            value={task.description || ""}
+                            onChange={async (e) => {
+                              const newDescription = e.target.value
+                              await fetch(`/api/tasks/${task.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ description: newDescription || null }),
+                              })
+                              mutateTasks()
+                            }}
+                            placeholder="Dodaj opis zadania..."
+                            rows={2}
+                            className="text-sm"
+                          />
                         </div>
-                      )}
-                    </div>
-                    {/* Planned Time - click to edit */}
-                    <div>
-                      {editingTimeTaskId === task.id ? (
-                        <Input type="number" min="5" step="5" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} onBlur={() => handleSaveTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveTime(task.id); if (e.key === "Escape") setEditingTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
-                      ) : (
-                        <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
-                      )}
-                    </div>
-                    {/* Actual Time - click to edit */}
-                    <div>
-                      {editingActualTimeTaskId === task.id ? (
-                        <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
-                      ) : (
-                        <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
-                      )}
-                    </div>
-                    {/* Actions - bigger buttons */}
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant={timerStore.taskId === task.id ? "default" : "outline"} className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
-                        {timerStore.taskId === task.id ? (timerStore.isPaused ? <Play className="h-4 w-4 mr-1" /> : <Pause className="h-4 w-4 mr-1" />) : <Play className="h-4 w-4 mr-1" />}
-                        {timerStore.taskId === task.id ? (timerStore.isPaused ? "Wznów" : "Pauza") : "Start"}
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}>
-                        <Check className="h-4 w-4 mr-1 text-green-500" />
-                        Gotowe
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setEditingFullTask(task)} title="Szczegóły i checklista"><FileText className="h-4 w-4" /></Button>
-                      <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
-                        <PopoverTrigger asChild>
-                          <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="end">
-                          <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
-                        </PopoverContent>
-                      </Popover>
-                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                    </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
+                          <SubtaskList
+                            taskId={task.id}
+                            subtasks={task.subtasks || []}
+                            onSubtasksChange={() => mutateTasks()}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </>
@@ -1640,73 +1723,109 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.NEW.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center hover:bg-muted/20 transition-colors">
-                    <div>
-                      <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue>
-                            {task.category ? (
-                              <div className="flex items-center gap-2">
-                                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
-                                <span className="truncate">{task.category.name}</span>
-                              </div>
-                            ) : (<span className="text-muted-foreground">Brak</span>)}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
-                          {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
-                        </SelectContent>
-                      </Select>
+                  <div key={task.id} className="border-b hover:bg-muted/20 transition-colors">
+                    <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 items-center">
+                      <div>
+                        <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue>
+                              {task.category ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: task.category.color }} />
+                                  <span className="truncate">{task.category.name}</span>
+                                </div>
+                              ) : (<span className="text-muted-foreground">Brak</span>)}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none"><span className="text-muted-foreground">Brak kategorii</span></SelectItem>
+                            {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {editingTaskId === task.id ? (
+                          <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
+                        ) : (
+                          <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 flex-1" onClick={() => handleStartEdit(task)}>
+                            {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                            <span className="truncate">{task.title}</span>
+                          </div>
+                        )}
+                        {task.subtasks && task.subtasks.length > 0 && <SubtaskProgress subtasks={task.subtasks} />}
+                      </div>
+                      {/* Planned Time - click to edit */}
+                      <div>
+                        {editingTimeTaskId === task.id ? (
+                          <Input type="number" min="5" step="5" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} onBlur={() => handleSaveTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveTime(task.id); if (e.key === "Escape") setEditingTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                        ) : (
+                          <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
+                        )}
+                      </div>
+                      {/* Actual Time - click to edit */}
+                      <div>
+                        {editingActualTimeTaskId === task.id ? (
+                          <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
+                        ) : (
+                          <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
+                        )}
+                      </div>
+                      {/* Actions - bigger buttons */}
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
+                          <Play className="h-4 w-4 mr-1" />
+                          Start
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}>
+                          <Check className="h-4 w-4 mr-1 text-green-500" />
+                          Gotowe
+                        </Button>
+                        <Button size="sm" variant={expandedTaskId === task.id ? "default" : "ghost"} className="h-9 px-2" onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} title="Rozwiń szczegóły">
+                          {expandedTaskId === task.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                        <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
+                          <PopoverTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="end">
+                            <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
+                          </PopoverContent>
+                        </Popover>
+                        <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")}><X className="h-4 w-4 text-red-500" /></Button>
+                        <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      </div>
                     </div>
-                    <div>
-                      {editingTaskId === task.id ? (
-                        <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
-                      ) : (
-                        <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2" onClick={() => handleStartEdit(task)}>
-                          {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                          <span className="truncate">{task.title}</span>
+                    {/* Expanded section with description and subtasks */}
+                    {expandedTaskId === task.id && (
+                      <div className="px-4 py-3 bg-muted/30 border-t space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
+                          <Textarea
+                            value={task.description || ""}
+                            onChange={async (e) => {
+                              const newDescription = e.target.value
+                              await fetch(`/api/tasks/${task.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ description: newDescription || null }),
+                              })
+                              mutateTasks()
+                            }}
+                            placeholder="Dodaj opis zadania..."
+                            rows={2}
+                            className="text-sm"
+                          />
                         </div>
-                      )}
-                    </div>
-                    {/* Planned Time - click to edit */}
-                    <div>
-                      {editingTimeTaskId === task.id ? (
-                        <Input type="number" min="5" step="5" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} onBlur={() => handleSaveTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveTime(task.id); if (e.key === "Escape") setEditingTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
-                      ) : (
-                        <div className="text-center text-xs cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditTime(task)}>{task.plannedMinutes || 25}</div>
-                      )}
-                    </div>
-                    {/* Actual Time - click to edit */}
-                    <div>
-                      {editingActualTimeTaskId === task.id ? (
-                        <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
-                      ) : (
-                        <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
-                      )}
-                    </div>
-                    {/* Actions - bigger buttons */}
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleTimerToggle(task)}>
-                        <Play className="h-4 w-4 mr-1" />
-                        Start
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => handleUpdateTaskStatus(task.id, "COMPLETED")}>
-                        <Check className="h-4 w-4 mr-1 text-green-500" />
-                        Gotowe
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setEditingFullTask(task)} title="Szczegóły i checklista"><FileText className="h-4 w-4" /></Button>
-                      <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
-                        <PopoverTrigger asChild>
-                          <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="end">
-                          <CalendarComponent mode="single" selected={undefined} onSelect={(date) => date && handleCopyTask(task.id, date)} initialFocus />
-                        </PopoverContent>
-                      </Popover>
-                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "CANCELLED")}><X className="h-4 w-4 text-red-500" /></Button>
-                      <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                    </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
+                          <SubtaskList
+                            taskId={task.id}
+                            subtasks={task.subtasks || []}
+                            onSubtasksChange={() => mutateTasks()}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </>
