@@ -144,6 +144,13 @@ export function SidebarContent() {
   )
   const pendingInvitationsCount = groupChallengeInvitations.length
 
+  // Fetch task stack count (only in WORK workspace)
+  const { data: taskStackTasks = [] } = useSWR<Array<{ id: string }>>(
+    workspace === "WORK" ? "/api/tasks/stack" : null,
+    fetcher
+  )
+  const taskStackCount = taskStackTasks.length
+
   // Fetch user's organizations
   const { data: orgsData, isLoading: isLoadingOrgs } = useSWR<OrganizationsResponse>(
     workspace === "WORK" ? "/api/organizations" : null,
@@ -304,7 +311,9 @@ export function SidebarContent() {
         /* Regular Navigation */
         <nav className="flex-1 overflow-y-auto space-y-1 p-4">
           {navItems.map((item) => {
-            const showBadge = item.href === "/group-challenges" && pendingInvitationsCount > 0
+            const showGroupChallengeBadge = item.href === "/group-challenges" && pendingInvitationsCount > 0
+            const showTaskStackBadge = item.href === "/task-stack" && taskStackCount > 0
+            const badgeCount = showTaskStackBadge ? taskStackCount : showGroupChallengeBadge ? pendingInvitationsCount : 0
             return (
               <Link
                 key={item.href}
@@ -322,9 +331,9 @@ export function SidebarContent() {
               >
                 <item.icon className="h-5 w-5" />
                 <span className="flex-1">{item.label}</span>
-                {showBadge && (
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                    {pendingInvitationsCount}
+                {(showGroupChallengeBadge || showTaskStackBadge) && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                    {badgeCount}
                   </span>
                 )}
               </Link>
