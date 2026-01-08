@@ -24,7 +24,6 @@ import { cn } from "@/lib/utils"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
 import { TaskComments } from "@/components/tasks/task-comments"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
-import { useCategories } from "@/hooks/use-categories"
 
 interface Category {
   id: string
@@ -101,8 +100,6 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"comments" | "details">("details")
 
-  // Fetch user's personal categories for task assignment
-  const { categories: userCategories } = useCategories()
 
   // Fetch tasks assigned by me (I created them for employees)
   const { data: assignedTasks, mutate: mutateAssigned } = useSWR<Task[]>(
@@ -463,7 +460,7 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
         onOpenChange={setShowAssignTask}
         organizationId={teamId}
         assignedToId={selectedMemberId}
-        categories={userCategories}
+        categories={categories}
         members={members}
         onSuccess={handleTaskSuccess}
       />
