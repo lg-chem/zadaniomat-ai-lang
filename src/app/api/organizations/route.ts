@@ -18,13 +18,22 @@ export async function GET() {
         owner: { select: { id: true, name: true, email: true } },
         members: {
           include: {
-            user: { select: { id: true, name: true, email: true } },
+            user: { select: { id: true, name: true, email: true, image: true } },
             assignedCategories: {
               include: { category: true }
             }
           }
         },
-        categories: true,
+        // Use new many-to-many relation
+        categoryLinks: {
+          include: {
+            category: {
+              include: {
+                _count: { select: { tasks: true } }
+              }
+            }
+          }
+        },
         _count: { select: { tasks: true, members: true } }
       },
       orderBy: { createdAt: "desc" }
@@ -41,10 +50,20 @@ export async function GET() {
       include: {
         owner: { select: { id: true, name: true, email: true } },
         members: {
-          where: { userId: session.user.id },
           include: {
+            user: { select: { id: true, name: true, email: true, image: true } },
             assignedCategories: {
               include: { category: true }
+            }
+          }
+        },
+        // Use new many-to-many relation
+        categoryLinks: {
+          include: {
+            category: {
+              include: {
+                _count: { select: { tasks: true } }
+              }
             }
           }
         },
@@ -53,15 +72,17 @@ export async function GET() {
       orderBy: { createdAt: "desc" }
     })
 
-    // Add sidebarConfig to memberOrganizations response
-    const memberOrgsWithConfig = memberOrganizations.map(org => ({
-      ...org,
-      sidebarConfig: org.sidebarConfig
-    }))
+    // Transform categoryLinks to categories array for frontend compatibility
+    const transformOrg = (org: typeof ownedOrganizations[0]) => {
+      const categories = org.categoryLinks.map(link => link.category)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { categoryLinks, ...rest } = org
+      return { ...rest, categories }
+    }
 
     return NextResponse.json({
-      owned: ownedOrganizations,
-      memberOf: memberOrgsWithConfig
+      owned: ownedOrganizations.map(transformOrg),
+      memberOf: memberOrganizations.map(transformOrg)
     })
   } catch (error) {
     console.error("Error fetching organizations:", error)

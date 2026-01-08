@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
+import { useSession } from "next-auth/react"
 import {
   Layers,
   Calendar,
@@ -13,11 +14,13 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -32,9 +35,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { TeamTasksTab } from "@/components/teams/team-tasks-tab"
 import useSWR from "swr"
 
 interface Task {
@@ -61,6 +72,37 @@ interface Task {
   }
 }
 
+interface TeamMember {
+  id: string
+  role: "OWNER" | "MEMBER"
+  user: {
+    id: string
+    name: string
+    email: string
+    image?: string
+  }
+}
+
+interface TeamCategory {
+  id: string
+  name: string
+  color: string
+}
+
+interface Team {
+  id: string
+  name: string
+  ownerId: string
+  isOwner?: boolean
+  members: TeamMember[]
+  categories: TeamCategory[]
+}
+
+interface TeamsResponse {
+  owned: Team[]
+  memberOf: Team[]
+}
+
 const priorityLabels: Record<number, { label: string; color: string }> = {
   0: { label: "Brak", color: "bg-gray-100 text-gray-600" },
   1: { label: "Niski", color: "bg-blue-100 text-blue-700" },
@@ -69,7 +111,18 @@ const priorityLabels: Record<number, { label: string; color: string }> = {
 }
 
 export default function TaskStackPage() {
+  const { data: session } = useSession()
   const { data: tasks, isLoading, mutate } = useSWR<Task[]>("/api/tasks/stack")
+  const { data: teamsData } = useSWR<TeamsResponse>("/api/organizations")
+
+  // Combine owned and member teams
+  const allTeams: Team[] = [
+    ...(teamsData?.owned?.map(t => ({ ...t, isOwner: true })) || []),
+    ...(teamsData?.memberOf?.map(t => ({ ...t, isOwner: false })) || [])
+  ]
+
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("")
+  const selectedTeam = allTeams.find(t => t.id === selectedTeamId)
 
   const [schedulingTask, setSchedulingTask] = useState<Task | null>(null)
   const [scheduleDate, setScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"))
@@ -193,31 +246,48 @@ export default function TaskStackPage() {
         </p>
       </div>
 
-      {/* Stats */}
-      <Card>
-        <CardContent className="flex items-center gap-8 py-4">
-          <div>
-            <div className="text-sm text-muted-foreground">Do zaplanowania</div>
-            <div className="text-2xl font-bold">{tasks?.length || 0}</div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Wysoki priorytet</div>
-            <div className="text-2xl font-bold text-red-500">
-              {tasks?.filter((t) => t.priority === 3).length || 0}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Tabs for personal vs team tasks */}
+      <Tabs defaultValue="my-tasks" className="w-full">
+        <TabsList>
+          <TabsTrigger value="my-tasks" className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            Moje zadania
+          </TabsTrigger>
+          {allTeams.length > 0 && (
+            <TabsTrigger value="team-tasks" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Zadania zespołu
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-      {/* Task List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Przydzielone zadania</CardTitle>
-          <CardDescription>
-            Kliknij "Zaplanuj" aby dodać zadanie do swojego harmonogramu
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        {/* My Tasks Tab */}
+        <TabsContent value="my-tasks" className="space-y-4 mt-4">
+          {/* Stats */}
+          <Card>
+            <CardContent className="flex items-center gap-8 py-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Do zaplanowania</div>
+                <div className="text-2xl font-bold">{tasks?.length || 0}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Wysoki priorytet</div>
+                <div className="text-2xl font-bold text-red-500">
+                  {tasks?.filter((t) => t.priority === 3).length || 0}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Task List */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Przydzielone zadania</CardTitle>
+              <CardDescription>
+                Kliknij "Zaplanuj" aby dodać zadanie do swojego harmonogramu
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
           {!tasks || tasks.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Layers className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -321,8 +391,54 @@ export default function TaskStackPage() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Team Tasks Tab */}
+        {allTeams.length > 0 && (
+          <TabsContent value="team-tasks" className="space-y-4 mt-4">
+            {/* Team Selector */}
+            {allTeams.length > 1 && (
+              <div className="flex items-center gap-4">
+                <Label>Wybierz zespół:</Label>
+                <Select
+                  value={selectedTeamId || allTeams[0]?.id || ""}
+                  onValueChange={setSelectedTeamId}
+                >
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Wybierz zespół" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allTeams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          {team.name}
+                          {team.isOwner && (
+                            <Badge variant="secondary" className="text-xs">Admin</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* TeamTasksTab component */}
+            {session?.user?.id && (selectedTeam || allTeams[0]) && (
+              <TeamTasksTab
+                teamId={(selectedTeam || allTeams[0]).id}
+                categories={(selectedTeam || allTeams[0]).categories || []}
+                members={(selectedTeam || allTeams[0]).members || []}
+                isOwner={(selectedTeam || allTeams[0]).isOwner || false}
+                currentUserId={session.user.id}
+              />
+            )}
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* Schedule Dialog */}
       <Dialog open={!!schedulingTask} onOpenChange={(open) => !open && setSchedulingTask(null)}>
