@@ -1224,6 +1224,10 @@ export default function SchedulePage() {
                             {expandedTaskId === task.id ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
                             Szczegóły
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingFullTask(task)} className="h-7 text-xs">
+                            <Edit3 className="h-3 w-3 mr-1" />
+                            Edytuj
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -1234,14 +1238,16 @@ export default function SchedulePage() {
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
                               <Textarea
-                                value={task.description || ""}
-                                onChange={async (e) => {
-                                  await fetch(`/api/tasks/${task.id}`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ description: e.target.value || null }),
-                                  })
-                                  mutateTasks()
+                                defaultValue={task.description || ""}
+                                onBlur={async (e) => {
+                                  if (e.target.value !== (task.description || "")) {
+                                    await fetch(`/api/tasks/${task.id}`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ description: e.target.value || null }),
+                                    })
+                                    mutateTasks()
+                                  }
                                 }}
                                 placeholder="Dodaj opis..."
                                 rows={2}
@@ -1250,7 +1256,9 @@ export default function SchedulePage() {
                             </div>
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
-                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={() => mutateTasks()} />
+                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={(newSubtasks) => {
+                                // Only mutate when subtasks actually change (not for toggle which is already optimistic)
+                              }} />
                             </div>
                           </div>
                         )}
@@ -1310,6 +1318,9 @@ export default function SchedulePage() {
                           <Button size="sm" variant={expandedTaskId === task.id ? "default" : "outline"} onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} className="h-7 text-xs">
                             {expandedTaskId === task.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingFullTask(task)} className="h-7 text-xs">
+                            <Edit3 className="h-3 w-3" />
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDeleteTask(task.id)} className="h-7 text-xs">
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -1320,14 +1331,16 @@ export default function SchedulePage() {
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
                               <Textarea
-                                value={task.description || ""}
-                                onChange={async (e) => {
-                                  await fetch(`/api/tasks/${task.id}`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ description: e.target.value || null }),
-                                  })
-                                  mutateTasks()
+                                defaultValue={task.description || ""}
+                                onBlur={async (e) => {
+                                  if (e.target.value !== (task.description || "")) {
+                                    await fetch(`/api/tasks/${task.id}`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ description: e.target.value || null }),
+                                    })
+                                    mutateTasks()
+                                  }
                                 }}
                                 placeholder="Dodaj opis..."
                                 rows={2}
@@ -1336,7 +1349,9 @@ export default function SchedulePage() {
                             </div>
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
-                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={() => mutateTasks()} />
+                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={(newSubtasks) => {
+                                // Only mutate when subtasks actually change (not for toggle which is already optimistic)
+                              }} />
                             </div>
                           </div>
                         )}
@@ -1666,6 +1681,9 @@ export default function SchedulePage() {
                         <Button size="sm" variant={expandedTaskId === task.id ? "default" : "ghost"} className="h-9 px-2" onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} title="Rozwiń szczegóły">
                           {expandedTaskId === task.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         </Button>
+                        <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setEditingFullTask(task)} title="Edytuj szczegóły">
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
                         <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
                           <PopoverTrigger asChild>
                             <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
@@ -1683,15 +1701,16 @@ export default function SchedulePage() {
                         <div>
                           <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
                           <Textarea
-                            value={task.description || ""}
-                            onChange={async (e) => {
-                              const newDescription = e.target.value
-                              await fetch(`/api/tasks/${task.id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ description: newDescription || null }),
-                              })
-                              mutateTasks()
+                            defaultValue={task.description || ""}
+                            onBlur={async (e) => {
+                              if (e.target.value !== (task.description || "")) {
+                                await fetch(`/api/tasks/${task.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ description: e.target.value || null }),
+                                })
+                                mutateTasks()
+                              }
                             }}
                             placeholder="Dodaj opis zadania..."
                             rows={2}
@@ -1703,7 +1722,9 @@ export default function SchedulePage() {
                           <SubtaskList
                             taskId={task.id}
                             subtasks={task.subtasks || []}
-                            onSubtasksChange={() => mutateTasks()}
+                            onSubtasksChange={(newSubtasks) => {
+                              // SubtaskList already does optimistic updates internally
+                            }}
                           />
                         </div>
                       </div>
@@ -1783,6 +1804,9 @@ export default function SchedulePage() {
                         <Button size="sm" variant={expandedTaskId === task.id ? "default" : "ghost"} className="h-9 px-2" onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} title="Rozwiń szczegóły">
                           {expandedTaskId === task.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         </Button>
+                        <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => setEditingFullTask(task)} title="Edytuj szczegóły">
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
                         <Popover open={copyTaskId === task.id} onOpenChange={(open) => setCopyTaskId(open ? task.id : null)}>
                           <PopoverTrigger asChild>
                             <Button size="sm" variant="ghost" className="h-9 px-2"><Copy className="h-4 w-4" /></Button>
@@ -1801,15 +1825,16 @@ export default function SchedulePage() {
                         <div>
                           <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
                           <Textarea
-                            value={task.description || ""}
-                            onChange={async (e) => {
-                              const newDescription = e.target.value
-                              await fetch(`/api/tasks/${task.id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ description: newDescription || null }),
-                              })
-                              mutateTasks()
+                            defaultValue={task.description || ""}
+                            onBlur={async (e) => {
+                              if (e.target.value !== (task.description || "")) {
+                                await fetch(`/api/tasks/${task.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ description: e.target.value || null }),
+                                })
+                                mutateTasks()
+                              }
                             }}
                             placeholder="Dodaj opis zadania..."
                             rows={2}
@@ -1821,7 +1846,9 @@ export default function SchedulePage() {
                           <SubtaskList
                             taskId={task.id}
                             subtasks={task.subtasks || []}
-                            onSubtasksChange={() => mutateTasks()}
+                            onSubtasksChange={(newSubtasks) => {
+                              // SubtaskList already does optimistic updates internally
+                            }}
                           />
                         </div>
                       </div>
