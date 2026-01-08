@@ -106,6 +106,7 @@ model UserSettings {
   workDayStart          String   @default("09:00")
   workDayEnd            String   @default("17:00")
   taskStatuses          Json     @default("[\"TODO\", \"IN_PROGRESS\", \"DONE\"]")
+  employeeSidebarConfig Json?    // Admin's config for what employees see in sidebar
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

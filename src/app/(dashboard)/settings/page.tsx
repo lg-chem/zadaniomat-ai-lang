@@ -239,17 +239,23 @@ export default function SettingsPage() {
         const data = await res.json()
         if (data.owned && data.owned.length > 0) {
           setOwnedOrganizations(data.owned)
-          // Fetch sidebar config for first owned organization
-          const orgId = data.owned[0].id
-          const configRes = await fetch(`/api/organizations/${orgId}/sidebar-config`)
-          if (configRes.ok) {
-            const configData = await configRes.json()
-            setSidebarConfig(configData.config)
-          }
         }
       }
     } catch (error) {
       console.error("Error fetching organizations:", error)
+    }
+  }, [])
+
+  // Fetch global employee sidebar config (stored in admin's UserSettings)
+  const fetchEmployeeSidebarConfig = useCallback(async () => {
+    try {
+      const configRes = await fetch("/api/admin/employee-sidebar-config")
+      if (configRes.ok) {
+        const configData = await configRes.json()
+        setSidebarConfig(configData.config)
+      }
+    } catch (error) {
+      console.error("Error fetching sidebar config:", error)
     }
   }, [])
 
@@ -287,7 +293,8 @@ export default function SettingsPage() {
     fetchKnowledgeBase()
     fetchAdminReports()
     fetchOrganizations()
-  }, [fetchCategories, fetchKnowledgeBase, fetchAdminReports, fetchOrganizations])
+    fetchEmployeeSidebarConfig()
+  }, [fetchCategories, fetchKnowledgeBase, fetchAdminReports, fetchOrganizations, fetchEmployeeSidebarConfig])
 
   const handleCreateCategory = async () => {
     if (!newRow.name.trim()) return
@@ -443,18 +450,13 @@ export default function SettingsPage() {
   }
 
   const handleSaveSidebarConfig = async () => {
-    if (ownedOrganizations.length === 0) return
-
     setIsSavingSidebar(true)
     try {
-      const res = await fetch(
-        `/api/organizations/${ownedOrganizations[0].id}/sidebar-config`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config: sidebarConfig }),
-        }
-      )
+      const res = await fetch("/api/admin/employee-sidebar-config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: sidebarConfig }),
+      })
       if (res.ok) {
         setSidebarConfigDirty(false)
       }

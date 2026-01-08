@@ -144,9 +144,15 @@ export function SidebarContent() {
   )
   const pendingInvitationsCount = groupChallengeInvitations.length
 
-  // Fetch user's organizations to get sidebar config
+  // Fetch user's organizations
   const { data: orgsData, isLoading: isLoadingOrgs } = useSWR<OrganizationsResponse>(
     workspace === "WORK" ? "/api/organizations" : null,
+    fetcher
+  )
+
+  // Fetch global employee sidebar config
+  const { data: employeeSidebarData } = useSWR<{ config: SidebarConfigItem[] }>(
+    workspace === "WORK" ? "/api/admin/employee-sidebar-config" : null,
     fetcher
   )
 
@@ -159,19 +165,19 @@ export function SidebarContent() {
     })
   }
 
-  // Determine if user is admin in any organization (owner sees all tabs)
+  // Determine if user is admin/owner (sees all tabs)
   const isTeamOwner = orgsData?.owned && orgsData.owned.length > 0
-  const memberOrgs = orgsData?.memberOf || []
+  const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN"
 
-  // Get sidebar config from first org where user is member (not owner)
-  const sidebarConfig = memberOrgs.length > 0 && !isTeamOwner
-    ? memberOrgs[0]?.sidebarConfig
+  // Use global employee sidebar config for non-admins
+  const sidebarConfig = (!isTeamOwner && !isAdmin && employeeSidebarData?.config)
+    ? employeeSidebarData.config
     : null
 
   // Apply sidebar config to nav items for members
   const getFilteredWorkNavItems = () => {
     // Admins/owners see all tabs
-    if (isTeamOwner || !sidebarConfig || !Array.isArray(sidebarConfig)) {
+    if (isTeamOwner || isAdmin || !sidebarConfig || !Array.isArray(sidebarConfig)) {
       return workNavItems
     }
 
