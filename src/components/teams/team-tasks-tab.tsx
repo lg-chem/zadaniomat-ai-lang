@@ -18,12 +18,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
 import { TaskComments } from "@/components/tasks/task-comments"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
+import { EditableDescription } from "@/components/tasks/editable-description"
 
 interface Category {
   id: string
@@ -144,20 +144,6 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
       mutateMyTasks()
     } catch (error) {
       console.error("Error deleting task:", error)
-    }
-  }
-
-  const handleUpdateDescription = async (taskId: string, description: string) => {
-    try {
-      await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: description || null }),
-      })
-      mutateAssigned()
-      mutateMyTasks()
-    } catch (error) {
-      console.error("Error updating description:", error)
     }
   }
 
@@ -333,16 +319,11 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
                     {/* Description */}
                     <div>
                       <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
-                      <Textarea
-                        defaultValue={task.description || ""}
-                        onBlur={(e) => {
-                          if (e.target.value !== (task.description || "")) {
-                            handleUpdateDescription(task.id, e.target.value)
-                          }
-                        }}
+                      <EditableDescription
+                        taskId={task.id}
+                        initialValue={task.description}
+                        onSaved={handleTaskSuccess}
                         placeholder="Dodaj opis zadania..."
-                        rows={2}
-                        className="text-sm"
                       />
                     </div>
 

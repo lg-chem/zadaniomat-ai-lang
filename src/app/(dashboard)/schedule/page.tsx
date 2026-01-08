@@ -60,6 +60,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { TaskEditDialog } from "@/components/tasks/task-edit-dialog"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
+import { EditableDescription } from "@/components/tasks/editable-description"
 import { ChevronDown, ChevronUp } from "lucide-react"
 
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
@@ -1237,21 +1238,10 @@ export default function SchedulePage() {
                           <div className="pt-2 space-y-3 border-t mt-2">
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
-                              <Textarea
-                                defaultValue={task.description || ""}
-                                onBlur={async (e) => {
-                                  if (e.target.value !== (task.description || "")) {
-                                    await fetch(`/api/tasks/${task.id}`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ description: e.target.value || null }),
-                                    })
-                                    mutateTasks()
-                                  }
-                                }}
-                                placeholder="Dodaj opis..."
-                                rows={2}
-                                className="text-sm"
+                              <EditableDescription
+                                taskId={task.id}
+                                initialValue={task.description}
+                                onSaved={() => mutateTasks()}
                               />
                             </div>
                             <div>
@@ -1330,21 +1320,10 @@ export default function SchedulePage() {
                           <div className="pt-2 space-y-3 border-t mt-2">
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
-                              <Textarea
-                                defaultValue={task.description || ""}
-                                onBlur={async (e) => {
-                                  if (e.target.value !== (task.description || "")) {
-                                    await fetch(`/api/tasks/${task.id}`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ description: e.target.value || null }),
-                                    })
-                                    mutateTasks()
-                                  }
-                                }}
-                                placeholder="Dodaj opis..."
-                                rows={2}
-                                className="text-sm"
+                              <EditableDescription
+                                taskId={task.id}
+                                initialValue={task.description}
+                                onSaved={() => mutateTasks()}
                               />
                             </div>
                             <div>
@@ -1700,21 +1679,11 @@ export default function SchedulePage() {
                       <div className="px-4 py-3 bg-muted/30 border-t space-y-3">
                         <div>
                           <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
-                          <Textarea
-                            defaultValue={task.description || ""}
-                            onBlur={async (e) => {
-                              if (e.target.value !== (task.description || "")) {
-                                await fetch(`/api/tasks/${task.id}`, {
-                                  method: "PATCH",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ description: e.target.value || null }),
-                                })
-                                mutateTasks()
-                              }
-                            }}
+                          <EditableDescription
+                            taskId={task.id}
+                            initialValue={task.description}
+                            onSaved={() => mutateTasks()}
                             placeholder="Dodaj opis zadania..."
-                            rows={2}
-                            className="text-sm"
                           />
                         </div>
                         <div>
@@ -1824,21 +1793,11 @@ export default function SchedulePage() {
                       <div className="px-4 py-3 bg-muted/30 border-t space-y-3">
                         <div>
                           <label className="text-xs font-medium text-muted-foreground mb-1 block">Opis</label>
-                          <Textarea
-                            defaultValue={task.description || ""}
-                            onBlur={async (e) => {
-                              if (e.target.value !== (task.description || "")) {
-                                await fetch(`/api/tasks/${task.id}`, {
-                                  method: "PATCH",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ description: e.target.value || null }),
-                                })
-                                mutateTasks()
-                              }
-                            }}
+                          <EditableDescription
+                            taskId={task.id}
+                            initialValue={task.description}
+                            onSaved={() => mutateTasks()}
                             placeholder="Dodaj opis zadania..."
-                            rows={2}
-                            className="text-sm"
                           />
                         </div>
                         <div>
