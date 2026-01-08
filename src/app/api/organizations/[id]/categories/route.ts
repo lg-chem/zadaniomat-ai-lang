@@ -36,10 +36,29 @@ export async function GET(
       return NextResponse.json({ error: "Brak dostępu" }, { status: 403 })
     }
 
+    // Get categories via both old organizationId AND new CategoryOrganization junction
     const categories = await prisma.category.findMany({
-      where: { organizationId: id },
+      where: {
+        OR: [
+          // Legacy: direct organizationId
+          { organizationId: id },
+          // New: via CategoryOrganization junction table
+          {
+            organizations: {
+              some: {
+                organizationId: id
+              }
+            }
+          }
+        ]
+      },
       include: {
         _count: { select: { tasks: true } },
+        organizations: {
+          include: {
+            organization: { select: { id: true, name: true } }
+          }
+        },
         assignedMembers: {
           include: {
             member: {

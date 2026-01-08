@@ -30,11 +30,21 @@ export async function GET(req: Request) {
     }
 
     // Auto-sync: Get team's strategic categories and create IdeaCategories if not exist
+    // Check both legacy organizationId AND new CategoryOrganization junction
     const teamStrategicCategories = await prisma.category.findMany({
       where: {
-        organizationId,
         isStrategic: true,
         workspaceType: "WORK",
+        OR: [
+          { organizationId },
+          {
+            organizations: {
+              some: {
+                organizationId
+              }
+            }
+          }
+        ]
       },
       orderBy: [{ order: "asc" }, { name: "asc" }],
     })
