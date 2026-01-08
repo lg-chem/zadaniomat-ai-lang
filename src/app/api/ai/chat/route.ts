@@ -263,6 +263,73 @@ async function getUpcomingTasks(userId: string, days: number = 7) {
   }))
 }
 
+// Fetch and extract content from a web page
+async function fetchWebPage(url: string): Promise<{ title: string; content: string; url: string } | null> {
+  try {
+    // Validate URL
+    const parsedUrl = new URL(url)
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      return null
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ZadaniomatBot/1.0)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(10000), // 10 second timeout
+    })
+
+    if (!response.ok) {
+      return { title: "Błąd", content: `Nie udało się pobrać strony (status: ${response.status})`, url }
+    }
+
+    const html = await response.text()
+
+    // Extract title
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    const title = titleMatch ? titleMatch[1].trim() : parsedUrl.hostname
+
+    // Remove scripts, styles, and other non-content elements
+    let content = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
+      .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, "")
+      .replace(/<!--[\s\S]*?-->/g, "")
+
+    // Extract text from remaining HTML
+    content = content
+      .replace(/<[^>]+>/g, " ") // Remove all remaining tags
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, " ") // Collapse whitespace
+      .trim()
+
+    // Limit content length
+    if (content.length > 8000) {
+      content = content.substring(0, 8000) + "... (treść skrócona)"
+    }
+
+    return { title, content, url }
+  } catch (error) {
+    console.error("Error fetching webpage:", error)
+    return { title: "Błąd", content: "Nie udało się pobrać strony lub upłynął limit czasu.", url }
+  }
+}
+
+// Extract URLs from message
+function extractUrls(text: string): string[] {
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi
+  return text.match(urlRegex) || []
+}
+
 // Context fetcher dispatcher
 async function fetchContext(userId: string, contextType: string, params?: string) {
   switch (contextType) {
@@ -276,6 +343,12 @@ async function fetchContext(userId: string, contextType: string, params?: string
       return { knowledge: await getKnowledgeEntries(userId, params) }
     case "upcoming_tasks":
       return { upcomingTasks: await getUpcomingTasks(userId, params ? parseInt(params) : 7) }
+    case "webpage":
+      if (params) {
+        const webContent = await fetchWebPage(params)
+        return webContent ? { webpage: webContent } : null
+      }
+      return null
     default:
       return null
   }
@@ -332,7 +405,7 @@ ODPOWIADAJ W JSON:
 - Zwykła rozmowa: {"type": "message", "message": "..."}
 - Propozycja celów: {"type": "goals_proposal", "goals": [{"title": "...", "targetValue": N, "unit": "...", "category": "...lub null"}], "message": "..."}
 - Propozycja zadań: {"type": "tasks_proposal", "tasks": [{"title": "...", "category": "...lub null", "plannedMinutes": N}], "message": "..."}
-- Potrzebujesz więcej danych: {"type": "need_context", "contextType": "today_tasks|recent_tasks|backlog|knowledge|upcoming_tasks", "params": "opcjonalne", "message": "Co sprawdzam..."}
+- Potrzebujesz więcej danych: {"type": "need_context", "contextType": "today_tasks|recent_tasks|backlog|knowledge|upcoming_tasks|webpage", "params": "opcjonalne (dla webpage podaj URL)", "message": "Co sprawdzam..."}
 
 ZAWSZE odpowiadaj TYLKO poprawnym JSON.`
 
@@ -360,14 +433,30 @@ export async function POST(req: Request) {
     // Get minimal context
     const context = await getMinimalContext(userId)
 
+    // Detect URLs in message and auto-fetch them
+    const urls = extractUrls(message)
+    let webpageContext = ""
+    if (urls.length > 0) {
+      // Fetch up to 3 URLs to avoid timeouts
+      const urlsToFetch = urls.slice(0, 3)
+      const webpages = await Promise.all(urlsToFetch.map(url => fetchWebPage(url)))
+      const validWebpages = webpages.filter(Boolean)
+
+      if (validWebpages.length > 0) {
+        webpageContext = "\n\n[Zawartość stron z linków]:\n" + validWebpages.map(page =>
+          `--- ${page!.title} (${page!.url}) ---\n${page!.content}`
+        ).join("\n\n")
+      }
+    }
+
     // Build conversation
     const conversationHistory = history
       .map((h) => `${h.role === "user" ? "Ty" : "Ja"}: ${h.content}`)
       .join("\n")
 
     const fullPrompt = conversationHistory
-      ? `${conversationHistory}\n\nTy: ${message}`
-      : message
+      ? `${conversationHistory}\n\nTy: ${message}${webpageContext}`
+      : `${message}${webpageContext}`
 
     // Get system prompt
     const systemPrompt = getSystemPrompt(mode, context)
