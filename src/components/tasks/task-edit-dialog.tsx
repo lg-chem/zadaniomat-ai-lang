@@ -202,12 +202,15 @@ export function TaskEditDialog({
             {categories.length > 0 && (
               <div className="space-y-2">
                 <Label>Kategoria</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
+                <Select
+                  value={categoryId || "none"}
+                  onValueChange={(value) => setCategoryId(value === "none" ? "" : value)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Wybierz kategorię" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Brak kategorii</SelectItem>
+                    <SelectItem value="none">Brak kategorii</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         <div className="flex items-center gap-2">
