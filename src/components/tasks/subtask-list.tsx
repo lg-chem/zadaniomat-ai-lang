@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Plus, Trash2, GripVertical } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -22,12 +22,19 @@ interface SubtaskListProps {
 }
 
 export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = false }: SubtaskListProps) {
+  // Local state for immediate UI updates
+  const [localSubtasks, setLocalSubtasks] = useState<Subtask[]>(subtasks)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
   const [isAdding, setIsAdding] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
+
+  // Sync local state with prop when it changes from outside
+  useEffect(() => {
+    setLocalSubtasks(subtasks)
+  }, [subtasks])
 
   useEffect(() => {
     if (isAdding && inputRef.current) {
@@ -44,6 +51,18 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
   const handleAddSubtask = async () => {
     if (!newSubtaskTitle.trim()) return
 
+    // Optimistic add with temp ID
+    const tempId = `temp-${Date.now()}`
+    const tempSubtask: Subtask = {
+      id: tempId,
+      title: newSubtaskTitle.trim(),
+      isCompleted: false,
+      order: localSubtasks.length,
+    }
+    const optimisticSubtasks = [...localSubtasks, tempSubtask]
+    setLocalSubtasks(optimisticSubtasks)
+    setNewSubtaskTitle("")
+
     try {
       const res = await fetch(`/api/tasks/${taskId}/subtasks`, {
         method: "POST",
@@ -53,20 +72,26 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
 
       if (res.ok) {
         const newSubtask = await res.json()
-        onSubtasksChange([...subtasks, newSubtask])
-        setNewSubtaskTitle("")
+        // Replace temp with real subtask
+        const finalSubtasks = optimisticSubtasks.map(s =>
+          s.id === tempId ? newSubtask : s
+        )
+        setLocalSubtasks(finalSubtasks)
+        onSubtasksChange(finalSubtasks)
       }
     } catch (error) {
       console.error("Error adding subtask:", error)
+      // Revert on error
+      setLocalSubtasks(localSubtasks)
     }
   }
 
   const handleToggleSubtask = async (subtaskId: string, isCompleted: boolean) => {
-    // Optimistic update
-    const updatedSubtasks = subtasks.map(s =>
+    // Optimistic update - immediate UI response
+    const updatedSubtasks = localSubtasks.map(s =>
       s.id === subtaskId ? { ...s, isCompleted } : s
     )
-    onSubtasksChange(updatedSubtasks)
+    setLocalSubtasks(updatedSubtasks)
 
     try {
       await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
@@ -74,26 +99,29 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isCompleted }),
       })
+      // Notify parent after successful save
+      onSubtasksChange(updatedSubtasks)
     } catch (error) {
       console.error("Error toggling subtask:", error)
       // Revert on error
-      onSubtasksChange(subtasks)
+      setLocalSubtasks(localSubtasks)
     }
   }
 
   const handleDeleteSubtask = async (subtaskId: string) => {
     // Optimistic update
-    const updatedSubtasks = subtasks.filter(s => s.id !== subtaskId)
-    onSubtasksChange(updatedSubtasks)
+    const updatedSubtasks = localSubtasks.filter(s => s.id !== subtaskId)
+    setLocalSubtasks(updatedSubtasks)
 
     try {
       await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
         method: "DELETE",
       })
+      onSubtasksChange(updatedSubtasks)
     } catch (error) {
       console.error("Error deleting subtask:", error)
       // Revert on error
-      onSubtasksChange(subtasks)
+      setLocalSubtasks(localSubtasks)
     }
   }
 
@@ -109,10 +137,10 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
     }
 
     // Optimistic update
-    const updatedSubtasks = subtasks.map(s =>
+    const updatedSubtasks = localSubtasks.map(s =>
       s.id === editingId ? { ...s, title: editingTitle.trim() } : s
     )
-    onSubtasksChange(updatedSubtasks)
+    setLocalSubtasks(updatedSubtasks)
     setEditingId(null)
 
     try {
@@ -121,10 +149,11 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: editingTitle.trim() }),
       })
+      onSubtasksChange(updatedSubtasks)
     } catch (error) {
       console.error("Error updating subtask:", error)
       // Revert on error
-      onSubtasksChange(subtasks)
+      setLocalSubtasks(localSubtasks)
     }
   }
 
@@ -139,8 +168,8 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
     }
   }
 
-  const completedCount = subtasks.filter(s => s.isCompleted).length
-  const totalCount = subtasks.length
+  const completedCount = localSubtasks.filter(s => s.isCompleted).length
+  const totalCount = localSubtasks.length
   const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
   return (
@@ -161,7 +190,7 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
 
       {/* Subtask list */}
       <div className="space-y-1">
-        {subtasks.map((subtask) => (
+        {localSubtasks.map((subtask) => (
           <div
             key={subtask.id}
             className={cn(
