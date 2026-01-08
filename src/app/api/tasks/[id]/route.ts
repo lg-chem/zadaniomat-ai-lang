@@ -111,7 +111,7 @@ export async function PATCH(
 
     // Assignees can only update certain fields
     if (isAssignee && !isOwner) {
-      // Assignees can update: status, actualMinutes
+      // Assignees can update: status, actualMinutes, scheduledDate (for planning their own schedule)
       if (status !== undefined) {
         updateData.status = status
         if (status === "COMPLETED" && !existingTask.completedAt) {
@@ -132,6 +132,10 @@ export async function PATCH(
         }
       }
       if (actualMinutes !== undefined) updateData.actualMinutes = actualMinutes
+      // Allow assignees to schedule tasks in their own harmonogram
+      if (scheduledDate !== undefined)
+        updateData.scheduledDate = scheduledDate ? new Date(scheduledDate) : null
+      if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime
     } else {
       // Owners can update everything
       if (title !== undefined) updateData.title = title

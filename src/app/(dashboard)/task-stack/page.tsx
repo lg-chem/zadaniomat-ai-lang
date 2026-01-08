@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -328,6 +329,9 @@ export default function TaskStackPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Zaplanuj zadanie</DialogTitle>
+            <DialogDescription>
+              Wybierz datę, na którą chcesz zaplanować to zadanie
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -374,6 +378,9 @@ export default function TaskStackPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edytuj zadanie</DialogTitle>
+            <DialogDescription>
+              Zmień tytuł lub opis zadania
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
