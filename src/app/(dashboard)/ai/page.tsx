@@ -230,15 +230,20 @@ export default function AIPage() {
   const [periods, setPeriods] = useState<Period[]>([])
   const [lastAssistantIndex, setLastAssistantIndex] = useState<number>(-1)
 
-  // Fetch organizations to get sidebar config for AI tab visibility
+  // Fetch organizations to check if user is owner
   const { data: orgsData } = useSWR<OrganizationsResponse>("/api/organizations", fetcher)
+
+  // Fetch global employee sidebar config (same as sidebar uses)
+  const { data: employeeSidebarData } = useSWR<{ config: SidebarConfigItem[] }>(
+    "/api/admin/employee-sidebar-config",
+    fetcher
+  )
 
   // Determine if user is admin (owner) - admins see all tabs
   const isTeamOwner = orgsData?.owned && orgsData.owned.length > 0
-  const memberOrgs = orgsData?.memberOf || []
-  const sidebarConfig = memberOrgs.length > 0 && !isTeamOwner
-    ? memberOrgs[0]?.sidebarConfig
-    : null
+
+  // Use global employee sidebar config for non-owners
+  const sidebarConfig = !isTeamOwner ? employeeSidebarData?.config : null
 
   // Filter visible AI modes based on config
   const getVisibleModes = (): ChatMode[] => {
