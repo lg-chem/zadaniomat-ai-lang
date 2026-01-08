@@ -23,11 +23,20 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import useSWR from "swr"
 
+interface CategoryOrganization {
+  organization: {
+    id: string
+    name: string
+  }
+}
+
 interface Category {
   id: string
   name: string
   color: string
-  organizationId?: string | null
+  organizationId?: string | null // Legacy
+  organizations?: CategoryOrganization[]
+  isOwner?: boolean
 }
 
 interface Member {
@@ -65,10 +74,19 @@ export function ShareExistingCategoryDialog({
     open ? "/api/categories" : null
   )
 
-  // Filter out categories that are already shared with this team
-  const availableCategories = (categoriesData || []).filter(
-    (c) => !c.organizationId && !existingCategoryIds.includes(c.id)
-  )
+  // Filter: only show user's own categories that are NOT already shared with THIS team
+  // With many-to-many, a category CAN be shared with multiple teams
+  const availableCategories = (categoriesData || []).filter((c) => {
+    // Must be user's own category
+    if (!c.isOwner) return false
+    // Check if already shared with THIS team (via new many-to-many)
+    if (c.organizations?.some(o => o.organization.id === organizationId)) return false
+    // Check legacy organizationId
+    if (c.organizationId === organizationId) return false
+    // Also respect existingCategoryIds prop
+    if (existingCategoryIds.includes(c.id)) return false
+    return true
+  })
 
   // Reset when dialog opens/closes
   useEffect(() => {
@@ -92,11 +110,21 @@ export function ShareExistingCategoryDialog({
 
     setIsSubmitting(true)
     try {
+      // Get current organizations and add the new one
+      const selectedCat = availableCategories.find(c => c.id === selectedCategoryId)
+      const currentOrgIds = selectedCat?.organizations?.map(o => o.organization.id) || []
+      // If using legacy format
+      if (selectedCat?.organizationId && !currentOrgIds.includes(selectedCat.organizationId)) {
+        currentOrgIds.push(selectedCat.organizationId)
+      }
+      // Add the new organization
+      const newOrgIds = [...currentOrgIds, organizationId]
+
       const res = await fetch(`/api/categories/${selectedCategoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organizationId: organizationId,
+          organizationIds: newOrgIds,
           memberIds: selectedMemberIds,
         }),
       })
