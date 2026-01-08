@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -29,6 +29,19 @@ import useSWR from "swr"
 import { useSession } from "next-auth/react"
 import { useBacklog } from "@/hooks/use-backlog"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+
+// localStorage key for tracking last read timestamps
+const CHAT_LAST_READ_KEY = "chat_last_read_timestamps"
+
+interface UnreadResponse {
+  totalUnread: number
+  unreadCounts: Record<string, number>
+  organizations: Array<{
+    id: string
+    name: string
+    unreadCount: number
+  }>
+}
 
 interface Message {
   id: string
@@ -78,6 +91,40 @@ type NoteMode = "backlog" | "admin"
 type ReportType = "BUG" | "FEATURE" | "OTHER"
 type FeedbackType = "success" | "error" | null
 
+// Helper functions for localStorage
+const getLastReadTimestamps = (): Record<string, string> => {
+  if (typeof window === "undefined") return {}
+  try {
+    const stored = localStorage.getItem(CHAT_LAST_READ_KEY)
+    return stored ? JSON.parse(stored) : {}
+  } catch {
+    return {}
+  }
+}
+
+const setLastReadTimestamp = (orgId: string) => {
+  if (typeof window === "undefined") return
+  try {
+    const timestamps = getLastReadTimestamps()
+    timestamps[orgId] = new Date().toISOString()
+    localStorage.setItem(CHAT_LAST_READ_KEY, JSON.stringify(timestamps))
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+// Custom fetcher for unread counts that sends POST with timestamps
+const fetchUnreadCounts = async (): Promise<UnreadResponse> => {
+  const timestamps = getLastReadTimestamps()
+  const res = await fetch("/api/chat/unread", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lastReadTimestamps: timestamps }),
+  })
+  if (!res.ok) throw new Error("Failed to fetch unread counts")
+  return res.json()
+}
+
 export function FloatingChat() {
   const { data: session } = useSession()
   const [isOpen, setIsOpen] = useState(false)
@@ -110,6 +157,15 @@ export function FloatingChat() {
   const { data: orgsData } = useSWR<OrganizationsResponse>(
     session ? "/api/organizations" : null
   )
+
+  // Fetch unread message counts
+  const { data: unreadData, mutate: mutateUnread } = useSWR<UnreadResponse>(
+    session ? "chat-unread" : null,
+    fetchUnreadCounts,
+    { refreshInterval: 10000 } // Check every 10 seconds
+  )
+
+  const totalUnread = unreadData?.totalUnread || 0
 
   // Combine owned and memberOf teams
   const teams = orgsData ? [...(orgsData.owned || []), ...(orgsData.memberOf || [])] : []
@@ -293,6 +349,37 @@ export function FloatingChat() {
   const handleSelectTeam = (team: Organization) => {
     setSelectedTeam(team)
     setViewMode("chat")
+    // Mark messages as read for this team
+    setLastReadTimestamp(team.id)
+    // Refresh unread counts after a short delay
+    setTimeout(() => mutateUnread(), 500)
+  }
+
+  // Open chat directly - auto-select team if only one, or go to team with most unread
+  const handleOpenChat = () => {
+    setIsOpen(true)
+
+    if (teams.length === 1) {
+      // Auto-select if only one team
+      handleSelectTeam(teams[0])
+    } else if (teams.length > 1 && unreadData?.organizations) {
+      // Find team with most unread messages
+      const teamWithMostUnread = unreadData.organizations
+        .filter(org => org.unreadCount > 0)
+        .sort((a, b) => b.unreadCount - a.unreadCount)[0]
+
+      if (teamWithMostUnread) {
+        const team = teams.find(t => t.id === teamWithMostUnread.id)
+        if (team) {
+          handleSelectTeam(team)
+          return
+        }
+      }
+      // Otherwise show team list
+      setViewMode("teams")
+    } else {
+      setViewMode("teams")
+    }
   }
 
   const handleBack = () => {
@@ -317,18 +404,41 @@ export function FloatingChat() {
 
   return (
     <>
-      {/* Floating Button */}
+      {/* Floating Buttons */}
       {!isOpen && (
-        <Button
-          onClick={() => setIsOpen(true)}
-          className={cn(
-            "fixed bottom-20 right-4 md:bottom-6 md:right-6 h-12 w-12 md:h-14 md:w-14 rounded-full shadow-lg z-40",
-            "bg-primary hover:bg-primary/90 text-primary-foreground"
-          )}
-          size="icon"
-        >
-          <Plus className="h-5 w-5 md:h-6 md:w-6" />
-        </Button>
+        <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 flex flex-col gap-3">
+          {/* Chat Button with unread badge */}
+          <Button
+            onClick={handleOpenChat}
+            className={cn(
+              "relative h-12 w-12 md:h-14 md:w-14 rounded-full shadow-lg",
+              totalUnread > 0
+                ? "bg-blue-500 hover:bg-blue-600 animate-pulse"
+                : "bg-blue-500 hover:bg-blue-600",
+              "text-white"
+            )}
+            size="icon"
+          >
+            <MessageCircle className="h-5 w-5 md:h-6 md:w-6" />
+            {totalUnread > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 md:h-6 md:w-6 items-center justify-center rounded-full bg-red-500 text-[10px] md:text-xs font-bold text-white ring-2 ring-background">
+                {totalUnread > 9 ? "9+" : totalUnread}
+              </span>
+            )}
+          </Button>
+
+          {/* Quick Actions Button */}
+          <Button
+            onClick={() => setIsOpen(true)}
+            className={cn(
+              "h-12 w-12 md:h-14 md:w-14 rounded-full shadow-lg",
+              "bg-primary hover:bg-primary/90 text-primary-foreground"
+            )}
+            size="icon"
+          >
+            <Plus className="h-5 w-5 md:h-6 md:w-6" />
+          </Button>
+        </div>
       )}
 
       {/* Backdrop */}
@@ -393,15 +503,35 @@ export function FloatingChat() {
             <div className="flex-1 p-4 space-y-2">
               <button
                 onClick={() => setViewMode("teams")}
-                className="w-full flex items-center gap-3 p-4 rounded-lg border hover:bg-muted transition-colors text-left"
+                className={cn(
+                  "w-full flex items-center gap-3 p-4 rounded-lg border transition-colors text-left",
+                  totalUnread > 0
+                    ? "bg-blue-50 border-blue-200 hover:bg-blue-100 dark:bg-blue-900/20 dark:border-blue-800 dark:hover:bg-blue-900/30"
+                    : "hover:bg-muted"
+                )}
               >
-                <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <MessageCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className={cn(
+                  "h-10 w-10 rounded-full flex items-center justify-center",
+                  totalUnread > 0
+                    ? "bg-blue-500 text-white"
+                    : "bg-blue-100 dark:bg-blue-900/30"
+                )}>
+                  <MessageCircle className={cn(
+                    "h-5 w-5",
+                    totalUnread > 0 ? "text-white" : "text-blue-600 dark:text-blue-400"
+                  )} />
                 </div>
-                <div>
-                  <div className="font-medium">Czat zespołowy</div>
+                <div className="flex-1">
+                  <div className="font-medium flex items-center gap-2">
+                    Czat zespołowy
+                    {totalUnread > 0 && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                        {totalUnread > 9 ? "9+" : totalUnread}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-muted-foreground">
-                    Napisz do swojego zespołu
+                    {totalUnread > 0 ? `${totalUnread} nowych wiadomości` : "Napisz do swojego zespołu"}
                   </div>
                 </div>
               </button>
@@ -449,23 +579,46 @@ export function FloatingChat() {
                 </div>
               ) : (
                 <div className="p-2 space-y-1">
-                  {teams.map((team) => (
-                    <button
-                      key={team.id}
-                      onClick={() => handleSelectTeam(team)}
-                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{team.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {team._count.members} członków
+                  {teams.map((team) => {
+                    const teamUnread = unreadData?.unreadCounts?.[team.id] || 0
+                    return (
+                      <button
+                        key={team.id}
+                        onClick={() => handleSelectTeam(team)}
+                        className={cn(
+                          "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left",
+                          teamUnread > 0
+                            ? "bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30"
+                            : "hover:bg-muted"
+                        )}
+                      >
+                        <div className={cn(
+                          "h-10 w-10 rounded-full flex items-center justify-center",
+                          teamUnread > 0
+                            ? "bg-blue-500 text-white"
+                            : "bg-primary/10"
+                        )}>
+                          <Users className={cn(
+                            "h-5 w-5",
+                            teamUnread > 0 ? "text-white" : "text-primary"
+                          )} />
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate flex items-center gap-2">
+                            {team.name}
+                            {teamUnread > 0 && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                                {teamUnread > 9 ? "9+" : teamUnread}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {team._count.members} członków
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </ScrollArea>
