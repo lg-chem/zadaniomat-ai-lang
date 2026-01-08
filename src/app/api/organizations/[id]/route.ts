@@ -28,11 +28,16 @@ export async function GET(
             }
           }
         },
-        categories: {
-          orderBy: { order: "asc" },
+        // Use new many-to-many relation instead of deprecated 'categories'
+        categoryLinks: {
           include: {
-            _count: { select: { tasks: true } }
-          }
+            category: {
+              include: {
+                _count: { select: { tasks: true } }
+              }
+            }
+          },
+          orderBy: { category: { order: "asc" } }
         },
         _count: { select: { tasks: true, members: true } }
       }
@@ -50,7 +55,13 @@ export async function GET(
       return NextResponse.json({ error: "Brak dostępu" }, { status: 403 })
     }
 
-    return NextResponse.json({ ...organization, isOwner })
+    // Transform categoryLinks to categories array for frontend compatibility
+    const categories = organization.categoryLinks.map(link => link.category)
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { categoryLinks, ...orgWithoutLinks } = organization
+
+    return NextResponse.json({ ...orgWithoutLinks, categories, isOwner })
   } catch (error) {
     console.error("Error fetching organization:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
