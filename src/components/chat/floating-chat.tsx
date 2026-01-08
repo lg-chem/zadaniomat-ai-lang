@@ -16,6 +16,8 @@ import {
   Lightbulb,
   Check,
   AlertCircle,
+  ClipboardList,
+  User,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,12 +42,24 @@ interface Message {
   }
 }
 
+interface TeamMember {
+  id: string
+  role: string
+  user: {
+    id: string
+    name: string | null
+    email: string
+    image: string | null
+  }
+}
+
 interface Organization {
   id: string
   name: string
   _count: {
     members: number
   }
+  members?: TeamMember[]
 }
 
 interface OrganizationsResponse {
@@ -53,7 +67,7 @@ interface OrganizationsResponse {
   memberOf: Organization[]
 }
 
-type ViewMode = "menu" | "teams" | "chat" | "note"
+type ViewMode = "menu" | "teams" | "chat" | "note" | "assign-teams" | "assign-members" | "assign-task"
 type NoteMode = "backlog" | "admin"
 type ReportType = "BUG" | "FEATURE" | "OTHER"
 type FeedbackType = "success" | "error" | null
@@ -77,6 +91,13 @@ export function FloatingChat() {
   const noteInputRef = useRef<HTMLInputElement>(null)
   const { workspace } = useWorkspaceStore()
   const { mutate: mutateBacklog } = useBacklog()
+
+  // Assign task state
+  const [assignTeam, setAssignTeam] = useState<Organization | null>(null)
+  const [assignMember, setAssignMember] = useState<TeamMember | null>(null)
+  const [taskTitle, setTaskTitle] = useState("")
+  const [isSubmittingTask, setIsSubmittingTask] = useState(false)
+  const taskInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch user's teams
   const { data: orgsData } = useSWR<OrganizationsResponse>(
@@ -116,8 +137,18 @@ export function FloatingChat() {
       setNoteContent("")
       setNoteMode("backlog")
       setReportType("BUG")
+      setAssignTeam(null)
+      setAssignMember(null)
+      setTaskTitle("")
     }
   }, [isOpen])
+
+  // Focus task input when in assign-task mode
+  useEffect(() => {
+    if (viewMode === "assign-task" && taskInputRef.current) {
+      taskInputRef.current.focus()
+    }
+  }, [viewMode])
 
   // Focus note input when entering note mode
   useEffect(() => {
@@ -126,9 +157,46 @@ export function FloatingChat() {
     }
   }, [viewMode])
 
+  // Fetch team details with members
+  const { data: teamDetails } = useSWR<Organization & { members: TeamMember[] }>(
+    assignTeam ? `/api/organizations/${assignTeam.id}` : null
+  )
+
   const showFeedback = (type: FeedbackType, message: string) => {
     setFeedback({ type, message })
     setTimeout(() => setFeedback(null), 3000)
+  }
+
+  const handleSubmitTask = async () => {
+    if (!taskTitle.trim() || !assignTeam || !assignMember || isSubmittingTask) return
+
+    setIsSubmittingTask(true)
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskTitle,
+          workspaceType: "WORK",
+          assignedToId: assignMember.user.id,
+          organizationId: assignTeam.id,
+        }),
+      })
+
+      if (res.ok) {
+        showFeedback("success", "Zadanie przydzielone!")
+        setTaskTitle("")
+        setAssignMember(null)
+        setViewMode("assign-members")
+      } else {
+        throw new Error("Failed to create task")
+      }
+    } catch (error) {
+      console.error("Error creating task:", error)
+      showFeedback("error", "Wystąpił błąd")
+    } finally {
+      setIsSubmittingTask(false)
+    }
   }
 
   const handleSubmitNote = async () => {
@@ -216,6 +284,15 @@ export function FloatingChat() {
     if (viewMode === "chat") {
       setSelectedTeam(null)
       setViewMode("teams")
+    } else if (viewMode === "assign-task") {
+      setAssignMember(null)
+      setTaskTitle("")
+      setViewMode("assign-members")
+    } else if (viewMode === "assign-members") {
+      setAssignTeam(null)
+      setViewMode("assign-teams")
+    } else if (viewMode === "assign-teams") {
+      setViewMode("menu")
     } else {
       setViewMode("menu")
     }
@@ -268,10 +345,21 @@ export function FloatingChat() {
                 {viewMode === "teams" && "Czat zespołowy"}
                 {viewMode === "chat" && selectedTeam?.name}
                 {viewMode === "note" && "Notatka"}
+                {viewMode === "assign-teams" && "Przydziel zadanie"}
+                {viewMode === "assign-members" && assignTeam?.name}
+                {viewMode === "assign-task" && "Nowe zadanie"}
               </h3>
               {viewMode === "chat" && selectedTeam && (
                 <p className="text-xs opacity-80">
                   {selectedTeam._count.members} członków
+                </p>
+              )}
+              {viewMode === "assign-members" && (
+                <p className="text-xs opacity-80">Wybierz osobę</p>
+              )}
+              {viewMode === "assign-task" && assignMember && (
+                <p className="text-xs opacity-80">
+                  dla {assignMember.user.name || assignMember.user.email.split("@")[0]}
                 </p>
               )}
             </div>
@@ -314,6 +402,21 @@ export function FloatingChat() {
                   <div className="font-medium">Szybka notatka</div>
                   <div className="text-xs text-muted-foreground">
                     Zapisz coś na później
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setViewMode("assign-teams")}
+                className="w-full flex items-center gap-3 p-4 rounded-lg border hover:bg-muted transition-colors text-left"
+              >
+                <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <ClipboardList className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <div className="font-medium">Przydziel zadanie</div>
+                  <div className="text-xs text-muted-foreground">
+                    Dodaj zadanie członkowi zespołu
                   </div>
                 </div>
               </button>
@@ -548,6 +651,148 @@ export function FloatingChat() {
                     {isSubmittingNote ? "Wysyłam..." : "Wyślij"}
                   </>
                 )}
+              </Button>
+
+              {/* Feedback notification */}
+              {feedback && (
+                <div
+                  className={`mt-3 px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
+                    feedback.type === "success"
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  }`}
+                >
+                  {feedback.type === "success" ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4" />
+                  )}
+                  {feedback.message}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Assign Task - Team Selection */}
+          {viewMode === "assign-teams" && (
+            <ScrollArea className="flex-1">
+              {teams.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4">
+                  <Users className="h-12 w-12 mb-2 opacity-50" />
+                  <p className="text-sm text-center">
+                    Nie należysz do żadnego zespołu
+                  </p>
+                </div>
+              ) : (
+                <div className="p-2 space-y-1">
+                  {teams.map((team) => (
+                    <button
+                      key={team.id}
+                      onClick={() => {
+                        setAssignTeam(team)
+                        setViewMode("assign-members")
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                    >
+                      <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                        <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{team.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {team._count.members} członków
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          )}
+
+          {/* Assign Task - Member Selection */}
+          {viewMode === "assign-members" && assignTeam && (
+            <ScrollArea className="flex-1">
+              {!teamDetails?.members || teamDetails.members.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4">
+                  <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                  <p className="text-sm">Ładowanie członków...</p>
+                </div>
+              ) : (
+                <div className="p-2 space-y-1">
+                  {teamDetails.members
+                    .filter((m) => m.user.id !== session?.user?.id) // Don't show current user
+                    .map((member) => (
+                      <button
+                        key={member.id}
+                        onClick={() => {
+                          setAssignMember(member)
+                          setViewMode("assign-task")
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={member.user.image || ""} />
+                          <AvatarFallback>
+                            {member.user.name?.[0] || member.user.email[0].toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">
+                            {member.user.name || member.user.email.split("@")[0]}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {member.role === "OWNER" ? "Właściciel" : "Członek"}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </ScrollArea>
+          )}
+
+          {/* Assign Task - Task Form */}
+          {viewMode === "assign-task" && assignMember && (
+            <div className="flex-1 p-4 flex flex-col">
+              <div className="flex items-center gap-3 mb-4 p-3 bg-muted rounded-lg">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={assignMember.user.image || ""} />
+                  <AvatarFallback>
+                    {assignMember.user.name?.[0] || assignMember.user.email[0].toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">
+                    {assignMember.user.name || assignMember.user.email.split("@")[0]}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Zadanie trafi do stosu zadań
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1">
+                <Input
+                  ref={taskInputRef}
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSubmitTask()
+                  }}
+                  placeholder="Co ma być zrobione?"
+                  className="mb-3"
+                  disabled={isSubmittingTask}
+                />
+              </div>
+
+              <Button
+                className="w-full bg-green-600 hover:bg-green-700"
+                onClick={handleSubmitTask}
+                disabled={!taskTitle.trim() || isSubmittingTask}
+              >
+                <ClipboardList className="h-4 w-4 mr-1" />
+                {isSubmittingTask ? "Przydzielam..." : "Przydziel zadanie"}
               </Button>
 
               {/* Feedback notification */}
