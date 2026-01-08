@@ -71,11 +71,13 @@ interface KnowledgeEntry {
 }
 
 // Helper to count total entries in category tree
-function getTotalEntries(category: KnowledgeCategory): number {
-  let total = category._count.entries
+function getTotalEntries(category: KnowledgeCategory, entryCounts?: Map<string, number>): number {
+  // If we have entry counts map, use it (for team-shared entries)
+  const categoryCount = entryCounts?.get(category.id) ?? category._count.entries
+  let total = categoryCount
   if (category.children) {
     for (const child of category.children) {
-      total += getTotalEntries(child)
+      total += getTotalEntries(child, entryCounts)
     }
   }
   return total
@@ -105,6 +107,7 @@ function CategoryItem({
   onEdit,
   onDelete,
   isStrategic = false,
+  entryCounts,
 }: {
   category: KnowledgeCategory
   depth?: number
@@ -116,10 +119,11 @@ function CategoryItem({
   onEdit: (category: KnowledgeCategory) => void
   onDelete: (id: string) => void
   isStrategic?: boolean
+  entryCounts?: Map<string, number>
 }) {
   const hasChildren = category.children && category.children.length > 0
   const isExpanded = expandedCategories.has(category.id)
-  const totalEntries = getTotalEntries(category)
+  const totalEntries = getTotalEntries(category, entryCounts)
   const isSelected = selectedCategory === category.id
 
   return (
@@ -213,6 +217,7 @@ function CategoryItem({
               onEdit={onEdit}
               onDelete={onDelete}
               isStrategic={isStrategic}
+              entryCounts={entryCounts}
             />
           ))}
         </div>
@@ -471,10 +476,18 @@ export default function KnowledgePage() {
     setShowCategoryDialog(true)
   }
 
-  // Stats
-  const totalStrategicEntries = strategicCategories.reduce((sum, cat) => sum + getTotalEntries(cat), 0)
-  const totalCustomEntries = customCategories.reduce((sum, cat) => sum + getTotalEntries(cat), 0)
-  const totalEntries = totalStrategicEntries + totalCustomEntries
+  // Build entry counts map for accurate counting (includes team-shared entries)
+  const entryCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const entry of entries) {
+      const catId = entry.categoryId
+      counts.set(catId, (counts.get(catId) || 0) + 1)
+    }
+    return counts
+  }, [entries])
+
+  // Stats - use actual entries count (includes team shared)
+  const totalEntries = entries.length
   const importantEntries = entries.filter((e) => e.isImportant).length
 
   // Flattened categories for select
@@ -615,6 +628,7 @@ export default function KnowledgePage() {
                     onEdit={handleStartEditCategory}
                     onDelete={handleDeleteCategory}
                     isStrategic={true}
+                    entryCounts={entryCounts}
                   />
                 ))}
               </div>
@@ -645,6 +659,7 @@ export default function KnowledgePage() {
                     onEdit={handleStartEditCategory}
                     onDelete={handleDeleteCategory}
                     isStrategic={false}
+                    entryCounts={entryCounts}
                   />
                 ))}
               </div>
