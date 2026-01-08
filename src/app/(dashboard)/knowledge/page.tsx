@@ -480,8 +480,10 @@ export default function KnowledgePage() {
   const entryCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const entry of entries) {
-      const catId = entry.categoryId
-      counts.set(catId, (counts.get(catId) || 0) + 1)
+      const catId = entry.category?.id
+      if (catId) {
+        counts.set(catId, (counts.get(catId) || 0) + 1)
+      }
     }
     return counts
   }, [entries])
