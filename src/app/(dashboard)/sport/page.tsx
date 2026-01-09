@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
+import { toast } from "sonner"
 import {
   format,
   startOfWeek,
@@ -159,7 +160,7 @@ export default function SportPage() {
     if (!newActivity.typeId || !newActivity.date) return
 
     try {
-      await fetch("/api/sport/activities", {
+      const res = await fetch("/api/sport/activities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -167,27 +168,39 @@ export default function SportPage() {
           duration: newActivity.duration ? parseInt(newActivity.duration) : null,
         }),
       })
-      mutateActivities()
-      setNewActivity({
-        typeId: "",
-        date: format(new Date(), "yyyy-MM-dd"),
-        duration: "",
-        notes: "",
-        bodyParts: [],
-        isPublic: true,
-      })
-      setIsAddingActivity(false)
+      if (res.ok) {
+        mutateActivities()
+        setNewActivity({
+          typeId: "",
+          date: format(new Date(), "yyyy-MM-dd"),
+          duration: "",
+          notes: "",
+          bodyParts: [],
+          isPublic: true,
+        })
+        setIsAddingActivity(false)
+        toast.success("Aktywność dodana")
+      } else {
+        toast.error("Nie udało się dodać aktywności")
+      }
     } catch (error) {
       console.error("Error creating activity:", error)
+      toast.error("Błąd podczas dodawania aktywności")
     }
   }
 
   const handleDeleteActivity = async (id: string) => {
     try {
-      await fetch(`/api/sport/activities/${id}`, { method: "DELETE" })
-      mutateActivities()
+      const res = await fetch(`/api/sport/activities/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateActivities()
+        toast.success("Aktywność usunięta")
+      } else {
+        toast.error("Nie udało się usunąć aktywności")
+      }
     } catch (error) {
       console.error("Error deleting activity:", error)
+      toast.error("Błąd podczas usuwania aktywności")
     }
   }
 
@@ -206,7 +219,7 @@ export default function SportPage() {
   const handleUpdateActivity = async () => {
     if (!editingActivity) return
     try {
-      await fetch(`/api/sport/activities/${editingActivity.id}`, {
+      const res = await fetch(`/api/sport/activities/${editingActivity.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -218,10 +231,16 @@ export default function SportPage() {
           isPublic: editForm.isPublic,
         }),
       })
-      mutateActivities()
-      setEditingActivity(null)
+      if (res.ok) {
+        mutateActivities()
+        setEditingActivity(null)
+        toast.success("Aktywność zaktualizowana")
+      } else {
+        toast.error("Nie udało się zaktualizować aktywności")
+      }
     } catch (error) {
       console.error("Error updating activity:", error)
+      toast.error("Błąd podczas aktualizacji aktywności")
     }
   }
 
@@ -241,7 +260,7 @@ export default function SportPage() {
     }
 
     try {
-      await fetch("/api/sport/steps", {
+      const res = await fetch("/api/sport/steps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -249,25 +268,37 @@ export default function SportPage() {
           count: parseInt(stepsValue),
         }),
       })
-      mutateSteps()
-      setEditingStepsDate(null)
-      setStepsValue("")
+      if (res.ok) {
+        mutateSteps()
+        setEditingStepsDate(null)
+        setStepsValue("")
+        toast.success("Kroki zapisane")
+      } else {
+        toast.error("Nie udało się zapisać kroków")
+      }
     } catch (error) {
       console.error("Error saving steps:", error)
+      toast.error("Błąd podczas zapisywania kroków")
     }
   }
 
   const handleCopyStepsToActivity = async (stepsEntry: StepsEntry) => {
     try {
-      await fetch(`/api/sport/steps/${stepsEntry.id}/copy-to-activity`, {
+      const res = await fetch(`/api/sport/steps/${stepsEntry.id}/copy-to-activity`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       })
-      mutateActivities()
-      mutateSteps()
+      if (res.ok) {
+        mutateActivities()
+        mutateSteps()
+        toast.success("Kroki skopiowane jako aktywność")
+      } else {
+        toast.error("Nie udało się skopiować kroków")
+      }
     } catch (error) {
       console.error("Error copying steps:", error)
+      toast.error("Błąd podczas kopiowania kroków")
     }
   }
 
@@ -275,16 +306,22 @@ export default function SportPage() {
     if (!newTypeName.trim()) return
 
     try {
-      await fetch("/api/sport/types", {
+      const res = await fetch("/api/sport/types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newTypeName }),
       })
-      mutateTypes()
-      setNewTypeName("")
-      setIsAddingType(false)
+      if (res.ok) {
+        mutateTypes()
+        setNewTypeName("")
+        setIsAddingType(false)
+        toast.success("Typ aktywności dodany")
+      } else {
+        toast.error("Nie udało się dodać typu aktywności")
+      }
     } catch (error) {
       console.error("Error creating type:", error)
+      toast.error("Błąd podczas dodawania typu aktywności")
     }
   }
 

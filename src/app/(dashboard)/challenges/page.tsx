@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, KeyboardEvent } from "react"
+import { toast } from "sonner"
 import {
   format,
   differenceInDays,
@@ -199,9 +200,13 @@ export default function ChallengesPage() {
           isPublic: true,
         })
         setIsDialogOpen(false)
+        toast.success("Wyzwanie utworzone")
+      } else {
+        toast.error("Nie udało się utworzyć wyzwania")
       }
     } catch (error) {
       console.error("Error creating challenge:", error)
+      toast.error("Błąd podczas tworzenia wyzwania")
     }
   }
 
@@ -209,40 +214,57 @@ export default function ChallengesPage() {
     if (!progressValue) return
 
     try {
-      await fetch(`/api/challenges/${challengeId}/entry`, {
+      const res = await fetch(`/api/challenges/${challengeId}/entry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: progressValue }),
       })
-      mutateChallenges()
-      setAddingProgressId(null)
-      setProgressValue("")
+      if (res.ok) {
+        mutateChallenges()
+        setAddingProgressId(null)
+        setProgressValue("")
+        toast.success("Postęp dodany")
+      } else {
+        toast.error("Nie udało się dodać postępu")
+      }
     } catch (error) {
       console.error("Error adding progress:", error)
+      toast.error("Błąd podczas dodawania postępu")
     }
   }
 
   const handleDeleteChallenge = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to wyzwanie?")) return
     try {
-      await fetch(`/api/challenges/${id}`, { method: "DELETE" })
-      mutateChallenges()
+      const res = await fetch(`/api/challenges/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateChallenges()
+        toast.success("Wyzwanie usunięte")
+      } else {
+        toast.error("Nie udało się usunąć wyzwania")
+      }
     } catch (error) {
       console.error("Error deleting challenge:", error)
+      toast.error("Błąd podczas usuwania wyzwania")
     }
   }
 
   const handleToggleDay = async (challengeId: string, date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
     try {
-      await fetch(`/api/challenges/${challengeId}/entry`, {
+      const res = await fetch(`/api/challenges/${challengeId}/entry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: 1, date: dateStr, toggle: true }),
       })
-      mutateChallenges()
+      if (res.ok) {
+        mutateChallenges()
+      } else {
+        toast.error("Nie udało się zaktualizować dnia")
+      }
     } catch (error) {
       console.error("Error toggling day:", error)
+      toast.error("Błąd podczas aktualizacji")
     }
   }
 
@@ -264,15 +286,21 @@ export default function ChallengesPage() {
   const handleUpdateChallenge = async () => {
     if (!editingChallenge) return
     try {
-      await fetch(`/api/challenges/${editingChallenge.id}`, {
+      const res = await fetch(`/api/challenges/${editingChallenge.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
       })
-      mutateChallenges()
-      setEditingChallenge(null)
+      if (res.ok) {
+        mutateChallenges()
+        setEditingChallenge(null)
+        toast.success("Wyzwanie zaktualizowane")
+      } else {
+        toast.error("Nie udało się zaktualizować wyzwania")
+      }
     } catch (error) {
       console.error("Error updating challenge:", error)
+      toast.error("Błąd podczas aktualizacji wyzwania")
     }
   }
 
@@ -289,15 +317,21 @@ export default function ChallengesPage() {
   const handleCopyChallenge = async () => {
     if (!copyingChallenge) return
     try {
-      await fetch(`/api/challenges/${copyingChallenge.id}/copy`, {
+      const res = await fetch(`/api/challenges/${copyingChallenge.id}/copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(copyForm),
       })
-      mutateChallenges()
-      setCopyingChallenge(null)
+      if (res.ok) {
+        mutateChallenges()
+        setCopyingChallenge(null)
+        toast.success("Kopia wyzwania utworzona")
+      } else {
+        toast.error("Nie udało się skopiować wyzwania")
+      }
     } catch (error) {
       console.error("Error copying challenge:", error)
+      toast.error("Błąd podczas kopiowania wyzwania")
     }
   }
 
@@ -309,27 +343,39 @@ export default function ChallengesPage() {
   const handleUpdateEntry = async () => {
     if (!editingEntry) return
     try {
-      await fetch(`/api/challenges/${editingEntry.challengeId}/entry`, {
+      const res = await fetch(`/api/challenges/${editingEntry.challengeId}/entry`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entryId: editingEntry.entry.id, value: editEntryValue }),
       })
-      mutateChallenges()
-      setEditingEntry(null)
-      setEditEntryValue("")
+      if (res.ok) {
+        mutateChallenges()
+        setEditingEntry(null)
+        setEditEntryValue("")
+        toast.success("Wpis zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować wpisu")
+      }
     } catch (error) {
       console.error("Error updating entry:", error)
+      toast.error("Błąd podczas aktualizacji wpisu")
     }
   }
 
   const handleDeleteEntry = async (challengeId: string, entryId: string) => {
     try {
-      await fetch(`/api/challenges/${challengeId}/entry?entryId=${entryId}`, {
+      const res = await fetch(`/api/challenges/${challengeId}/entry?entryId=${entryId}`, {
         method: "DELETE",
       })
-      mutateChallenges()
+      if (res.ok) {
+        mutateChallenges()
+        toast.success("Wpis usunięty")
+      } else {
+        toast.error("Nie udało się usunąć wpisu")
+      }
     } catch (error) {
       console.error("Error deleting entry:", error)
+      toast.error("Błąd podczas usuwania wpisu")
     }
   }
 

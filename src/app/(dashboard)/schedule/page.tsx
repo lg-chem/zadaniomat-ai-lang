@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
+import { toast } from "sonner"
 import { format, addDays, subDays, isBefore, startOfDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -269,6 +270,7 @@ export default function SchedulePage() {
       )
     } catch (error) {
       console.error("Error creating task:", error)
+      toast.error("Nie udało się dodać zadania")
     }
   }
 
@@ -354,6 +356,7 @@ export default function SchedulePage() {
       }
     } catch (error) {
       console.error("Error creating task from template:", error)
+      toast.error("Nie udało się dodać zadania")
     }
   }
 
@@ -456,6 +459,7 @@ export default function SchedulePage() {
       })
     } catch (error) {
       console.error("Error deleting task:", error)
+      toast.error("Nie udało się usunąć zadania")
     }
   }
 
@@ -476,6 +480,7 @@ export default function SchedulePage() {
       })
     } catch (error) {
       console.error("Error transferring task:", error)
+      toast.error("Nie udało się przenieść zadania")
     }
   }
 
@@ -598,6 +603,7 @@ export default function SchedulePage() {
       }
     } catch (error) {
       console.error("Error copying task:", error)
+      toast.error("Nie udało się skopiować zadania")
     }
   }
 
@@ -634,6 +640,7 @@ export default function SchedulePage() {
       setTransferTaskId(null)
     } catch (error) {
       console.error("Error transferring overdue task:", error)
+      toast.error("Nie udało się przenieść zaległego zadania")
     }
   }
 

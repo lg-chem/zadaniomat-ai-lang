@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { toast } from "sonner"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -144,37 +145,53 @@ export default function FitnessGoalsPage() {
         fetchGoals()
         resetForm()
         setIsDialogOpen(false)
+        toast.success("Cel fitness dodany")
+      } else {
+        toast.error("Nie udało się dodać celu")
       }
     } catch (error) {
       console.error("Error creating goal:", error)
+      toast.error("Błąd podczas tworzenia celu")
     }
   }
 
   const handleUpdateProgress = async (goalId: string, newValue: number) => {
     try {
-      await fetch(`/api/fitness-goals/${goalId}`, {
+      const res = await fetch(`/api/fitness-goals/${goalId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentValue: newValue }),
       })
-      fetchGoals()
-      setUpdatingGoalId(null)
-      setUpdateValue("")
+      if (res.ok) {
+        fetchGoals()
+        setUpdatingGoalId(null)
+        setUpdateValue("")
+        toast.success("Postęp zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować postępu")
+      }
     } catch (error) {
       console.error("Error updating goal:", error)
+      toast.error("Błąd podczas aktualizacji postępu")
     }
   }
 
   const handleToggleComplete = async (goal: FitnessGoal) => {
     try {
-      await fetch(`/api/fitness-goals/${goal.id}`, {
+      const res = await fetch(`/api/fitness-goals/${goal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isCompleted: !goal.isCompleted }),
       })
-      fetchGoals()
+      if (res.ok) {
+        fetchGoals()
+        toast.success(goal.isCompleted ? "Cel przywrócony" : "Cel oznaczony jako ukończony")
+      } else {
+        toast.error("Nie udało się zmienić statusu")
+      }
     } catch (error) {
       console.error("Error toggling goal:", error)
+      toast.error("Błąd podczas zmiany statusu")
     }
   }
 
@@ -182,10 +199,16 @@ export default function FitnessGoalsPage() {
     if (!confirm("Czy na pewno chcesz usunąć ten cel?")) return
 
     try {
-      await fetch(`/api/fitness-goals/${id}`, { method: "DELETE" })
-      fetchGoals()
+      const res = await fetch(`/api/fitness-goals/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        fetchGoals()
+        toast.success("Cel usunięty")
+      } else {
+        toast.error("Nie udało się usunąć celu")
+      }
     } catch (error) {
       console.error("Error deleting goal:", error)
+      toast.error("Błąd podczas usuwania celu")
     }
   }
 

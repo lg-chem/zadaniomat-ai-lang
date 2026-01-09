@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { toast } from "sonner"
 import { useSession } from "next-auth/react"
 import {
   Plus,
@@ -313,9 +314,13 @@ export default function KnowledgePage() {
         mutateCategories()
         setShowEntryDialog(false)
         setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
+        toast.success("Wpis dodany")
+      } else {
+        toast.error("Nie udało się dodać wpisu")
       }
     } catch (error) {
       console.error("Error creating entry:", error)
+      toast.error("Błąd podczas dodawania wpisu")
     }
   }
 
@@ -333,9 +338,13 @@ export default function KnowledgePage() {
         setEditingEntry(null)
         setShowEntryDialog(false)
         setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
+        toast.success("Wpis zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować wpisu")
       }
     } catch (error) {
       console.error("Error updating entry:", error)
+      toast.error("Błąd podczas aktualizacji wpisu")
     }
   }
 
@@ -343,24 +352,35 @@ export default function KnowledgePage() {
     if (!confirm("Czy na pewno chcesz usunąć ten wpis?")) return
 
     try {
-      await fetch(`/api/knowledge/entries/${id}`, { method: "DELETE" })
-      mutateEntries()
-      mutateCategories()
+      const res = await fetch(`/api/knowledge/entries/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateEntries()
+        mutateCategories()
+        toast.success("Wpis usunięty")
+      } else {
+        toast.error("Nie udało się usunąć wpisu")
+      }
     } catch (error) {
       console.error("Error deleting entry:", error)
+      toast.error("Błąd podczas usuwania wpisu")
     }
   }
 
   const handleToggleImportant = async (entry: KnowledgeEntry) => {
     try {
-      await fetch(`/api/knowledge/entries/${entry.id}`, {
+      const res = await fetch(`/api/knowledge/entries/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isImportant: !entry.isImportant }),
       })
-      mutateEntries()
+      if (res.ok) {
+        mutateEntries()
+      } else {
+        toast.error("Nie udało się zmienić statusu")
+      }
     } catch (error) {
       console.error("Error toggling important:", error)
+      toast.error("Błąd podczas zmiany statusu")
     }
   }
 
@@ -409,9 +429,13 @@ export default function KnowledgePage() {
         setShowCategoryDialog(false)
         setCategoryForm({ name: "", description: "", color: "#6366f1", parentId: "" })
         setEditingCategory(null)
+        toast.success("Kategoria utworzona")
+      } else {
+        toast.error("Nie udało się utworzyć kategorii")
       }
     } catch (error) {
       console.error("Error creating category:", error)
+      toast.error("Błąd podczas tworzenia kategorii")
     }
   }
 
@@ -433,9 +457,13 @@ export default function KnowledgePage() {
         setShowCategoryDialog(false)
         setCategoryForm({ name: "", description: "", color: "#6366f1", parentId: "" })
         setEditingCategory(null)
+        toast.success("Kategoria zaktualizowana")
+      } else {
+        toast.error("Nie udało się zaktualizować kategorii")
       }
     } catch (error) {
       console.error("Error updating category:", error)
+      toast.error("Błąd podczas aktualizacji kategorii")
     }
   }
 
@@ -443,14 +471,20 @@ export default function KnowledgePage() {
     if (!confirm("Czy na pewno chcesz usunąć tę kategorię i wszystkie jej wpisy?")) return
 
     try {
-      await fetch(`/api/knowledge/categories/${id}`, { method: "DELETE" })
-      mutateCategories()
-      if (selectedCategory === id) {
-        setSelectedCategory(null)
+      const res = await fetch(`/api/knowledge/categories/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateCategories()
+        if (selectedCategory === id) {
+          setSelectedCategory(null)
+        }
+        mutateEntries()
+        toast.success("Kategoria usunięta")
+      } else {
+        toast.error("Nie udało się usunąć kategorii")
       }
-      mutateEntries()
     } catch (error) {
       console.error("Error deleting category:", error)
+      toast.error("Błąd podczas usuwania kategorii")
     }
   }
 

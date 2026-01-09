@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { toast } from "sonner"
 import { useSession } from "next-auth/react"
 import {
   Lightbulb,
@@ -184,9 +185,13 @@ export default function IdeasPage() {
         mutateCategories()
         setNewIdeaForm({ title: "", content: "", categoryId: "" })
         setShowNewIdeaDialog(false)
+        toast.success("Rozkminka dodana")
+      } else {
+        toast.error("Nie udało się dodać rozkminki")
       }
     } catch (error) {
       console.error("Error creating idea:", error)
+      toast.error("Błąd podczas dodawania rozkminki")
     }
   }
 
@@ -195,14 +200,20 @@ export default function IdeasPage() {
     if (!confirm("Czy na pewno chcesz usunąć tę rozkminkę?")) return
 
     try {
-      await fetch(`/api/ideas/${id}`, { method: "DELETE" })
-      mutateIdeas()
-      mutateCategories()
-      if (selectedIdea?.id === id) {
-        setSelectedIdea(null)
+      const res = await fetch(`/api/ideas/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateIdeas()
+        mutateCategories()
+        if (selectedIdea?.id === id) {
+          setSelectedIdea(null)
+        }
+        toast.success("Rozkminka usunięta")
+      } else {
+        toast.error("Nie udało się usunąć rozkminki")
       }
     } catch (error) {
       console.error("Error deleting idea:", error)
+      toast.error("Błąd podczas usuwania rozkminki")
     }
   }
 
@@ -219,9 +230,13 @@ export default function IdeasPage() {
         mutateReplies()
         mutateIdeas()
         setReplyContent("")
+        toast.success("Odpowiedź dodana")
+      } else {
+        toast.error("Nie udało się dodać odpowiedzi")
       }
     } catch (error) {
       console.error("Error creating reply:", error)
+      toast.error("Błąd podczas dodawania odpowiedzi")
     }
   }
 
@@ -242,9 +257,13 @@ export default function IdeasPage() {
         setSelectedIdea(updated)
         mutateIdeas()
         setShowEditIdeaDialog(false)
+        toast.success("Rozkminka zaktualizowana")
+      } else {
+        toast.error("Nie udało się zaktualizować rozkminki")
       }
     } catch (error) {
       console.error("Error editing idea:", error)
+      toast.error("Błąd podczas aktualizacji rozkminki")
     }
   }
 
@@ -276,9 +295,13 @@ export default function IdeasPage() {
         mutateCategories()
         setShowCategoryDialog(false)
         setCategoryForm({ name: "", color: "#8b5cf6", emoji: "" })
+        toast.success("Kategoria utworzona")
+      } else {
+        toast.error("Nie udało się utworzyć kategorii")
       }
     } catch (error) {
       console.error("Error creating category:", error)
+      toast.error("Błąd podczas tworzenia kategorii")
     }
   }
 
@@ -286,14 +309,20 @@ export default function IdeasPage() {
     if (!confirm("Czy na pewno chcesz usunąć tę kategorię i wszystkie jej rozkminki?")) return
 
     try {
-      await fetch(`/api/ideas/categories/${id}`, { method: "DELETE" })
-      mutateCategories()
-      if (selectedCategoryId === id) {
-        setSelectedCategoryId(null)
+      const res = await fetch(`/api/ideas/categories/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateCategories()
+        if (selectedCategoryId === id) {
+          setSelectedCategoryId(null)
+        }
+        mutateIdeas()
+        toast.success("Kategoria usunięta")
+      } else {
+        toast.error("Nie udało się usunąć kategorii")
       }
-      mutateIdeas()
     } catch (error) {
       console.error("Error deleting category:", error)
+      toast.error("Błąd podczas usuwania kategorii")
     }
   }
 

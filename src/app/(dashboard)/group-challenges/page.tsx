@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, KeyboardEvent, useRef } from "react"
+import { toast } from "sonner"
 import {
   format,
   differenceInDays,
@@ -325,9 +326,13 @@ export default function GroupChallengesPage() {
           inviteUserIds: [],
         })
         setIsDialogOpen(false)
+        toast.success("Wyzwanie grupowe utworzone")
+      } else {
+        toast.error("Nie udało się utworzyć wyzwania")
       }
     } catch (error) {
       console.error("Error creating group challenge:", error)
+      toast.error("Błąd podczas tworzenia wyzwania")
     }
   }
 
@@ -335,50 +340,73 @@ export default function GroupChallengesPage() {
     if (!progressValue) return
 
     try {
-      await fetch(`/api/group-challenges/${challengeId}/entry`, {
+      const res = await fetch(`/api/group-challenges/${challengeId}/entry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: progressValue }),
       })
-      mutateGroupChallenges()
-      setAddingProgressId(null)
-      setProgressValue("")
+      if (res.ok) {
+        mutateGroupChallenges()
+        setAddingProgressId(null)
+        setProgressValue("")
+        toast.success("Postęp dodany")
+      } else {
+        toast.error("Nie udało się dodać postępu")
+      }
     } catch (error) {
       console.error("Error adding progress:", error)
+      toast.error("Błąd podczas dodawania postępu")
     }
   }
 
   const handleToggleDay = async (challengeId: string, date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
     try {
-      await fetch(`/api/group-challenges/${challengeId}/entry`, {
+      const res = await fetch(`/api/group-challenges/${challengeId}/entry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: 1, date: dateStr, toggle: true }),
       })
-      mutateGroupChallenges()
+      if (res.ok) {
+        mutateGroupChallenges()
+      } else {
+        toast.error("Nie udało się zaktualizować dnia")
+      }
     } catch (error) {
       console.error("Error toggling day:", error)
+      toast.error("Błąd podczas aktualizacji")
     }
   }
 
   const handleDeleteChallenge = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to wyzwanie grupowe?")) return
     try {
-      await fetch(`/api/group-challenges/${id}`, { method: "DELETE" })
-      mutateGroupChallenges()
+      const res = await fetch(`/api/group-challenges/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateGroupChallenges()
+        toast.success("Wyzwanie usunięte")
+      } else {
+        toast.error("Nie udało się usunąć wyzwania")
+      }
     } catch (error) {
       console.error("Error deleting challenge:", error)
+      toast.error("Błąd podczas usuwania wyzwania")
     }
   }
 
   const handleLeaveChallenge = async (id: string, userId: string) => {
     if (!confirm("Czy na pewno chcesz opuścić to wyzwanie?")) return
     try {
-      await fetch(`/api/group-challenges/${id}/members?userId=${userId}`, { method: "DELETE" })
-      mutateGroupChallenges()
+      const res = await fetch(`/api/group-challenges/${id}/members?userId=${userId}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateGroupChallenges()
+        toast.success("Opuszczono wyzwanie")
+      } else {
+        toast.error("Nie udało się opuścić wyzwania")
+      }
     } catch (error) {
       console.error("Error leaving challenge:", error)
+      toast.error("Błąd podczas opuszczania wyzwania")
     }
   }
 
@@ -386,31 +414,43 @@ export default function GroupChallengesPage() {
     if (!selectedChallengeId || selectedUserIds.length === 0) return
 
     try {
-      await fetch(`/api/group-challenges/${selectedChallengeId}/invite`, {
+      const res = await fetch(`/api/group-challenges/${selectedChallengeId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userIds: selectedUserIds }),
       })
-      mutateGroupChallenges()
-      setIsInviteDialogOpen(false)
-      setSelectedChallengeId(null)
-      setSelectedUserIds([])
+      if (res.ok) {
+        mutateGroupChallenges()
+        setIsInviteDialogOpen(false)
+        setSelectedChallengeId(null)
+        setSelectedUserIds([])
+        toast.success("Zaproszenia wysłane")
+      } else {
+        toast.error("Nie udało się wysłać zaproszeń")
+      }
     } catch (error) {
       console.error("Error inviting users:", error)
+      toast.error("Błąd podczas wysyłania zaproszeń")
     }
   }
 
   const handleRespondToInvitation = async (invitationId: string, action: "accept" | "decline") => {
     try {
-      await fetch(`/api/group-challenges/invitations/${invitationId}`, {
+      const res = await fetch(`/api/group-challenges/invitations/${invitationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       })
-      mutateInvitations()
-      mutateGroupChallenges()
+      if (res.ok) {
+        mutateInvitations()
+        mutateGroupChallenges()
+        toast.success(action === "accept" ? "Zaproszenie zaakceptowane" : "Zaproszenie odrzucone")
+      } else {
+        toast.error("Nie udało się odpowiedzieć na zaproszenie")
+      }
     } catch (error) {
       console.error("Error responding to invitation:", error)
+      toast.error("Błąd podczas odpowiadania na zaproszenie")
     }
   }
 
@@ -431,15 +471,21 @@ export default function GroupChallengesPage() {
   const handleUpdateChallenge = async () => {
     if (!editingChallenge) return
     try {
-      await fetch(`/api/group-challenges/${editingChallenge.id}`, {
+      const res = await fetch(`/api/group-challenges/${editingChallenge.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
       })
-      mutateGroupChallenges()
-      setEditingChallenge(null)
+      if (res.ok) {
+        mutateGroupChallenges()
+        setEditingChallenge(null)
+        toast.success("Wyzwanie zaktualizowane")
+      } else {
+        toast.error("Nie udało się zaktualizować wyzwania")
+      }
     } catch (error) {
       console.error("Error updating challenge:", error)
+      toast.error("Błąd podczas aktualizacji wyzwania")
     }
   }
 
@@ -476,16 +522,22 @@ export default function GroupChallengesPage() {
     if (!integrationChallengeId) return
 
     try {
-      await fetch(`/api/group-challenges/${integrationChallengeId}/integration`, {
+      const res = await fetch(`/api/group-challenges/${integrationChallengeId}/integration`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(integrationSettings),
       })
-      mutateGroupChallenges()
-      setIsIntegrationDialogOpen(false)
-      setIntegrationChallengeId(null)
+      if (res.ok) {
+        mutateGroupChallenges()
+        setIsIntegrationDialogOpen(false)
+        setIntegrationChallengeId(null)
+        toast.success("Integracja zapisana")
+      } else {
+        toast.error("Nie udało się zapisać integracji")
+      }
     } catch (error) {
       console.error("Error saving integration:", error)
+      toast.error("Błąd podczas zapisywania integracji")
     }
   }
 
@@ -499,12 +551,16 @@ export default function GroupChallengesPage() {
       if (res.ok) {
         mutateGroupChallenges()
         if (data.newEntriesCount > 0) {
-          // Could show a toast here
-          console.log(`Zsynchronizowano ${data.newEntriesCount} nowych wpisów`)
+          toast.success(`Zsynchronizowano ${data.newEntriesCount} nowych wpisów`)
+        } else {
+          toast.success("Dane są aktualne")
         }
+      } else {
+        toast.error("Nie udało się zsynchronizować danych")
       }
     } catch (error) {
       console.error("Error syncing data:", error)
+      toast.error("Błąd podczas synchronizacji")
     } finally {
       setIsSyncing(null)
     }
@@ -524,9 +580,12 @@ export default function GroupChallengesPage() {
         const newMsg = await res.json()
         setChatMessages((prev) => [...prev, newMsg])
         setChatMessage("")
+      } else {
+        toast.error("Nie udało się wysłać wiadomości")
       }
     } catch (error) {
       console.error("Error sending message:", error)
+      toast.error("Błąd podczas wysyłania wiadomości")
     } finally {
       setIsSendingMessage(false)
     }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
+import { toast } from "sonner"
 import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ChevronRight, GripVertical, Eye, EyeOff, Menu } from "lucide-react"
 import Link from "next/link"
 import {
@@ -268,9 +269,13 @@ export default function SettingsPage() {
       })
       if (res.ok) {
         fetchAdminReports()
+        toast.success("Status zgłoszenia zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować statusu")
       }
     } catch (error) {
       console.error("Error updating report:", error)
+      toast.error("Błąd podczas aktualizacji statusu")
     }
   }
 
@@ -282,9 +287,13 @@ export default function SettingsPage() {
       })
       if (res.ok) {
         fetchAdminReports()
+        toast.success("Zgłoszenie usunięte")
+      } else {
+        toast.error("Nie udało się usunąć zgłoszenia")
       }
     } catch (error) {
       console.error("Error deleting report:", error)
+      toast.error("Błąd podczas usuwania zgłoszenia")
     }
   }
 
@@ -312,9 +321,13 @@ export default function SettingsPage() {
         fetchCategories()
         setNewRow({ name: "", color: COLORS[0], isStrategic: false })
         setIsAddingNew(false)
+        toast.success("Kategoria utworzona")
+      } else {
+        toast.error("Nie udało się utworzyć kategorii")
       }
     } catch (error) {
       console.error("Error creating category:", error)
+      toast.error("Błąd podczas tworzenia kategorii")
     }
   }
 
@@ -324,35 +337,49 @@ export default function SettingsPage() {
       const res = await fetch(`/api/categories/${id}`, { method: "DELETE" })
       if (res.ok) {
         fetchCategories()
+        toast.success("Kategoria usunięta")
+      } else {
+        toast.error("Nie udało się usunąć kategorii")
       }
     } catch (error) {
       console.error("Error deleting category:", error)
+      toast.error("Błąd podczas usuwania kategorii")
     }
   }
 
   const handleToggleStrategic = async (category: Category) => {
     try {
-      await fetch(`/api/categories/${category.id}`, {
+      const res = await fetch(`/api/categories/${category.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isStrategic: !category.isStrategic }),
       })
-      fetchCategories()
+      if (res.ok) {
+        fetchCategories()
+      } else {
+        toast.error("Nie udało się zaktualizować kategorii")
+      }
     } catch (error) {
       console.error("Error updating category:", error)
+      toast.error("Błąd podczas aktualizacji kategorii")
     }
   }
 
   const handleUpdateColor = async (category: Category, color: string) => {
     try {
-      await fetch(`/api/categories/${category.id}`, {
+      const res = await fetch(`/api/categories/${category.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ color }),
       })
-      fetchCategories()
+      if (res.ok) {
+        fetchCategories()
+      } else {
+        toast.error("Nie udało się zmienić koloru")
+      }
     } catch (error) {
       console.error("Error updating category:", error)
+      toast.error("Błąd podczas zmiany koloru")
     }
   }
 
@@ -371,9 +398,13 @@ export default function SettingsPage() {
       })
       if (res.ok) {
         await fetchKnowledgeBase()
+        toast.success("Baza wiedzy zapisana")
+      } else {
+        toast.error("Nie udało się zapisać bazy wiedzy")
       }
     } catch (error) {
       console.error("Error saving knowledge base:", error)
+      toast.error("Błąd podczas zapisywania bazy wiedzy")
     } finally {
       setIsSavingKnowledge(false)
     }
@@ -391,15 +422,20 @@ export default function SettingsPage() {
     }
 
     try {
-      await fetch(`/api/categories/${categoryId}`, {
+      const res = await fetch(`/api/categories/${categoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editingName }),
       })
-      fetchCategories()
-      setEditingId(null)
+      if (res.ok) {
+        fetchCategories()
+        setEditingId(null)
+      } else {
+        toast.error("Nie udało się zapisać nazwy")
+      }
     } catch (error) {
       console.error("Error updating category:", error)
+      toast.error("Błąd podczas zapisywania nazwy")
     }
   }
 
@@ -459,9 +495,13 @@ export default function SettingsPage() {
       })
       if (res.ok) {
         setSidebarConfigDirty(false)
+        toast.success("Konfiguracja menu zapisana")
+      } else {
+        toast.error("Nie udało się zapisać konfiguracji")
       }
     } catch (error) {
       console.error("Error saving sidebar config:", error)
+      toast.error("Błąd podczas zapisywania konfiguracji")
     } finally {
       setIsSavingSidebar(false)
     }

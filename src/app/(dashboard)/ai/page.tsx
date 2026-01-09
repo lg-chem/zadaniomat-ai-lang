@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent, useCallback } from "react"
+import { toast } from "sonner"
 import useSWR, { mutate } from "swr"
 import { format, formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
@@ -442,14 +443,20 @@ export default function AIPage() {
 
   const deleteConversation = async (convId: string) => {
     try {
-      await fetch(`/api/ai/conversations/${convId}`, { method: "DELETE" })
-      setConversations((prev) => prev.filter((c) => c.id !== convId))
-      if (currentConversationId === convId) {
-        setMessages([])
-        setCurrentConversationId(null)
+      const res = await fetch(`/api/ai/conversations/${convId}`, { method: "DELETE" })
+      if (res.ok) {
+        setConversations((prev) => prev.filter((c) => c.id !== convId))
+        if (currentConversationId === convId) {
+          setMessages([])
+          setCurrentConversationId(null)
+        }
+        toast.success("Rozmowa usunięta")
+      } else {
+        toast.error("Nie udało się usunąć rozmowy")
       }
     } catch (error) {
       console.error("Error deleting conversation:", error)
+      toast.error("Błąd podczas usuwania rozmowy")
     }
   }
 
@@ -462,15 +469,21 @@ export default function AIPage() {
   const saveSettings = async () => {
     setSavingSettings(true)
     try {
-      await fetch("/api/ai/settings", {
+      const res = await fetch("/api/ai/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace: "WORK", instructions: chatInstructions, systemPrompts, metaPrompt, companyInfo }),
       })
-      setShowSettings(false)
-      setShowAdvancedSettings(false)
+      if (res.ok) {
+        setShowSettings(false)
+        setShowAdvancedSettings(false)
+        toast.success("Ustawienia zapisane")
+      } else {
+        toast.error("Nie udało się zapisać ustawień")
+      }
     } catch (error) {
       console.error("Error saving settings:", error)
+      toast.error("Błąd podczas zapisywania ustawień")
     } finally {
       setSavingSettings(false)
     }
@@ -589,7 +602,7 @@ export default function AIPage() {
     if (!goalForm.sprintId && !goalForm.periodId) return
 
     try {
-      await fetch("/api/goals", {
+      const res = await fetch("/api/goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -603,10 +616,16 @@ export default function AIPage() {
           workspaceType: "WORK",
         }),
       })
-      setAddingGoal(null)
-      setGoalForm({ title: "", description: "", targetValue: "", unit: "", categoryId: "", sprintId: "", periodId: "" })
+      if (res.ok) {
+        setAddingGoal(null)
+        setGoalForm({ title: "", description: "", targetValue: "", unit: "", categoryId: "", sprintId: "", periodId: "" })
+        toast.success("Cel dodany")
+      } else {
+        toast.error("Nie udało się dodać celu")
+      }
     } catch (error) {
       console.error("Error adding goal:", error)
+      toast.error("Błąd podczas dodawania celu")
     }
   }
 
@@ -624,7 +643,7 @@ export default function AIPage() {
   const handleAddTask = async () => {
     if (!taskForm.title) return
     try {
-      await fetch("/api/tasks", {
+      const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -636,10 +655,16 @@ export default function AIPage() {
           status: "NEW",
         }),
       })
-      setAddingTask(null)
-      setTaskForm({ title: "", categoryId: "", plannedMinutes: "25", scheduledDate: format(new Date(), "yyyy-MM-dd") })
+      if (res.ok) {
+        setAddingTask(null)
+        setTaskForm({ title: "", categoryId: "", plannedMinutes: "25", scheduledDate: format(new Date(), "yyyy-MM-dd") })
+        toast.success("Zadanie dodane")
+      } else {
+        toast.error("Nie udało się dodać zadania")
+      }
     } catch (error) {
       console.error("Error adding task:", error)
+      toast.error("Błąd podczas dodawania zadania")
     }
   }
 

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { toast } from "sonner"
 import { format, differenceInDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -81,9 +82,13 @@ export default function SprintsPage() {
       const res = await fetch(`/api/periods/${id}`, { method: "DELETE" })
       if (res.ok) {
         mutatePeriods()
+        toast.success("Okres usunięty")
+      } else {
+        toast.error("Nie udało się usunąć okresu")
       }
     } catch (error) {
       console.error("Error deleting period:", error)
+      toast.error("Błąd podczas usuwania okresu")
     }
   }
 
@@ -95,9 +100,13 @@ export default function SprintsPage() {
       const res = await fetch(`/api/sprints/${id}`, { method: "DELETE" })
       if (res.ok) {
         mutatePeriods()
+        toast.success("Sprint usunięty")
+      } else {
+        toast.error("Nie udało się usunąć sprintu")
       }
     } catch (error) {
       console.error("Error deleting sprint:", error)
+      toast.error("Błąd podczas usuwania sprintu")
     }
   }
 

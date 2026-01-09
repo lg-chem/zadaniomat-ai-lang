@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { toast } from "sonner"
 import { format, addDays, addWeeks, addMonths, getDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
@@ -162,32 +163,47 @@ export default function RecurringPage() {
           categoryId: "",
         })
         setIsDialogOpen(false)
+        toast.success("Zadanie cykliczne utworzone")
+      } else {
+        toast.error("Nie udało się utworzyć zadania")
       }
     } catch (error) {
       console.error("Error creating recurring task:", error)
+      toast.error("Błąd podczas tworzenia zadania")
     }
   }
 
   const handleDeleteTask = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to zadanie cykliczne?")) return
     try {
-      await fetch(`/api/recurring/${id}`, { method: "DELETE" })
-      fetchTasks()
+      const res = await fetch(`/api/recurring/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        fetchTasks()
+        toast.success("Zadanie cykliczne usunięte")
+      } else {
+        toast.error("Nie udało się usunąć zadania")
+      }
     } catch (error) {
       console.error("Error deleting recurring task:", error)
+      toast.error("Błąd podczas usuwania zadania")
     }
   }
 
   const handleToggleActive = async (task: RecurringTask) => {
     try {
-      await fetch(`/api/recurring/${task.id}`, {
+      const res = await fetch(`/api/recurring/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isRecurring: true }),
       })
-      fetchTasks()
+      if (res.ok) {
+        fetchTasks()
+      } else {
+        toast.error("Nie udało się zaktualizować zadania")
+      }
     } catch (error) {
       console.error("Error toggling task:", error)
+      toast.error("Błąd podczas aktualizacji")
     }
   }
 
@@ -225,9 +241,13 @@ export default function RecurringPage() {
       if (res.ok) {
         fetchTasks()
         setEditingTask(null)
+        toast.success("Zadanie zaktualizowane")
+      } else {
+        toast.error("Nie udało się zaktualizować zadania")
       }
     } catch (error) {
       console.error("Error updating task:", error)
+      toast.error("Błąd podczas aktualizacji zadania")
     }
   }
 

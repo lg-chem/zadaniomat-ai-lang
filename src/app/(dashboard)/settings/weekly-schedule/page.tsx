@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, KeyboardEvent } from "react"
+import { toast } from "sonner"
 import {
   Plus,
   Trash2,
@@ -75,41 +76,53 @@ export default function WeeklySchedulePage() {
   const handleCreateBlock = async () => {
     if (!newBlock.name.trim()) return
 
-    await optimisticAdd(
-      {
-        name: newBlock.name,
-        dayOfWeek: selectedDay,
-        startTime: newBlock.startTime,
-        endTime: newBlock.endTime,
-        color: newBlock.color,
-        order: dayBlocks.length,
-      },
-      async () => {
-        const res = await fetch("/api/schedule-blocks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: newBlock.name,
-            dayOfWeek: selectedDay,
-            startTime: newBlock.startTime,
-            endTime: newBlock.endTime,
-            color: newBlock.color,
-            workspaceType: workspace,
-            order: dayBlocks.length,
-          }),
-        })
-        return res.json()
-      }
-    )
+    try {
+      await optimisticAdd(
+        {
+          name: newBlock.name,
+          dayOfWeek: selectedDay,
+          startTime: newBlock.startTime,
+          endTime: newBlock.endTime,
+          color: newBlock.color,
+          order: dayBlocks.length,
+        },
+        async () => {
+          const res = await fetch("/api/schedule-blocks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: newBlock.name,
+              dayOfWeek: selectedDay,
+              startTime: newBlock.startTime,
+              endTime: newBlock.endTime,
+              color: newBlock.color,
+              workspaceType: workspace,
+              order: dayBlocks.length,
+            }),
+          })
+          return res.json()
+        }
+      )
 
-    setNewBlock({ name: "", startTime: "09:00", endTime: "10:00", color: COLORS[0] })
-    setIsAddingNew(false)
+      setNewBlock({ name: "", startTime: "09:00", endTime: "10:00", color: COLORS[0] })
+      setIsAddingNew(false)
+      toast.success("Blok dodany")
+    } catch (error) {
+      console.error("Error creating block:", error)
+      toast.error("Nie udało się dodać bloku")
+    }
   }
 
   const handleDeleteBlock = async (blockId: string) => {
-    await optimisticDelete(blockId, async () => {
-      await fetch(`/api/schedule-blocks/${blockId}`, { method: "DELETE" })
-    })
+    try {
+      await optimisticDelete(blockId, async () => {
+        await fetch(`/api/schedule-blocks/${blockId}`, { method: "DELETE" })
+      })
+      toast.success("Blok usunięty")
+    } catch (error) {
+      console.error("Error deleting block:", error)
+      toast.error("Nie udało się usunąć bloku")
+    }
   }
 
   const handleStartEdit = (block: ScheduleBlock) => {
@@ -129,14 +142,20 @@ export default function WeeklySchedulePage() {
     }
 
     try {
-      await fetch(`/api/schedule-blocks/${blockId}`, {
+      const res = await fetch(`/api/schedule-blocks/${blockId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingData),
       })
-      mutate()
+      if (res.ok) {
+        mutate()
+        toast.success("Blok zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować bloku")
+      }
     } catch (error) {
       console.error("Error updating block:", error)
+      toast.error("Błąd podczas aktualizacji bloku")
     }
     setEditingId(null)
   }
@@ -148,23 +167,29 @@ export default function WeeklySchedulePage() {
     )
     if (!confirmed) return
 
-    for (const day of otherDays) {
-      await fetch("/api/schedule-blocks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: block.name,
-          description: block.description,
-          dayOfWeek: day.value,
-          startTime: block.startTime,
-          endTime: block.endTime,
-          color: block.color,
-          workspaceType: workspace,
-          order: 0,
-        }),
-      })
+    try {
+      for (const day of otherDays) {
+        await fetch("/api/schedule-blocks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: block.name,
+            description: block.description,
+            dayOfWeek: day.value,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            color: block.color,
+            workspaceType: workspace,
+            order: 0,
+          }),
+        })
+      }
+      mutate()
+      toast.success("Blok skopiowany do pozostałych dni")
+    } catch (error) {
+      console.error("Error copying block:", error)
+      toast.error("Nie udało się skopiować bloku")
     }
-    mutate()
   }
 
   const handleKeyDown = useCallback(
