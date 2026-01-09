@@ -58,7 +58,10 @@ export function useTasks(options: UseTasksOptions = {}) {
 
   const url = `/api/tasks?${params.toString()}`
 
-  const { data, error, isLoading, mutate } = useSWR<Task[]>(url)
+  const { data, error, isLoading, mutate } = useSWR<Task[]>(url, {
+    keepPreviousData: true, // Keep showing previous day's tasks while loading new day
+    revalidateOnFocus: false,
+  })
 
   // Optimistic update helper
   const optimisticUpdate = useCallback(

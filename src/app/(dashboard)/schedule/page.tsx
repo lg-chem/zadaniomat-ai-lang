@@ -128,7 +128,7 @@ export default function SchedulePage() {
   const { tasks, isLoading: tasksLoading, mutate: mutateTasks, optimisticAdd, optimisticDelete, optimisticUpdate } = useTasks({ date: dateString })
   const { categories, isLoading: categoriesLoading } = useCategories()
   const { activeSprint } = useSprints()
-  const { taskCounts } = useTaskCounts(selectedDate, 30)
+  const { taskCounts, mutate: mutateTaskCounts } = useTaskCounts(selectedDate, 30)
   const { overdueTasks, mutate: mutateOverdue } = useOverdueTasks()
 
   // Schedule blocks for the selected date
@@ -268,6 +268,7 @@ export default function SchedulePage() {
           return res.json()
         }
       )
+      mutateTaskCounts() // Update calendar counts
     } catch (error) {
       console.error("Error creating task:", error)
       toast.error("Nie udało się dodać zadania")
@@ -307,8 +308,11 @@ export default function SchedulePage() {
       if (taskData.scheduledDate === dateString) {
         mutateTasks()
       }
+      mutateTaskCounts() // Update calendar counts
+      toast.success("Zadanie dodane")
     } catch (error) {
       console.error("Error creating task:", error)
+      toast.error("Nie udało się dodać zadania")
     }
   }
 
@@ -457,6 +461,8 @@ export default function SchedulePage() {
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
         if (!res.ok) throw new Error('Failed to delete task')
       })
+      mutateTaskCounts() // Update calendar counts
+      toast.success("Zadanie usunięte")
     } catch (error) {
       console.error("Error deleting task:", error)
       toast.error("Nie udało się usunąć zadania")
@@ -478,6 +484,8 @@ export default function SchedulePage() {
         })
         if (!res.ok) throw new Error('Failed to transfer task')
       })
+      mutateTaskCounts() // Update calendar counts for both days
+      toast.success("Zadanie przeniesione na jutro")
     } catch (error) {
       console.error("Error transferring task:", error)
       toast.error("Nie udało się przenieść zadania")

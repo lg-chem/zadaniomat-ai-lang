@@ -1,5 +1,6 @@
 import useSWR from 'swr'
-import { format, addDays } from 'date-fns'
+import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns'
+import { useMemo } from 'react'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
 interface TaskCount {
@@ -7,24 +8,31 @@ interface TaskCount {
   count: number
 }
 
-export function useTaskCounts(centerDate: Date, daysRange: number = 30) {
+export function useTaskCounts(centerDate: Date, _daysRange: number = 30) {
   const { workspace } = useWorkspaceStore()
 
-  // Calculate date range
-  const from = format(addDays(centerDate, -7), 'yyyy-MM-dd')
-  const to = format(addDays(centerDate, daysRange), 'yyyy-MM-dd')
+  // Use stable month-based range to prevent refetches when clicking between days
+  // Fetch 3 months: previous, current, and next month
+  const { from, to } = useMemo(() => {
+    const monthStart = startOfMonth(centerDate)
+    return {
+      from: format(subMonths(monthStart, 1), 'yyyy-MM-dd'),
+      to: format(endOfMonth(addMonths(monthStart, 1)), 'yyyy-MM-dd'),
+    }
+  }, [centerDate.getFullYear(), centerDate.getMonth()]) // Only recalculate when month changes
 
   const url = `/api/tasks/counts?workspace=${workspace}&from=${from}&to=${to}`
 
-  const { data, error, isLoading } = useSWR<TaskCount[]>(url, {
-    // Keep this data fresh but don't refetch too often
+  const { data, error, isLoading, mutate } = useSWR<TaskCount[]>(url, {
+    keepPreviousData: true,
     revalidateOnFocus: false,
-    dedupingInterval: 30000, // 30 seconds
+    dedupingInterval: 60000, // 60 seconds
   })
 
   return {
     taskCounts: data ?? [],
     isLoading,
     isError: error,
+    mutate, // Export mutate so schedule can update counts after task changes
   }
 }
