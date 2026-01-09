@@ -142,7 +142,10 @@ export function useDayBlocks(date: string | null) {
 
   const url = date ? `/api/schedule-blocks?workspace=${workspace}&date=${date}` : null
 
-  const { data, error, isLoading, mutate } = useSWR<DayBlocksResponse>(url)
+  const { data, error, isLoading, mutate } = useSWR<DayBlocksResponse>(url, {
+    keepPreviousData: true, // Keep showing previous day's blocks while loading
+    revalidateOnFocus: false,
+  })
 
   return {
     data: data ?? null,
@@ -159,7 +162,10 @@ export function useScheduleOverride(date: string | null) {
   const { workspace } = useWorkspaceStore()
 
   const url = date ? `/api/schedule-blocks/override?workspace=${workspace}&date=${date}` : null
-  const { data, error, isLoading, mutate } = useSWR(url)
+  const { data, error, isLoading, mutate } = useSWR(url, {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+  })
 
   // Save override for this date
   const saveOverride = useCallback(
