@@ -124,7 +124,7 @@ function CategoryItem({
 }) {
   const hasChildren = category.children && category.children.length > 0
   const isExpanded = expandedCategories.has(category.id)
-  const totalEntries = getTotalEntries(category, entryCounts)
+  const totalEntriesCount = getTotalEntries(category, entryCounts)
   const isSelected = selectedCategory === category.id
 
   return (
@@ -157,7 +157,7 @@ function CategoryItem({
           />
           <span className="font-medium text-sm truncate">{category.name}</span>
           <Badge variant="secondary" className="text-xs flex-shrink-0">
-            {totalEntries}
+            {totalEntriesCount}
           </Badge>
         </div>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -250,16 +250,21 @@ export default function KnowledgePage() {
   const customCategories = categoriesData?.customCategories || []
   const allCategories = categoriesData?.allCategories || []
 
-  // Build entries URL
+  // Fetch ALL entries once, filter locally for instant category switching
   const entriesUrl = useMemo(() => {
     const params = new URLSearchParams({ workspace })
-    if (selectedCategory) params.append("categoryId", selectedCategory)
     if (searchQuery) params.append("search", searchQuery)
     return `/api/knowledge/entries?${params}`
-  }, [workspace, selectedCategory, searchQuery])
+  }, [workspace, searchQuery])
 
-  // SWR for entries
-  const { data: entries = [], isLoading: entriesLoading, mutate: mutateEntries } = useSWR<KnowledgeEntry[]>(entriesUrl)
+  // SWR for entries - fetch all, filter locally
+  const { data: allEntries = [], isLoading: entriesLoading, mutate: mutateEntries } = useSWR<KnowledgeEntry[]>(entriesUrl)
+
+  // Filter entries locally based on selected category (instant, no refetch)
+  const entries = useMemo(() => {
+    if (!selectedCategory) return allEntries
+    return allEntries.filter(entry => entry.category?.id === selectedCategory)
+  }, [allEntries, selectedCategory])
 
   const isLoading = categoriesLoading || entriesLoading
 
@@ -568,6 +573,7 @@ export default function KnowledgePage() {
   // Build entry counts map for accurate counting (includes team-shared entries)
   // Team entries have the AUTHOR's KnowledgeCategory ID, not the viewer's
   // We need to map through linkedCategoryId to find the viewer's category
+  // Use allEntries (unfiltered) for accurate counts
   const entryCounts = useMemo(() => {
     const counts = new Map<string, number>()
 
@@ -579,7 +585,7 @@ export default function KnowledgePage() {
       }
     }
 
-    for (const entry of entries) {
+    for (const entry of allEntries) {
       const entryLinkedCategoryId = entry.category?.linkedCategoryId
 
       if (entryLinkedCategoryId) {
@@ -597,11 +603,11 @@ export default function KnowledgePage() {
       }
     }
     return counts
-  }, [entries, allCategories])
+  }, [allEntries, allCategories])
 
-  // Stats - use actual entries count (includes team shared)
-  const totalEntries = entries.length
-  const importantEntries = entries.filter((e) => e.isImportant).length
+  // Stats - use allEntries for total, entries (filtered) for current view
+  const totalEntriesCountCount = allEntries.length
+  const importantEntries = allEntries.filter((e) => e.isImportant).length
 
   // Flattened categories for select
   const flatCats = [
@@ -685,7 +691,7 @@ export default function KnowledgePage() {
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Wpisy</div>
-            <div className="text-2xl font-bold">{totalEntries}</div>
+            <div className="text-2xl font-bold">{totalEntriesCount}</div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Ważne</div>
@@ -717,7 +723,7 @@ export default function KnowledgePage() {
           >
             <span className="font-medium text-sm">Wszystkie</span>
             <Badge variant="secondary" className="text-xs">
-              {totalEntries}
+              {totalEntriesCount}
             </Badge>
           </div>
 
