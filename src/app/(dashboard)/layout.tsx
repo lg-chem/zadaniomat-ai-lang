@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
+import dynamic from "next/dynamic"
 import { authOptions } from "@/lib/auth"
 import { Sidebar } from "@/components/layout/sidebar"
 import { MobileHeader } from "@/components/layout/mobile-header"
@@ -7,8 +8,17 @@ import { BottomNav } from "@/components/layout/bottom-nav"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { SWRProvider } from "@/components/providers/swr-provider"
 import { DashboardClient } from "@/components/layout/dashboard-client"
-import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
-import { FloatingChat } from "@/components/chat/floating-chat"
+
+// Lazy load heavy components that aren't needed on initial render
+const PWAInstallPrompt = dynamic(
+  () => import("@/components/pwa-install-prompt").then((mod) => mod.PWAInstallPrompt),
+  { ssr: false }
+)
+
+const FloatingChat = dynamic(
+  () => import("@/components/chat/floating-chat").then((mod) => mod.FloatingChat),
+  { ssr: false }
+)
 
 export default async function DashboardLayout({
   children,

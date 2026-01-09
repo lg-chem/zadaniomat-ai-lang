@@ -3,6 +3,7 @@
 import { useState, useRef, KeyboardEvent } from "react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
+import { toast } from "sonner"
 import {
   Plus,
   Check,
@@ -97,36 +98,51 @@ export default function BacklogPage() {
         }),
       })
       if (res.ok) {
-        mutate() // SWR will refetch data
+        mutate()
         setNewContent("")
         setIsAdding(false)
+        toast.success("Pomysł dodany do backlogu")
+      } else {
+        toast.error("Nie udało się dodać pomysłu")
       }
     } catch (error) {
       console.error("Error creating item:", error)
+      toast.error("Wystąpił błąd podczas dodawania")
     }
   }
 
   const handleUpdate = async (id: string, data: Partial<BacklogItem>) => {
     try {
-      await fetch(`/api/backlog/${id}`, {
+      const res = await fetch(`/api/backlog/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       })
-      mutate() // SWR will refetch data
-      setEditingId(null)
+      if (res.ok) {
+        mutate()
+        setEditingId(null)
+      } else {
+        toast.error("Nie udało się zaktualizować")
+      }
     } catch (error) {
       console.error("Error updating item:", error)
+      toast.error("Wystąpił błąd podczas aktualizacji")
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć ten element?")) return
     try {
-      await fetch(`/api/backlog/${id}`, { method: "DELETE" })
-      mutate() // SWR will refetch data
+      const res = await fetch(`/api/backlog/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutate()
+        toast.success("Element usunięty")
+      } else {
+        toast.error("Nie udało się usunąć")
+      }
     } catch (error) {
       console.error("Error deleting item:", error)
+      toast.error("Wystąpił błąd podczas usuwania")
     }
   }
 
@@ -242,7 +258,6 @@ export default function BacklogPage() {
       })
 
       if (res.ok) {
-        // Mark backlog item as processed
         await handleUpdate(convertingItem.id, { isProcessed: true })
         setConvertingItem(null)
         setTaskForm({
@@ -251,9 +266,13 @@ export default function BacklogPage() {
           plannedMinutes: "25",
           scheduledDate: format(new Date(), "yyyy-MM-dd"),
         })
+        toast.success("Zadanie utworzone pomyślnie")
+      } else {
+        toast.error("Nie udało się utworzyć zadania")
       }
     } catch (error) {
       console.error("Error converting to task:", error)
+      toast.error("Wystąpił błąd podczas tworzenia zadania")
     }
   }
 

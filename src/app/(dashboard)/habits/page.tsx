@@ -11,6 +11,7 @@ import {
   isSameDay,
 } from "date-fns"
 import { pl } from "date-fns/locale"
+import { toast } from "sonner"
 import {
   Plus,
   ChevronLeft,
@@ -137,9 +138,13 @@ export default function HabitsPage() {
         mutateHabits()
         setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
         setIsAddingHabit(false)
+        toast.success("Nawyk dodany")
+      } else {
+        toast.error("Nie udało się dodać nawyku")
       }
     } catch (error) {
       console.error("Error creating habit:", error)
+      toast.error("Wystąpił błąd")
     }
   }
 
@@ -181,10 +186,16 @@ export default function HabitsPage() {
   const handleDeleteHabit = async (habitId: string) => {
     if (!confirm("Czy na pewno chcesz usunąć ten nawyk?")) return
     try {
-      await fetch(`/api/habits/${habitId}`, { method: "DELETE" })
-      mutateHabits()
+      const res = await fetch(`/api/habits/${habitId}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateHabits()
+        toast.success("Nawyk usunięty")
+      } else {
+        toast.error("Nie udało się usunąć nawyku")
+      }
     } catch (error) {
       console.error("Error deleting habit:", error)
+      toast.error("Wystąpił błąd podczas usuwania")
     }
   }
 
@@ -202,7 +213,7 @@ export default function HabitsPage() {
   const handleUpdateHabit = async () => {
     if (!editingHabit) return
     try {
-      await fetch(`/api/habits/${editingHabit.id}`, {
+      const res = await fetch(`/api/habits/${editingHabit.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -213,10 +224,16 @@ export default function HabitsPage() {
           isPublic: editForm.isPublic,
         }),
       })
-      mutateHabits()
-      setEditingHabit(null)
+      if (res.ok) {
+        mutateHabits()
+        setEditingHabit(null)
+        toast.success("Nawyk zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować nawyku")
+      }
     } catch (error) {
       console.error("Error updating habit:", error)
+      toast.error("Wystąpił błąd")
     }
   }
 

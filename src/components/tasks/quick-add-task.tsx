@@ -34,9 +34,10 @@ export function QuickAddTask({ onAdd, placeholder = "Dodaj nowe zadanie..." }: Q
     return (
       <button
         onClick={() => setIsAdding(true)}
+        aria-label="Dodaj nowe zadanie"
         className="flex items-center gap-2 w-full p-3 rounded-lg border border-dashed text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-4 w-4" aria-hidden="true" />
         <span>{placeholder}</span>
       </button>
     )

@@ -3,6 +3,29 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+// Types for knowledge categories
+interface KnowledgeCategoryBase {
+  id: string
+  name: string
+  color: string
+  description?: string | null
+  parentId: string | null
+  linkedCategoryId: string | null
+  order: number
+  linkedCategory?: {
+    id: string
+    name: string
+    color: string
+  } | null
+  _count?: {
+    entries: number
+  }
+}
+
+interface KnowledgeCategoryWithChildren extends KnowledgeCategoryBase {
+  children: KnowledgeCategoryWithChildren[]
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -101,43 +124,81 @@ export async function GET(req: Request) {
     // Combine own + team strategic categories
     const allStrategicCategories = [...ownStrategicCategories, ...teamStrategicCategories]
 
-    // Auto-sync: create KnowledgeCategory for each strategic category if not exists
-    for (const stratCat of allStrategicCategories) {
-      const existing = await prisma.knowledgeCategory.findFirst({
-        where: {
-          userId: session.user.id,
-          workspaceType: workspace as "WORK" | "PRIVATE",
-          linkedCategoryId: stratCat.id,
-          parentId: null, // Only top-level
-        },
-      })
+    // Auto-sync: create/update KnowledgeCategory for each strategic category (BATCH - no N+1)
+    // First, get all existing knowledge categories linked to strategic categories in ONE query
+    const existingKnowledgeCategories = await prisma.knowledgeCategory.findMany({
+      where: {
+        userId: session.user.id,
+        workspaceType: workspace as "WORK" | "PRIVATE",
+        linkedCategoryId: { in: allStrategicCategories.map(c => c.id) },
+        parentId: null,
+      },
+      select: {
+        id: true,
+        linkedCategoryId: true,
+        name: true,
+        color: true,
+      },
+    })
 
+    // Create a map for quick lookup
+    const existingByLinkedId = new Map(
+      existingKnowledgeCategories.map(c => [c.linkedCategoryId, c])
+    )
+
+    // Separate categories to create vs update
+    const toCreate: { name: string; color: string; linkedCategoryId: string }[] = []
+    const toUpdate: { id: string; name: string; color: string }[] = []
+
+    for (const stratCat of allStrategicCategories) {
+      const existing = existingByLinkedId.get(stratCat.id)
       if (!existing) {
-        await prisma.knowledgeCategory.create({
-          data: {
-            name: stratCat.name,
-            color: stratCat.color,
-            workspaceType: workspace as "WORK" | "PRIVATE",
-            userId: session.user.id,
-            linkedCategoryId: stratCat.id,
-            isDefault: false,
-            order: 0,
-          },
+        toCreate.push({
+          name: stratCat.name,
+          color: stratCat.color,
+          linkedCategoryId: stratCat.id,
         })
       } else if (existing.name !== stratCat.name || existing.color !== stratCat.color) {
-        // Update if name or color changed
-        await prisma.knowledgeCategory.update({
-          where: { id: existing.id },
-          data: {
-            name: stratCat.name,
-            color: stratCat.color,
-          },
+        toUpdate.push({
+          id: existing.id,
+          name: stratCat.name,
+          color: stratCat.color,
         })
       }
     }
 
-    // Helper function to build category tree
-    const buildCategoryTree = (categories: any[], parentId: string | null = null): any[] => {
+    // Batch create new categories
+    if (toCreate.length > 0) {
+      await prisma.knowledgeCategory.createMany({
+        data: toCreate.map(c => ({
+          name: c.name,
+          color: c.color,
+          workspaceType: workspace as "WORK" | "PRIVATE",
+          userId: session.user.id,
+          linkedCategoryId: c.linkedCategoryId,
+          isDefault: false,
+          order: 0,
+        })),
+      })
+    }
+
+    // Batch update changed categories (Prisma doesn't support updateMany with different values, so use transaction)
+    if (toUpdate.length > 0) {
+      await prisma.$transaction(
+        toUpdate.map(c =>
+          prisma.knowledgeCategory.update({
+            where: { id: c.id },
+            data: { name: c.name, color: c.color },
+          })
+        )
+      )
+    }
+
+    // Helper function to build category tree (typed, no any)
+    const buildCategoryTree = (
+      categories: KnowledgeCategoryBase[],
+      parentId: string | null = null
+    ): KnowledgeCategoryWithChildren[] => {
       return categories
         .filter(cat => cat.parentId === parentId)
         .map(cat => ({

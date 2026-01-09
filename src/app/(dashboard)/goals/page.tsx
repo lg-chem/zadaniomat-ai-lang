@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -310,24 +311,36 @@ export default function GoalsPage() {
 
   const handleToggleComplete = async (goal: Goal) => {
     try {
-      await fetch(`/api/goals/${goal.id}`, {
+      const res = await fetch(`/api/goals/${goal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isCompleted: !goal.isCompleted }),
       })
-      mutateGoals()
+      if (res.ok) {
+        mutateGoals()
+        toast.success(goal.isCompleted ? "Cel oznaczony jako nieukończony" : "Cel ukończony!")
+      } else {
+        toast.error("Nie udało się zaktualizować celu")
+      }
     } catch (error) {
       console.error("Error updating goal:", error)
+      toast.error("Wystąpił błąd")
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć ten cel?")) return
     try {
-      await fetch(`/api/goals/${id}`, { method: "DELETE" })
-      mutateGoals()
+      const res = await fetch(`/api/goals/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        mutateGoals()
+        toast.success("Cel usunięty")
+      } else {
+        toast.error("Nie udało się usunąć celu")
+      }
     } catch (error) {
       console.error("Error deleting goal:", error)
+      toast.error("Wystąpił błąd podczas usuwania")
     }
   }
 
@@ -344,16 +357,22 @@ export default function GoalsPage() {
   const handleSaveEdit = async (id: string) => {
     if (!editingTitle.trim()) return
     try {
-      await fetch(`/api/goals/${id}`, {
+      const res = await fetch(`/api/goals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: editingTitle.trim() }),
       })
-      setEditingGoalId(null)
-      setEditingTitle("")
-      mutateGoals()
+      if (res.ok) {
+        setEditingGoalId(null)
+        setEditingTitle("")
+        mutateGoals()
+        toast.success("Cel zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować celu")
+      }
     } catch (error) {
       console.error("Error updating goal:", error)
+      toast.error("Wystąpił błąd")
     }
   }
 
@@ -381,12 +400,15 @@ export default function GoalsPage() {
         }),
       })
       if (res.ok) {
-        // Clear input and refresh
         setTemplateInputs((prev) => ({ ...prev, [key]: "" }))
         mutateGoals()
+        toast.success("Cel dodany")
+      } else {
+        toast.error("Nie udało się dodać celu")
       }
     } catch (error) {
       console.error("Error creating goal:", error)
+      toast.error("Wystąpił błąd podczas tworzenia celu")
     }
   }
 

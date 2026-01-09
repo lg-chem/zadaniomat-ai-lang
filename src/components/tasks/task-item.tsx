@@ -72,6 +72,8 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
       {/* Checkbox */}
       <button
         onClick={handleToggle}
+        aria-label={isDone ? "Oznacz jako nieukończone" : "Oznacz jako ukończone"}
+        aria-pressed={isDone}
         className={cn(
           "flex-shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors touch-manipulation mt-0.5",
           isDone
@@ -79,7 +81,7 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
             : "border-muted-foreground hover:border-primary active:border-primary"
         )}
       >
-        {isDone && <Check className="h-3 w-3" />}
+        {isDone && <Check className="h-3 w-3" aria-hidden="true" />}
       </button>
 
       {/* Content */}
@@ -152,8 +154,9 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
               size="icon"
               className="h-7 w-7 md:h-8 md:w-8 touch-manipulation"
               onClick={() => onEdit(task)}
+              aria-label={`Edytuj zadanie: ${task.title}`}
             >
-              <Pencil className="h-3 w-3" />
+              <Pencil className="h-3 w-3" aria-hidden="true" />
             </Button>
           )}
           {onDelete && (
@@ -162,8 +165,9 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
               size="icon"
               className="h-7 w-7 md:h-8 md:w-8 text-destructive hover:text-destructive touch-manipulation"
               onClick={() => onDelete(task.id)}
+              aria-label={`Usuń zadanie: ${task.title}`}
             >
-              <Trash2 className="h-3 w-3" />
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
             </Button>
           )}
         </div>
