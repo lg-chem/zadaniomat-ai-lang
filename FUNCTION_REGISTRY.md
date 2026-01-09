@@ -550,6 +550,79 @@ type HabitFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY'
 
 ---
 
+## 🔔 System Powiadomień (Toast)
+
+### Konfiguracja
+**Biblioteka:** `sonner`
+**Lokalizacja Toastera:** `src/app/layout.tsx`
+
+```typescript
+import { Toaster } from "sonner"
+
+<Toaster
+  position="top-center"
+  richColors
+  closeButton
+  toastOptions={{
+    duration: 4000,
+    className: "font-sans",
+  }}
+/>
+```
+
+### Użycie
+```typescript
+import { toast } from "sonner"
+
+// Sukces
+toast.success("Operacja zakończona pomyślnie")
+
+// Błąd
+toast.error("Wystąpił błąd")
+
+// Informacja
+toast.info("Informacja dla użytkownika")
+
+// Ładowanie
+toast.loading("Przetwarzanie...")
+```
+
+### Gdzie użyte
+- `/src/app/(dashboard)/backlog/page.tsx` - operacje CRUD backlogu
+- `/src/app/(dashboard)/goals/page.tsx` - operacje na celach
+- `/src/app/(dashboard)/habits/page.tsx` - operacje na nawykach
+
+**WAŻNE:** Każda operacja CRUD powinna pokazywać toast sukcesu lub błędu!
+
+---
+
+## ⚡ Lazy Loading
+
+### Komponenty z lazy loading
+**Lokalizacja:** `src/app/(dashboard)/layout.tsx`
+
+```typescript
+import dynamic from "next/dynamic"
+
+// Lazy load heavy components
+const PWAInstallPrompt = dynamic(
+  () => import("@/components/pwa-install-prompt").then((mod) => mod.PWAInstallPrompt),
+  { ssr: false }
+)
+
+const FloatingChat = dynamic(
+  () => import("@/components/chat/floating-chat").then((mod) => mod.FloatingChat),
+  { ssr: false }
+)
+```
+
+### Kiedy używać lazy loading
+- Komponenty które nie są widoczne od razu (modals, floating elements)
+- Ciężkie komponenty (wykresy, edytory)
+- Komponenty wymagające window/document (PWA, notifications)
+
+---
+
 ## ✅ Checklista zmian
 
 Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
@@ -573,6 +646,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-01-09 | Dodano system toastów (sonner), lazy loading, A11y | Claude |
 | 2026-01-09 | Utworzenie dokumentu | Claude |
 
 ---
