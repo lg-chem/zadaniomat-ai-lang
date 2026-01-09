@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { toast } from "sonner"
 import { useSession } from "next-auth/react"
 import {
@@ -130,11 +130,17 @@ export default function IdeasPage() {
     selectedOrgId ? `/api/ideas/categories?organizationId=${selectedOrgId}` : null
   )
 
-  // Fetch ideas
+  // Fetch ALL ideas for org, filter locally for instant category switching
   const ideasUrl = selectedOrgId
-    ? `/api/ideas?organizationId=${selectedOrgId}${selectedCategoryId ? `&categoryId=${selectedCategoryId}` : ""}`
+    ? `/api/ideas?organizationId=${selectedOrgId}`
     : null
-  const { data: ideas = [], isLoading, mutate: mutateIdeas } = useSWR<Idea[]>(ideasUrl)
+  const { data: allIdeas = [], isLoading, mutate: mutateIdeas } = useSWR<Idea[]>(ideasUrl)
+
+  // Filter ideas locally based on selected category (instant, no refetch)
+  const ideas = useMemo(() => {
+    if (!selectedCategoryId) return allIdeas
+    return allIdeas.filter(idea => idea.category?.id === selectedCategoryId)
+  }, [allIdeas, selectedCategoryId])
 
   // Fetch replies for selected idea
   const { data: replies = [], mutate: mutateReplies } = useSWR<IdeaReply[]>(

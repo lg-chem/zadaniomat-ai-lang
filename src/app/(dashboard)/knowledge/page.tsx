@@ -606,7 +606,7 @@ export default function KnowledgePage() {
   }, [allEntries, allCategories])
 
   // Stats - use allEntries for total, entries (filtered) for current view
-  const totalEntriesCountCount = allEntries.length
+  const totalEntriesCount = allEntries.length
   const importantEntries = allEntries.filter((e) => e.isImportant).length
 
   // Flattened categories for select
