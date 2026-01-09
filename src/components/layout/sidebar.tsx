@@ -1,9 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
-import { useEffect, useState } from "react"
+import { useState, useTransition } from "react"
 import useSWR from "swr"
 import {
   LayoutDashboard,
@@ -31,6 +31,7 @@ import {
   Building2,
   Layers,
   Lightbulb,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -90,6 +91,69 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 // Map href to config id (strip leading slash)
 const hrefToConfigId = (href: string) => href.slice(1)
+
+// NavLink component with instant feedback during navigation
+interface NavLinkProps {
+  href: string
+  children: React.ReactNode
+  className?: string
+  activeClassName?: string
+  pendingClassName?: string
+  isActive?: boolean
+  onMouseEnter?: () => void
+  onClick?: () => void
+  icon?: React.ComponentType<{ className?: string }>
+  showSpinner?: boolean
+}
+
+function NavLink({
+  href,
+  children,
+  className,
+  activeClassName,
+  pendingClassName,
+  isActive,
+  onMouseEnter,
+  onClick,
+  icon: Icon,
+  showSpinner = true,
+}: NavLinkProps) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    onClick?.()
+    startTransition(() => {
+      router.push(href)
+    })
+  }
+
+  const finalClassName = cn(
+    className,
+    isPending && pendingClassName,
+    (isActive || isPending) && activeClassName
+  )
+
+  return (
+    <Link
+      href={href}
+      prefetch={false}
+      onMouseEnter={onMouseEnter}
+      onClick={handleClick}
+      className={finalClassName}
+    >
+      {Icon && (
+        isPending && showSpinner ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <Icon className="h-5 w-5" />
+        )
+      )}
+      {children}
+    </Link>
+  )
+}
 
 const workNavItems = [
   { href: "/teams", label: "Zespoły", icon: Building2, id: "teams" },
@@ -315,28 +379,23 @@ export function SidebarContent() {
             const showTaskStackBadge = item.href === "/task-stack" && taskStackCount > 0
             const badgeCount = showTaskStackBadge ? taskStackCount : showGroupChallengeBadge ? pendingInvitationsCount : 0
             return (
-              <Link
+              <NavLink
                 key={item.href}
                 href={item.href}
-                prefetch={false}
                 onMouseEnter={() => prefetchPage(item.href.slice(1), workspace)}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive(item.href)
-                    ? workspace === "WORK"
-                      ? "bg-work/10 text-work"
-                      : "bg-private/10 text-private"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
+                isActive={isActive(item.href)}
+                icon={item.icon}
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                activeClassName={workspace === "WORK" ? "bg-work/10 text-work" : "bg-private/10 text-private"}
+                pendingClassName="opacity-70"
               >
-                <item.icon className="h-5 w-5" />
                 <span className="flex-1">{item.label}</span>
                 {(showGroupChallengeBadge || showTaskStackBadge) && (
                   <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
                     {badgeCount}
                   </span>
                 )}
-              </Link>
+              </NavLink>
             )
           })}
         </nav>
@@ -347,36 +406,30 @@ export function SidebarContent() {
       {/* Bottom Navigation */}
       <nav className="space-y-1 p-4">
         {bottomNavItems.map((item) => (
-          <Link
+          <NavLink
             key={item.href}
             href={item.href}
-            prefetch={false}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive(item.href)
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
+            isActive={isActive(item.href)}
+            icon={item.icon}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            activeClassName="bg-accent text-accent-foreground"
+            pendingClassName="opacity-70"
           >
-            <item.icon className="h-5 w-5" />
             {item.label}
-          </Link>
+          </NavLink>
         ))}
         {/* Admin link - only visible for admins */}
         {(session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN") && (
-          <Link
+          <NavLink
             href="/admin"
-            prefetch={false}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive("/admin")
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
+            isActive={isActive("/admin")}
+            icon={ShieldCheck}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            activeClassName="bg-accent text-accent-foreground"
+            pendingClassName="opacity-70"
           >
-            <ShieldCheck className="h-5 w-5" />
             Admin
-          </Link>
+          </NavLink>
         )}
       </nav>
 

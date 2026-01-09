@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Briefcase, User, Users } from "lucide-react"
+import { Briefcase, User, Users, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import useSWR from "swr"
@@ -12,6 +12,7 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json())
 export function WorkspaceSwitcher() {
   const router = useRouter()
   const { workspace, setWorkspace } = useWorkspaceStore()
+  const [isPending, startTransition] = useTransition()
 
   // Fetch user restrictions
   const { data: restrictions, isLoading } = useSWR<{ restrictedToWork: boolean }>(
@@ -36,13 +37,24 @@ export function WorkspaceSwitcher() {
     }
 
     setWorkspace(newWorkspace)
-    // Navigate to default page for each workspace
-    if (newWorkspace === "FRIENDS") {
+    // Navigate to default page for each workspace with transition
+    startTransition(() => {
       router.push("/schedule")
-    } else if (newWorkspace === "WORK") {
-      router.push("/schedule")
-    } else {
-      router.push("/schedule")
+    })
+  }
+
+  // Get the icon for a workspace, showing spinner if pending
+  const getIcon = (ws: "FRIENDS" | "WORK" | "PRIVATE") => {
+    if (isPending && workspace === ws) {
+      return <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+    }
+    switch (ws) {
+      case "FRIENDS":
+        return <Users className="h-3.5 w-3.5 flex-shrink-0" />
+      case "WORK":
+        return <Briefcase className="h-3.5 w-3.5 flex-shrink-0" />
+      case "PRIVATE":
+        return <User className="h-3.5 w-3.5 flex-shrink-0" />
     }
   }
 
@@ -75,38 +87,44 @@ export function WorkspaceSwitcher() {
     <div className="flex items-center gap-0.5 p-1 bg-muted rounded-lg w-full">
       <button
         onClick={() => handleWorkspaceChange("FRIENDS")}
+        disabled={isPending}
         className={cn(
           "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1 min-w-0",
           workspace === "FRIENDS"
             ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          isPending && workspace === "FRIENDS" && "opacity-70"
         )}
       >
-        <Users className="h-3.5 w-3.5 flex-shrink-0" />
+        {getIcon("FRIENDS")}
         <span className="truncate">Znajomi</span>
       </button>
       <button
         onClick={() => handleWorkspaceChange("WORK")}
+        disabled={isPending}
         className={cn(
           "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1 min-w-0",
           workspace === "WORK"
             ? "bg-work text-work-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          isPending && workspace === "WORK" && "opacity-70"
         )}
       >
-        <Briefcase className="h-3.5 w-3.5 flex-shrink-0" />
+        {getIcon("WORK")}
         <span className="truncate">Praca</span>
       </button>
       <button
         onClick={() => handleWorkspaceChange("PRIVATE")}
+        disabled={isPending}
         className={cn(
           "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all flex-1 min-w-0",
           workspace === "PRIVATE"
             ? "bg-private text-private-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          isPending && workspace === "PRIVATE" && "opacity-70"
         )}
       >
-        <User className="h-3.5 w-3.5 flex-shrink-0" />
+        {getIcon("PRIVATE")}
         <span className="truncate">Prywatne</span>
       </button>
     </div>
