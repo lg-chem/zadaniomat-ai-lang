@@ -318,7 +318,6 @@ export function SidebarContent() {
               <Link
                 key={item.href}
                 href={item.href}
-                prefetch={false}
                 onMouseEnter={() => prefetchPage(item.href.slice(1), workspace)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -350,7 +349,6 @@ export function SidebarContent() {
           <Link
             key={item.href}
             href={item.href}
-            prefetch={false}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
               isActive(item.href)
@@ -366,7 +364,6 @@ export function SidebarContent() {
         {(session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN") && (
           <Link
             href="/admin"
-            prefetch={false}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
               isActive("/admin")
