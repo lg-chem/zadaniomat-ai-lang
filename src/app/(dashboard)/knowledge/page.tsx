@@ -296,92 +296,147 @@ export default function KnowledgePage() {
     })
   }
 
-  // Entry handlers
+  // Entry handlers with optimistic updates
   const handleCreateEntry = async () => {
     if (!entryForm.title.trim() || !entryForm.content.trim() || !entryForm.categoryId) return
 
-    try {
-      const res = await fetch("/api/knowledge/entries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...entryForm,
-          workspace,
-        }),
-      })
-      if (res.ok) {
-        mutateEntries()
-        mutateCategories()
-        setShowEntryDialog(false)
-        setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
-        toast.success("Wpis dodany")
-      } else {
-        toast.error("Nie udało się dodać wpisu")
-      }
-    } catch (error) {
-      console.error("Error creating entry:", error)
-      toast.error("Błąd podczas dodawania wpisu")
+    const category = allCategories.find(c => c.id === entryForm.categoryId)
+    const tempId = `temp-${Date.now()}`
+    const optimisticEntry: KnowledgeEntry = {
+      id: tempId,
+      title: entryForm.title,
+      content: entryForm.content,
+      isImportant: entryForm.isImportant,
+      visibility: entryForm.visibility,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      category: category || { id: entryForm.categoryId, name: "", color: "#6366f1", _count: { entries: 0 } },
+      userId: currentUserId || "",
     }
+
+    // Close dialog immediately
+    setShowEntryDialog(false)
+    const formData = { ...entryForm }
+    setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
+
+    // Optimistic update
+    mutateEntries(
+      async (currentEntries) => {
+        const res = await fetch("/api/knowledge/entries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...formData, workspace }),
+        })
+        if (!res.ok) throw new Error("Failed to create entry")
+        const newEntry = await res.json()
+        toast.success("Wpis dodany")
+        return [newEntry, ...(currentEntries || []).filter(e => e.id !== tempId)]
+      },
+      {
+        optimisticData: (currentEntries) => [optimisticEntry, ...(currentEntries || [])],
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się dodać wpisu")
+    })
+
+    mutateCategories()
   }
 
   const handleUpdateEntry = async () => {
     if (!editingEntry || !entryForm.title.trim() || !entryForm.content.trim()) return
 
-    try {
-      const res = await fetch(`/api/knowledge/entries/${editingEntry.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(entryForm),
-      })
-      if (res.ok) {
-        mutateEntries()
-        setEditingEntry(null)
-        setShowEntryDialog(false)
-        setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
-        toast.success("Wpis zaktualizowany")
-      } else {
-        toast.error("Nie udało się zaktualizować wpisu")
-      }
-    } catch (error) {
-      console.error("Error updating entry:", error)
-      toast.error("Błąd podczas aktualizacji wpisu")
+    const entryId = editingEntry.id
+    const category = allCategories.find(c => c.id === entryForm.categoryId)
+    const updatedEntry: KnowledgeEntry = {
+      ...editingEntry,
+      title: entryForm.title,
+      content: entryForm.content,
+      isImportant: entryForm.isImportant,
+      visibility: entryForm.visibility,
+      category: category || editingEntry.category,
+      updatedAt: new Date().toISOString(),
     }
+
+    // Close dialog immediately
+    setEditingEntry(null)
+    setShowEntryDialog(false)
+    const formData = { ...entryForm }
+    setEntryForm({ title: "", content: "", categoryId: "", isImportant: false, visibility: "PRIVATE" })
+
+    // Optimistic update
+    mutateEntries(
+      async (currentEntries) => {
+        const res = await fetch(`/api/knowledge/entries/${entryId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        })
+        if (!res.ok) throw new Error("Failed to update entry")
+        const serverEntry = await res.json()
+        toast.success("Wpis zaktualizowany")
+        return (currentEntries || []).map(e => e.id === entryId ? serverEntry : e)
+      },
+      {
+        optimisticData: (currentEntries) => (currentEntries || []).map(e => e.id === entryId ? updatedEntry : e),
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się zaktualizować wpisu")
+    })
   }
 
   const handleDeleteEntry = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć ten wpis?")) return
 
-    try {
-      const res = await fetch(`/api/knowledge/entries/${id}`, { method: "DELETE" })
-      if (res.ok) {
-        mutateEntries()
-        mutateCategories()
+    // Optimistic delete
+    mutateEntries(
+      async (currentEntries) => {
+        const res = await fetch(`/api/knowledge/entries/${id}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("Failed to delete entry")
         toast.success("Wpis usunięty")
-      } else {
-        toast.error("Nie udało się usunąć wpisu")
+        return (currentEntries || []).filter(e => e.id !== id)
+      },
+      {
+        optimisticData: (currentEntries) => (currentEntries || []).filter(e => e.id !== id),
+        rollbackOnError: true,
+        revalidate: false,
       }
-    } catch (error) {
-      console.error("Error deleting entry:", error)
-      toast.error("Błąd podczas usuwania wpisu")
-    }
+    ).catch(() => {
+      toast.error("Nie udało się usunąć wpisu")
+    })
+
+    mutateCategories()
   }
 
   const handleToggleImportant = async (entry: KnowledgeEntry) => {
-    try {
-      const res = await fetch(`/api/knowledge/entries/${entry.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isImportant: !entry.isImportant }),
-      })
-      if (res.ok) {
-        mutateEntries()
-      } else {
-        toast.error("Nie udało się zmienić statusu")
+    const newImportant = !entry.isImportant
+
+    // Optimistic toggle
+    mutateEntries(
+      async (currentEntries) => {
+        const res = await fetch(`/api/knowledge/entries/${entry.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isImportant: newImportant }),
+        })
+        if (!res.ok) throw new Error("Failed to toggle important")
+        return (currentEntries || []).map(e =>
+          e.id === entry.id ? { ...e, isImportant: newImportant } : e
+        )
+      },
+      {
+        optimisticData: (currentEntries) => (currentEntries || []).map(e =>
+          e.id === entry.id ? { ...e, isImportant: newImportant } : e
+        ),
+        rollbackOnError: true,
+        revalidate: false,
       }
-    } catch (error) {
-      console.error("Error toggling important:", error)
-      toast.error("Błąd podczas zmiany statusu")
-    }
+    ).catch(() => {
+      toast.error("Nie udało się zmienić statusu")
+    })
   }
 
   const handleStartEditEntry = (entry: KnowledgeEntry) => {

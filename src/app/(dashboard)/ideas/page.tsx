@@ -170,101 +170,177 @@ export default function IdeasPage() {
   const handleCreateIdea = async () => {
     if (!newIdeaForm.content.trim() || !newIdeaForm.categoryId) return
 
-    try {
-      const res = await fetch("/api/ideas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newIdeaForm.title || null,
-          content: newIdeaForm.content,
-          categoryId: newIdeaForm.categoryId,
-        }),
-      })
-      if (res.ok) {
-        mutateIdeas()
-        mutateCategories()
-        setNewIdeaForm({ title: "", content: "", categoryId: "" })
-        setShowNewIdeaDialog(false)
-        toast.success("Rozkminka dodana")
-      } else {
-        toast.error("Nie udało się dodać rozkminki")
-      }
-    } catch (error) {
-      console.error("Error creating idea:", error)
-      toast.error("Błąd podczas dodawania rozkminki")
+    const category = categories.find(c => c.id === newIdeaForm.categoryId)
+    const tempId = `temp-${Date.now()}`
+    const optimisticIdea: Idea = {
+      id: tempId,
+      title: newIdeaForm.title || null,
+      content: newIdeaForm.content,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      userId: currentUserId || "",
+      category: category ? {
+        id: category.id,
+        name: category.name,
+        color: category.color,
+        emoji: category.emoji,
+        linkedCategory: category.linkedCategory,
+      } : { id: newIdeaForm.categoryId, name: "", color: "#8b5cf6" },
+      user: {
+        id: currentUserId || "",
+        name: session?.user?.name || null,
+        image: session?.user?.image || null,
+      },
+      _count: { replies: 0 },
     }
+
+    // Close dialog immediately
+    setShowNewIdeaDialog(false)
+    const formData = { ...newIdeaForm }
+    setNewIdeaForm({ title: "", content: "", categoryId: "" })
+
+    // Optimistic update
+    mutateIdeas(
+      async (currentIdeas) => {
+        const res = await fetch("/api/ideas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: formData.title || null,
+            content: formData.content,
+            categoryId: formData.categoryId,
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to create idea")
+        const newIdea = await res.json()
+        toast.success("Rozkminka dodana")
+        return [newIdea, ...(currentIdeas || []).filter(i => i.id !== tempId)]
+      },
+      {
+        optimisticData: (currentIdeas) => [optimisticIdea, ...(currentIdeas || [])],
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się dodać rozkminki")
+    })
+
+    mutateCategories()
   }
 
   const handleDeleteIdea = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (!confirm("Czy na pewno chcesz usunąć tę rozkminkę?")) return
 
-    try {
-      const res = await fetch(`/api/ideas/${id}`, { method: "DELETE" })
-      if (res.ok) {
-        mutateIdeas()
-        mutateCategories()
-        if (selectedIdea?.id === id) {
-          setSelectedIdea(null)
-        }
-        toast.success("Rozkminka usunięta")
-      } else {
-        toast.error("Nie udało się usunąć rozkminki")
-      }
-    } catch (error) {
-      console.error("Error deleting idea:", error)
-      toast.error("Błąd podczas usuwania rozkminki")
+    if (selectedIdea?.id === id) {
+      setSelectedIdea(null)
     }
+
+    // Optimistic delete
+    mutateIdeas(
+      async (currentIdeas) => {
+        const res = await fetch(`/api/ideas/${id}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("Failed to delete idea")
+        toast.success("Rozkminka usunięta")
+        return (currentIdeas || []).filter(i => i.id !== id)
+      },
+      {
+        optimisticData: (currentIdeas) => (currentIdeas || []).filter(i => i.id !== id),
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się usunąć rozkminki")
+    })
+
+    mutateCategories()
   }
 
   const handleCreateReply = async () => {
     if (!replyContent.trim() || !selectedIdea) return
 
-    try {
-      const res = await fetch(`/api/ideas/${selectedIdea.id}/replies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: replyContent }),
-      })
-      if (res.ok) {
-        mutateReplies()
-        mutateIdeas()
-        setReplyContent("")
-        toast.success("Odpowiedź dodana")
-      } else {
-        toast.error("Nie udało się dodać odpowiedzi")
-      }
-    } catch (error) {
-      console.error("Error creating reply:", error)
-      toast.error("Błąd podczas dodawania odpowiedzi")
+    const tempId = `temp-${Date.now()}`
+    const optimisticReply: IdeaReply = {
+      id: tempId,
+      content: replyContent,
+      createdAt: new Date().toISOString(),
+      user: {
+        id: currentUserId || "",
+        name: session?.user?.name || null,
+        image: session?.user?.image || null,
+      },
     }
+
+    const content = replyContent
+    setReplyContent("")
+
+    // Optimistic update
+    mutateReplies(
+      async (currentReplies) => {
+        const res = await fetch(`/api/ideas/${selectedIdea.id}/replies`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        })
+        if (!res.ok) throw new Error("Failed to create reply")
+        const newReply = await res.json()
+        toast.success("Odpowiedź dodana")
+        return [...(currentReplies || []).filter(r => r.id !== tempId), newReply]
+      },
+      {
+        optimisticData: (currentReplies) => [...(currentReplies || []), optimisticReply],
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się dodać odpowiedzi")
+      setReplyContent(content)
+    })
+
+    mutateIdeas()
   }
 
   const handleEditIdea = async () => {
     if (!editIdeaForm.content.trim() || !selectedIdea) return
 
-    try {
-      const res = await fetch(`/api/ideas/${selectedIdea.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: editIdeaForm.title || null,
-          content: editIdeaForm.content,
-        }),
-      })
-      if (res.ok) {
-        const updated = await res.json()
-        setSelectedIdea(updated)
-        mutateIdeas()
-        setShowEditIdeaDialog(false)
-        toast.success("Rozkminka zaktualizowana")
-      } else {
-        toast.error("Nie udało się zaktualizować rozkminki")
-      }
-    } catch (error) {
-      console.error("Error editing idea:", error)
-      toast.error("Błąd podczas aktualizacji rozkminki")
+    const ideaId = selectedIdea.id
+    const updatedIdea: Idea = {
+      ...selectedIdea,
+      title: editIdeaForm.title || null,
+      content: editIdeaForm.content,
+      updatedAt: new Date().toISOString(),
     }
+
+    // Update selected immediately
+    setSelectedIdea(updatedIdea)
+    setShowEditIdeaDialog(false)
+    const formData = { ...editIdeaForm }
+
+    // Optimistic update
+    mutateIdeas(
+      async (currentIdeas) => {
+        const res = await fetch(`/api/ideas/${ideaId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: formData.title || null,
+            content: formData.content,
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to update idea")
+        const serverIdea = await res.json()
+        setSelectedIdea(serverIdea)
+        toast.success("Rozkminka zaktualizowana")
+        return (currentIdeas || []).map(i => i.id === ideaId ? serverIdea : i)
+      },
+      {
+        optimisticData: (currentIdeas) => (currentIdeas || []).map(i => i.id === ideaId ? updatedIdea : i),
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się zaktualizować rozkminki")
+    })
   }
 
   const openEditDialog = () => {
@@ -280,50 +356,73 @@ export default function IdeasPage() {
   const handleCreateCategory = async () => {
     if (!categoryForm.name.trim() || !selectedOrgId) return
 
-    try {
-      const res = await fetch("/api/ideas/categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: categoryForm.name,
-          color: categoryForm.color,
-          emoji: categoryForm.emoji || null,
-          organizationId: selectedOrgId,
-        }),
-      })
-      if (res.ok) {
-        mutateCategories()
-        setShowCategoryDialog(false)
-        setCategoryForm({ name: "", color: "#8b5cf6", emoji: "" })
-        toast.success("Kategoria utworzona")
-      } else {
-        toast.error("Nie udało się utworzyć kategorii")
-      }
-    } catch (error) {
-      console.error("Error creating category:", error)
-      toast.error("Błąd podczas tworzenia kategorii")
+    const tempId = `temp-${Date.now()}`
+    const optimisticCategory: IdeaCategory = {
+      id: tempId,
+      name: categoryForm.name,
+      color: categoryForm.color,
+      emoji: categoryForm.emoji || null,
+      _count: { ideas: 0 },
     }
+
+    // Close dialog immediately
+    setShowCategoryDialog(false)
+    const formData = { ...categoryForm }
+    setCategoryForm({ name: "", color: "#8b5cf6", emoji: "" })
+
+    // Optimistic update
+    mutateCategories(
+      async (currentCategories) => {
+        const res = await fetch("/api/ideas/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: formData.name,
+            color: formData.color,
+            emoji: formData.emoji || null,
+            organizationId: selectedOrgId,
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to create category")
+        const newCategory = await res.json()
+        toast.success("Kategoria utworzona")
+        return [...(currentCategories || []).filter(c => c.id !== tempId), newCategory]
+      },
+      {
+        optimisticData: (currentCategories) => [...(currentCategories || []), optimisticCategory],
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się utworzyć kategorii")
+    })
   }
 
   const handleDeleteCategory = async (id: string) => {
     if (!confirm("Czy na pewno chcesz usunąć tę kategorię i wszystkie jej rozkminki?")) return
 
-    try {
-      const res = await fetch(`/api/ideas/categories/${id}`, { method: "DELETE" })
-      if (res.ok) {
-        mutateCategories()
-        if (selectedCategoryId === id) {
-          setSelectedCategoryId(null)
-        }
-        mutateIdeas()
-        toast.success("Kategoria usunięta")
-      } else {
-        toast.error("Nie udało się usunąć kategorii")
-      }
-    } catch (error) {
-      console.error("Error deleting category:", error)
-      toast.error("Błąd podczas usuwania kategorii")
+    if (selectedCategoryId === id) {
+      setSelectedCategoryId(null)
     }
+
+    // Optimistic delete
+    mutateCategories(
+      async (currentCategories) => {
+        const res = await fetch(`/api/ideas/categories/${id}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("Failed to delete category")
+        toast.success("Kategoria usunięta")
+        return (currentCategories || []).filter(c => c.id !== id)
+      },
+      {
+        optimisticData: (currentCategories) => (currentCategories || []).filter(c => c.id !== id),
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    ).catch(() => {
+      toast.error("Nie udało się usunąć kategorii")
+    })
+
+    mutateIdeas()
   }
 
   const totalIdeas = categories.reduce((sum, cat) => sum + cat._count.ideas, 0)
