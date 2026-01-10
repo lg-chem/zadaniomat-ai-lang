@@ -693,35 +693,57 @@ export default function SchedulePage() {
     const task = overdueTasks.find(t => t.id === taskId)
     if (!task) return
 
+    const targetDateString = format(targetDate, "yyyy-MM-dd")
+
+    // Close popover immediately
+    setTransferTaskId(null)
+
+    // Optimistic update: increment count for target date
+    incrementCount(targetDateString)
+
+    // Optimistic update: remove from overdue list immediately
+    const updatedOverdue = overdueTasks.filter(t => t.id !== taskId)
+    mutateOverdue(updatedOverdue, { revalidate: false })
+
     try {
       // Create new task on target date
-      await fetch("/api/tasks", {
+      const createRes = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: task.title,
           categoryId: task.categoryId,
           plannedMinutes: task.plannedMinutes,
-          scheduledDate: format(targetDate, "yyyy-MM-dd"),
+          scheduledDate: targetDateString,
           workspaceType: workspace,
           status: "NEW",
           isRecurring: false,
         }),
       })
 
+      if (!createRes.ok) throw new Error("Failed to create task")
+
       // Mark original as transferred
-      await fetch(`/api/tasks/${taskId}`, {
+      const updateRes = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "TO_TRANSFER" }),
       })
 
-      mutateTasks()
-      mutateOverdue()
-      setTransferTaskId(null)
+      if (!updateRes.ok) throw new Error("Failed to update original task")
+
+      // Refresh tasks if we're viewing the target date
+      if (targetDateString === dateString) {
+        mutateTasks()
+      }
+
+      toast.success("Zadanie przeniesione")
     } catch (error) {
       console.error("Error transferring overdue task:", error)
       toast.error("Nie udało się przenieść zaległego zadania")
+      // Rollback on error
+      decrementCount(targetDateString)
+      mutateOverdue() // Refetch to restore
     }
   }
 
