@@ -19,11 +19,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing from/to params" }, { status: 400 })
     }
 
-    // Get task counts grouped by date
+    // Get task counts grouped by date (include both owned and assigned tasks)
     const counts = await prisma.task.groupBy({
       by: ['scheduledDate'],
       where: {
-        userId: session.user.id,
+        OR: [
+          { userId: session.user.id },
+          { assignedToId: session.user.id }
+        ],
         workspaceType: workspace,
         scheduledDate: {
           gte: new Date(from),
