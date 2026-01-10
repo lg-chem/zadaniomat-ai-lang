@@ -367,40 +367,60 @@ export default function SchedulePage() {
   }
 
   // Create task from template
-  const handleCreateFromTemplate = async (categoryId: string) => {
+  const handleCreateFromTemplate = (categoryId: string) => {
     const input = templateInputs[categoryId]
     if (!input?.title?.trim()) return
 
     const isRecurring = input.recurrenceRule !== "none"
+    const category = categories.find(c => c.id === categoryId)
 
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: input.title,
-          categoryId,
-          plannedMinutes: parseInt(input.plannedMinutes) || 25,
-          scheduledDate: dateString,
-          orderInDay: tasks.length,
-          workspaceType: workspace,
-          status: "NEW",
-          isRecurring,
-          recurrenceRule: isRecurring ? input.recurrenceRule : null,
-        }),
-      })
-      if (res.ok) {
-        mutateTasks()
-        // Clear input
-        setTemplateInputs((prev) => ({
-          ...prev,
-          [categoryId]: { title: "", plannedMinutes: "25", recurrenceRule: "none" },
-        }))
+    // Clear input immediately for instant feedback
+    const taskData = { ...input }
+    setTemplateInputs((prev) => ({
+      ...prev,
+      [categoryId]: { title: "", plannedMinutes: "25", recurrenceRule: "none" },
+    }))
+
+    // Optimistic update for task count
+    incrementCount(dateString)
+
+    // Add task with optimistic UI update
+    optimisticAdd(
+      {
+        title: taskData.title,
+        categoryId,
+        plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+        scheduledDate: dateString,
+        status: "NEW" as const,
+        isRecurring,
+        recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+        category: category ? { id: category.id, name: category.name, color: category.color } : undefined,
+      },
+      async () => {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: taskData.title,
+            categoryId,
+            plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+            scheduledDate: dateString,
+            orderInDay: tasks.length,
+            workspaceType: workspace,
+            status: "NEW",
+            isRecurring,
+            recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to create task")
+        return res.json()
       }
-    } catch (error) {
+    ).catch((error) => {
       console.error("Error creating task from template:", error)
       toast.error("Nie udało się dodać zadania")
-    }
+      // Rollback count
+      decrementCount(dateString)
+    })
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
