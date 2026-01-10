@@ -129,7 +129,7 @@ export default function SchedulePage() {
   const { tasks, isLoading: tasksLoading, mutate: mutateTasks, optimisticAdd, optimisticDelete, optimisticUpdate } = useTasks({ date: dateString })
   const { categories, isLoading: categoriesLoading } = useCategories()
   const { activeSprint } = useSprints()
-  const { taskCounts, mutate: mutateTaskCounts } = useTaskCounts(selectedDate, 30)
+  const { taskCounts, mutate: mutateTaskCounts, incrementCount, decrementCount } = useTaskCounts(selectedDate, 30)
   const { overdueTasks, mutate: mutateOverdue } = useOverdueTasks()
 
   // Schedule blocks for the selected date
@@ -256,7 +256,7 @@ export default function SchedulePage() {
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))
   const handleToday = () => setSelectedDate(new Date())
 
-  const handleCreateTask = async () => {
+  const handleCreateTask = () => {
     if (!newTask.title.trim()) return
 
     const isRecurring = newTask.recurrenceRule !== "none"
@@ -267,50 +267,51 @@ export default function SchedulePage() {
     setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
     setIsAddingTask(false)
 
-    try {
-      await optimisticAdd(
-        {
-          title: taskData.title,
-          categoryId: taskData.categoryId || undefined,
-          plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
-          scheduledDate: dateString,
-          status: "NEW" as const,
-          isRecurring,
-          recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
-          category: category ? { id: category.id, name: category.name, color: category.color } : undefined,
-        },
-        async () => {
-          const res = await fetch("/api/tasks", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: taskData.title,
-              categoryId: taskData.categoryId || undefined,
-              plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
-              scheduledDate: dateString,
-              orderInDay: tasks.length,
-              workspaceType: workspace,
-              status: "NEW",
-              isRecurring,
-              recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
-            }),
-          })
-          if (!res.ok) throw new Error('Failed to create task')
-          return res.json()
-        }
-      )
-      mutateTaskCounts() // Update calendar counts
-    } catch (error) {
+    // Optimistic update for task count (instant)
+    incrementCount(dateString)
+
+    // Add task with optimistic UI update (don't await - let it run in background)
+    optimisticAdd(
+      {
+        title: taskData.title,
+        categoryId: taskData.categoryId || undefined,
+        plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+        scheduledDate: dateString,
+        status: "NEW" as const,
+        isRecurring,
+        recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+        category: category ? { id: category.id, name: category.name, color: category.color } : undefined,
+      },
+      async () => {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: taskData.title,
+            categoryId: taskData.categoryId || undefined,
+            plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+            scheduledDate: dateString,
+            orderInDay: tasks.length,
+            workspaceType: workspace,
+            status: "NEW",
+            isRecurring,
+            recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+          }),
+        })
+        if (!res.ok) throw new Error('Failed to create task')
+        return res.json()
+      }
+    ).catch((error) => {
       console.error("Error creating task:", error)
       toast.error("Nie udało się dodać zadania")
-    }
+      // Rollback count on error
+      decrementCount(dateString)
+    })
   }
 
   // Handle creating task with custom date
-  const handleCreateCustomDateTask = async () => {
+  const handleCreateCustomDateTask = () => {
     if (!customDateTask.title.trim()) return
-
-    const category = categories.find(c => c.id === customDateTask.categoryId)
 
     // Close dialog immediately
     const taskData = { ...customDateTask }
@@ -322,29 +323,36 @@ export default function SchedulePage() {
       scheduledDate: format(new Date(), "yyyy-MM-dd"),
     })
 
-    try {
-      await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: taskData.title,
-          categoryId: taskData.categoryId || undefined,
-          plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
-          scheduledDate: taskData.scheduledDate,
-          workspaceType: workspace,
-          status: "NEW",
-        }),
+    // Optimistic update for task count
+    incrementCount(taskData.scheduledDate)
+
+    // Create task in background
+    fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: taskData.title,
+        categoryId: taskData.categoryId || undefined,
+        plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
+        scheduledDate: taskData.scheduledDate,
+        workspaceType: workspace,
+        status: "NEW",
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to create task")
+        // Refresh tasks if the selected date matches the custom date
+        if (taskData.scheduledDate === dateString) {
+          mutateTasks()
+        }
+        toast.success("Zadanie dodane")
       })
-      // Refresh tasks if the selected date matches the custom date
-      if (taskData.scheduledDate === dateString) {
-        mutateTasks()
-      }
-      mutateTaskCounts() // Update calendar counts
-      toast.success("Zadanie dodane")
-    } catch (error) {
-      console.error("Error creating task:", error)
-      toast.error("Nie udało się dodać zadania")
-    }
+      .catch((error) => {
+        console.error("Error creating task:", error)
+        toast.error("Nie udało się dodać zadania")
+        // Rollback count
+        decrementCount(taskData.scheduledDate)
+      })
   }
 
   // Handle template input change
@@ -485,42 +493,56 @@ export default function SchedulePage() {
     }
   }
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = (taskId: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to zadanie?")) return
-    try {
-      await optimisticDelete(taskId, async () => {
-        const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
-        if (!res.ok) throw new Error('Failed to delete task')
+
+    // Optimistic update for task count
+    decrementCount(dateString)
+
+    optimisticDelete(taskId, async () => {
+      const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+      if (!res.ok) throw new Error('Failed to delete task')
+    })
+      .then(() => {
+        toast.success("Zadanie usunięte")
       })
-      mutateTaskCounts() // Update calendar counts
-      toast.success("Zadanie usunięte")
-    } catch (error) {
-      console.error("Error deleting task:", error)
-      toast.error("Nie udało się usunąć zadania")
-    }
+      .catch((error) => {
+        console.error("Error deleting task:", error)
+        toast.error("Nie udało się usunąć zadania")
+        // Rollback count
+        incrementCount(dateString)
+      })
   }
 
-  const handleTransferTask = async (taskId: string) => {
+  const handleTransferTask = (taskId: string) => {
     const nextDay = format(addDays(selectedDate, 1), "yyyy-MM-dd")
-    try {
-      // Use optimistic delete since task will disappear from current day
-      await optimisticDelete(taskId, async () => {
-        const res = await fetch(`/api/tasks/${taskId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            scheduledDate: nextDay,
-            status: "NEW",
-          }),
-        })
-        if (!res.ok) throw new Error('Failed to transfer task')
+
+    // Optimistic update for task counts (decrement today, increment tomorrow)
+    decrementCount(dateString)
+    incrementCount(nextDay)
+
+    // Use optimistic delete since task will disappear from current day
+    optimisticDelete(taskId, async () => {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduledDate: nextDay,
+          status: "NEW",
+        }),
       })
-      mutateTaskCounts() // Update calendar counts for both days
-      toast.success("Zadanie przeniesione na jutro")
-    } catch (error) {
-      console.error("Error transferring task:", error)
-      toast.error("Nie udało się przenieść zadania")
-    }
+      if (!res.ok) throw new Error('Failed to transfer task')
+    })
+      .then(() => {
+        toast.success("Zadanie przeniesione na jutro")
+      })
+      .catch((error) => {
+        console.error("Error transferring task:", error)
+        toast.error("Nie udało się przenieść zadania")
+        // Rollback counts
+        incrementCount(dateString)
+        decrementCount(nextDay)
+      })
   }
 
   const handleStartTimer = (task: Task) => {

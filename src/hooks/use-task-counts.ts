@@ -26,13 +26,41 @@ export function useTaskCounts(centerDate: Date, _daysRange: number = 30) {
   const { data, error, isLoading, mutate } = useSWR<TaskCount[]>(url, {
     keepPreviousData: true,
     revalidateOnFocus: false,
-    dedupingInterval: 60000, // 60 seconds
   })
+
+  // Optimistic increment for a specific date
+  const incrementCount = (date: string) => {
+    const currentCounts = data ?? []
+    const existingIndex = currentCounts.findIndex(c => c.date === date)
+
+    let newCounts: TaskCount[]
+    if (existingIndex >= 0) {
+      newCounts = currentCounts.map((c, i) =>
+        i === existingIndex ? { ...c, count: c.count + 1 } : c
+      )
+    } else {
+      newCounts = [...currentCounts, { date, count: 1 }]
+    }
+
+    mutate(newCounts, { revalidate: false })
+  }
+
+  // Optimistic decrement for a specific date
+  const decrementCount = (date: string) => {
+    const currentCounts = data ?? []
+    const newCounts = currentCounts.map(c =>
+      c.date === date ? { ...c, count: Math.max(0, c.count - 1) } : c
+    ).filter(c => c.count > 0)
+
+    mutate(newCounts, { revalidate: false })
+  }
 
   return {
     taskCounts: data ?? [],
     isLoading,
     isError: error,
-    mutate, // Export mutate so schedule can update counts after task changes
+    mutate,
+    incrementCount,
+    decrementCount,
   }
 }
