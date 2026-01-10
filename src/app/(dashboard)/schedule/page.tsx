@@ -741,6 +741,9 @@ export default function SchedulePage() {
         mutateTasks()
       }
 
+      // Revalidate task counts to sync with server
+      mutateTaskCounts()
+
       toast.success("Zadanie przeniesione")
     } catch (error) {
       console.error("Error transferring overdue task:", error)
