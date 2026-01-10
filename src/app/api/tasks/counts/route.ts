@@ -33,7 +33,7 @@ export async function GET(req: Request) {
           lte: new Date(to),
         },
         status: {
-          not: 'CANCELLED',
+          notIn: ['CANCELLED', 'TO_TRANSFER'],
         },
       },
       _count: {
