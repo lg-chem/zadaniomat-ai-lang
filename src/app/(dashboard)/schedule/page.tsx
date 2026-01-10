@@ -1289,9 +1289,9 @@ export default function SchedulePage() {
                               autoFocus
                             />
                           ) : (
-                            <div className="flex-1 flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                            <div className="flex-1 flex items-center gap-2 min-w-0" onClick={() => handleStartEdit(task)}>
                               {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                              <span className="text-sm font-medium">{task.title}</span>
+                              <span className="text-sm font-medium truncate">{task.title}</span>
                             </div>
                           )}
                         </div>
@@ -1369,9 +1369,9 @@ export default function SchedulePage() {
                               autoFocus
                             />
                           ) : (
-                            <div className="flex-1 flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                            <div className="flex-1 flex items-center gap-2 min-w-0" onClick={() => handleStartEdit(task)}>
                               {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                              <span className="text-sm font-medium">{task.title}</span>
+                              <span className="text-sm font-medium truncate">{task.title}</span>
                             </div>
                           )}
                         </div>
@@ -1441,11 +1441,11 @@ export default function SchedulePage() {
                     <CardContent className="p-3">
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
-                          <div className="flex-1 flex items-center gap-2" onClick={() => handleStartEdit(task)}>
+                          <div className="flex-1 flex items-center gap-2 min-w-0" onClick={() => handleStartEdit(task)}>
                             {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                            <span className="text-sm font-medium line-through">{task.title}</span>
+                            <span className="text-sm font-medium line-through truncate">{task.title}</span>
                           </div>
-                          <Check className="h-4 w-4 text-green-500" />
+                          <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           {task.category && (
@@ -1482,11 +1482,11 @@ export default function SchedulePage() {
                     <CardContent className="p-3">
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
-                          <div className="flex-1 flex items-center gap-2">
+                          <div className="flex-1 flex items-center gap-2 min-w-0">
                             {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                            <span className="text-sm font-medium line-through text-red-400">{task.title}</span>
+                            <span className="text-sm font-medium line-through text-red-400 truncate">{task.title}</span>
                           </div>
-                          <X className="h-4 w-4 text-red-500" />
+                          <X className="h-4 w-4 text-red-500 flex-shrink-0" />
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           {task.category && (
@@ -1708,11 +1708,11 @@ export default function SchedulePage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         {editingTaskId === task.id ? (
                           <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
                         ) : (
-                          <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 flex-1" onClick={() => handleStartEdit(task)}>
+                          <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 flex-1 min-w-0" onClick={() => handleStartEdit(task)}>
                             {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
                             <span className="truncate">{task.title}</span>
                           </div>
@@ -1821,11 +1821,11 @@ export default function SchedulePage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         {editingTaskId === task.id ? (
                           <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTaskTitle(task.id))} onBlur={() => handleUpdateTaskTitle(task.id)} className="h-8" autoFocus />
                         ) : (
-                          <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 flex-1" onClick={() => handleStartEdit(task)}>
+                          <div className="cursor-text px-2 py-1 rounded hover:bg-muted transition-colors flex items-center gap-2 flex-1 min-w-0" onClick={() => handleStartEdit(task)}>
                             {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
                             <span className="truncate">{task.title}</span>
                           </div>
@@ -1924,8 +1924,8 @@ export default function SchedulePage() {
                         </div>
                       ) : (<span className="text-xs text-muted-foreground px-2">Brak</span>)}
                     </div>
-                    <div>
-                      <div className="px-2 py-1 flex items-center gap-2 line-through text-muted-foreground">
+                    <div className="min-w-0">
+                      <div className="px-2 py-1 flex items-center gap-2 line-through text-muted-foreground min-w-0">
                         {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
                         <span className="truncate">{task.title}</span>
                         <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
@@ -1961,8 +1961,8 @@ export default function SchedulePage() {
                         </div>
                       ) : (<span className="text-xs text-muted-foreground px-2">Brak</span>)}
                     </div>
-                    <div>
-                      <div className="px-2 py-1 flex items-center gap-2 line-through text-red-400">
+                    <div className="min-w-0">
+                      <div className="px-2 py-1 flex items-center gap-2 line-through text-red-400 min-w-0">
                         {task.isRecurring && <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />}
                         <span className="truncate">{task.title}</span>
                         <X className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
