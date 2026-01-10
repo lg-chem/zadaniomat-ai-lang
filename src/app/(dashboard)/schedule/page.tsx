@@ -56,6 +56,7 @@ import { useSprints } from "@/hooks/use-sprints"
 import { useTaskCounts } from "@/hooks/use-task-counts"
 import { useOverdueTasks } from "@/hooks/use-overdue-tasks"
 import { useDayBlocks, useScheduleOverride, type BlockData } from "@/hooks/use-schedule-blocks"
+import { prefetchAdjacentDays } from "@/hooks/use-prefetch"
 import { WeekStrip } from "@/components/schedule/week-strip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
@@ -200,26 +201,56 @@ export default function SchedulePage() {
   // Expanded task state (for inline editing)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
+  // Track dates for which we've already generated recurring tasks (per workspace)
+  const generatedDatesRef = useRef<Set<string>>(new Set())
+
   // Generate recurring tasks on date change and reset hidden templates
   useEffect(() => {
-    const generateRecurringTasks = async () => {
-      try {
-        await fetch("/api/tasks/generate-recurring", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ date: dateString, workspace }),
-        })
-        // Refresh tasks after generating recurring ones
-        mutateTasks()
-      } catch (error) {
-        console.error("Error generating recurring tasks:", error)
-      }
+    const cacheKey = `${dateString}-${workspace}`
+
+    // Skip if we've already generated for this date+workspace combo
+    if (generatedDatesRef.current.has(cacheKey)) {
+      // Still reset UI state when navigating back to a date
+      setHiddenTemplates(new Set())
+      setTemplateInputs({})
+      return
     }
-    generateRecurringTasks()
+
+    // Mark as generated immediately to prevent duplicate calls
+    generatedDatesRef.current.add(cacheKey)
+
+    // Generate recurring tasks in the background (don't await)
+    fetch("/api/tasks/generate-recurring", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: dateString, workspace }),
+    })
+      .then((res) => {
+        if (res.ok) return res.json()
+        throw new Error("Failed to generate recurring tasks")
+      })
+      .then((data) => {
+        // Only revalidate if new tasks were generated
+        if (data?.generated > 0) {
+          mutateTasks()
+          mutateTaskCounts()
+        }
+      })
+      .catch((error) => {
+        console.error("Error generating recurring tasks:", error)
+        // Remove from cache so it can retry on next visit
+        generatedDatesRef.current.delete(cacheKey)
+      })
+
     // Reset hidden templates when date changes
     setHiddenTemplates(new Set())
     setTemplateInputs({})
-  }, [dateString, workspace, mutateTasks])
+  }, [dateString, workspace, mutateTasks, mutateTaskCounts])
+
+  // Prefetch adjacent days for faster navigation
+  useEffect(() => {
+    prefetchAdjacentDays(selectedDate, workspace)
+  }, [selectedDate, workspace])
 
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1))
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))

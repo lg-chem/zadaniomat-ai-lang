@@ -74,6 +74,23 @@ export function usePrefetchData() {
 }
 
 /**
+ * Prefetch tasks and schedule blocks for adjacent days
+ * Call this when user selects a date to preload nearby days
+ */
+export function prefetchAdjacentDays(centerDate: Date, workspace: string) {
+  const prevDay = format(subDays(centerDate, 1), 'yyyy-MM-dd')
+  const nextDay = format(addDays(centerDate, 1), 'yyyy-MM-dd')
+
+  // Prefetch tasks for adjacent days
+  preload(`/api/tasks?workspace=${workspace}&date=${prevDay}&includeAssigned=true`, fetcher)
+  preload(`/api/tasks?workspace=${workspace}&date=${nextDay}&includeAssigned=true`, fetcher)
+
+  // Prefetch schedule blocks for adjacent days
+  preload(`/api/schedule-blocks?workspace=${workspace}&date=${prevDay}`, fetcher)
+  preload(`/api/schedule-blocks?workspace=${workspace}&date=${nextDay}`, fetcher)
+}
+
+/**
  * Prefetch data for a specific page (call on hover)
  */
 export function prefetchPage(page: string, workspace: string = 'WORK') {
