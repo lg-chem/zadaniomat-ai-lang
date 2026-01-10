@@ -219,6 +219,16 @@ export default function TaskStackPage() {
     setEditDescription(task.description || "")
   }
 
+  // Handle subtasks change - optimistic update for immediate UI feedback
+  const handleSubtasksChange = (taskId: string, newSubtasks: Subtask[]) => {
+    const currentTasks = tasks ?? []
+    const updatedTasks = currentTasks.map(task =>
+      task.id === taskId ? { ...task, subtasks: newSubtasks } : task
+    )
+    // Update without revalidation - SubtaskList already saved to API
+    mutate(updatedTasks, { revalidate: false })
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-4 md:space-y-6 animate-fade-in">
@@ -431,7 +441,7 @@ export default function TaskStackPage() {
                         <SubtaskList
                           taskId={task.id}
                           subtasks={task.subtasks || []}
-                          onSubtasksChange={() => mutate()}
+                          onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)}
                         />
                       </div>
                     </div>

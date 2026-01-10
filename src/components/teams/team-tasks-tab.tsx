@@ -121,6 +121,24 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
     mutateMyTasks()
   }
 
+  // Handle subtasks change - optimistic update for immediate UI feedback
+  const handleSubtasksChange = (taskId: string, newSubtasks: Subtask[]) => {
+    // Update in assignedTasks if task is there
+    if (assignedTasks?.some(t => t.id === taskId)) {
+      const updatedTasks = assignedTasks.map(task =>
+        task.id === taskId ? { ...task, subtasks: newSubtasks } : task
+      )
+      mutateAssigned(updatedTasks, { revalidate: false })
+    }
+    // Update in myTasks if task is there
+    if (myTasks?.some(t => t.id === taskId)) {
+      const updatedTasks = myTasks.map(task =>
+        task.id === taskId ? { ...task, subtasks: newSubtasks } : task
+      )
+      mutateMyTasks(updatedTasks, { revalidate: false })
+    }
+  }
+
   const handleUpdateTaskStatus = async (taskId: string, status: string) => {
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -333,10 +351,7 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
                       <SubtaskList
                         taskId={task.id}
                         subtasks={task.subtasks || []}
-                        onSubtasksChange={() => {
-                          mutateAssigned()
-                          mutateMyTasks()
-                        }}
+                        onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)}
                       />
                     </div>
                   </div>

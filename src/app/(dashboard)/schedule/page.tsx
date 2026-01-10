@@ -758,10 +758,14 @@ export default function SchedulePage() {
     }
   }
 
-  // Handle subtasks change from dialog
-  const handleSubtasksChange = (taskId: string, subtasks: Subtask[]) => {
-    // Update local state for immediate feedback
-    mutateTasks()
+  // Handle subtasks change - optimistic update for immediate UI feedback
+  const handleSubtasksChange = (taskId: string, newSubtasks: Subtask[]) => {
+    const currentTasks = tasks ?? []
+    const updatedTasks = currentTasks.map(task =>
+      task.id === taskId ? { ...task, subtasks: newSubtasks } : task
+    )
+    // Update without revalidation - SubtaskList already saved to API
+    mutateTasks(updatedTasks, { revalidate: false })
   }
 
   const strategicCategories = categories.filter((c) => c.isStrategic)
@@ -1334,9 +1338,7 @@ export default function SchedulePage() {
                             </div>
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
-                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={(newSubtasks) => {
-                                // Only mutate when subtasks actually change (not for toggle which is already optimistic)
-                              }} />
+                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)} />
                             </div>
                           </div>
                         )}
@@ -1416,9 +1418,7 @@ export default function SchedulePage() {
                             </div>
                             <div>
                               <label className="text-xs font-medium text-muted-foreground mb-1 block">Lista kontrolna</label>
-                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={(newSubtasks) => {
-                                // Only mutate when subtasks actually change (not for toggle which is already optimistic)
-                              }} />
+                              <SubtaskList taskId={task.id} subtasks={task.subtasks || []} onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)} />
                             </div>
                           </div>
                         )}
@@ -1779,9 +1779,7 @@ export default function SchedulePage() {
                           <SubtaskList
                             taskId={task.id}
                             subtasks={task.subtasks || []}
-                            onSubtasksChange={(newSubtasks) => {
-                              // SubtaskList already does optimistic updates internally
-                            }}
+                            onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)}
                           />
                         </div>
                       </div>
@@ -1893,9 +1891,7 @@ export default function SchedulePage() {
                           <SubtaskList
                             taskId={task.id}
                             subtasks={task.subtasks || []}
-                            onSubtasksChange={(newSubtasks) => {
-                              // SubtaskList already does optimistic updates internally
-                            }}
+                            onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)}
                           />
                         </div>
                       </div>
