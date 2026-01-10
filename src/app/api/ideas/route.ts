@@ -18,7 +18,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "organizationId is required" }, { status: 400 })
     }
 
-    // Verify user is member of this organization
+    // Check if user is owner of organization
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { ownerId: true },
+    })
+
+    const isOwner = organization?.ownerId === session.user.id
+
+    // Verify user is member of this organization (or owner)
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId,
@@ -26,7 +34,7 @@ export async function GET(req: Request) {
       },
     })
 
-    if (!membership) {
+    if (!membership && !isOwner) {
       return NextResponse.json({ error: "Not a member of this organization" }, { status: 403 })
     }
 
@@ -94,7 +102,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    // Verify user is member of the organization
+    // Check if user is owner of organization
+    const organization = await prisma.organization.findUnique({
+      where: { id: category.organizationId },
+      select: { ownerId: true },
+    })
+
+    const isOwner = organization?.ownerId === session.user.id
+
+    // Verify user is member of the organization (or owner)
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId: category.organizationId,
@@ -102,7 +118,7 @@ export async function POST(req: Request) {
       },
     })
 
-    if (!membership) {
+    if (!membership && !isOwner) {
       return NextResponse.json(
         { error: "Nie masz dostępu do tego zespołu" },
         { status: 403 }
