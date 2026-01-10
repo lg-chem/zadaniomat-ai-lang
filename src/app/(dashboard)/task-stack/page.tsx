@@ -15,6 +15,8 @@ import {
   Pencil,
   Trash2,
   Users,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,6 +48,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { TeamTasksTab } from "@/components/teams/team-tasks-tab"
+import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
+import { EditableDescription } from "@/components/tasks/editable-description"
 import useSWR from "swr"
 
 interface Task {
@@ -70,6 +74,7 @@ interface Task {
     id: string
     name: string
   }
+  subtasks?: Subtask[]
 }
 
 interface TeamMember {
@@ -129,6 +134,7 @@ export default function TaskStackPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   const handleScheduleTask = async () => {
     if (!schedulingTask) return
@@ -299,94 +305,137 @@ export default function TaskStackPage() {
               {tasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-start justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                  className="rounded-lg border hover:bg-muted/50 transition-colors"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">{task.title}</span>
-                      {task.category && (
-                        <Badge
-                          variant="outline"
-                          style={{
-                            borderColor: task.category.color,
-                            color: task.category.color,
-                          }}
-                        >
-                          {task.category.name}
-                        </Badge>
+                  <div className="flex items-start justify-between p-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{task.title}</span>
+                        {task.category && (
+                          <Badge
+                            variant="outline"
+                            style={{
+                              borderColor: task.category.color,
+                              color: task.category.color,
+                            }}
+                          >
+                            {task.category.name}
+                          </Badge>
+                        )}
+                        {task.priority > 0 && (
+                          <Badge className={priorityLabels[task.priority].color}>
+                            {priorityLabels[task.priority].label}
+                          </Badge>
+                        )}
+                        {task.subtasks && task.subtasks.length > 0 && (
+                          <SubtaskProgress subtasks={task.subtasks} />
+                        )}
+                      </div>
+
+                      {task.description && expandedTaskId !== task.id && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                          {task.description}
+                        </p>
                       )}
-                      {task.priority > 0 && (
-                        <Badge className={priorityLabels[task.priority].color}>
-                          {priorityLabels[task.priority].label}
-                        </Badge>
-                      )}
+
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Od: {task.user.name || task.user.email}
+                        </span>
+                        {task.organization && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            {task.organization.name}
+                          </span>
+                        )}
+                        {task.plannedMinutes && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {task.plannedMinutes} min
+                          </span>
+                        )}
+                        <span>
+                          {format(new Date(task.createdAt), "d MMM yyyy", { locale: pl })}
+                        </span>
+                      </div>
                     </div>
 
-                    {task.description && (
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        Od: {task.user.name || task.user.email}
-                      </span>
-                      {task.organization && (
-                        <span className="flex items-center gap-1">
-                          <Building2 className="h-3 w-3" />
-                          {task.organization.name}
-                        </span>
-                      )}
-                      {task.plannedMinutes && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {task.plannedMinutes} min
-                        </span>
-                      )}
-                      <span>
-                        {format(new Date(task.createdAt), "d MMM yyyy", { locale: pl })}
-                      </span>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSchedulingTask(task)
+                          setScheduleDate(format(new Date(), "yyyy-MM-dd"))
+                        }}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Zaplanuj
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={expandedTaskId === task.id ? "default" : "outline"}
+                        onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      >
+                        {expandedTaskId === task.id ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Oznacz jako gotowe
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditDialog(task)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edytuj tytuł
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteTask(task.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Usuń
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 ml-4">
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setSchedulingTask(task)
-                        setScheduleDate(format(new Date(), "yyyy-MM-dd"))
-                      }}
-                    >
-                      <Calendar className="h-4 w-4 mr-1" />
-                      Zaplanuj
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
-                          <CheckCircle2 className="h-4 w-4 mr-2" />
-                          Oznacz jako gotowe
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditDialog(task)}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edytuj
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDeleteTask(task.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Usuń
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                  {/* Expanded content */}
+                  {expandedTaskId === task.id && (
+                    <div className="px-4 pb-4 space-y-4 border-t pt-4 bg-muted/30">
+                      {/* Description */}
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Opis</Label>
+                        <EditableDescription
+                          taskId={task.id}
+                          initialValue={task.description}
+                          onSaved={() => mutate()}
+                          placeholder="Dodaj opis zadania..."
+                          rows={3}
+                        />
+                      </div>
+
+                      {/* Subtasks / Checklist */}
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Lista kontrolna</Label>
+                        <SubtaskList
+                          taskId={task.id}
+                          subtasks={task.subtasks || []}
+                          onSubtasksChange={() => mutate()}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

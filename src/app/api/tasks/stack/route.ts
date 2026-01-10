@@ -28,7 +28,8 @@ export async function GET(req: Request) {
       include: {
         category: { select: { id: true, name: true, color: true } },
         user: { select: { id: true, name: true, email: true } }, // Task creator
-        organization: { select: { id: true, name: true } }
+        organization: { select: { id: true, name: true } },
+        subtasks: { orderBy: { order: "asc" } }
       },
       orderBy: [
         { priority: "desc" },
