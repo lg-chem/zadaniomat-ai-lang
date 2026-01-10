@@ -29,7 +29,15 @@ export async function GET(
       return NextResponse.json({ error: "Idea not found" }, { status: 404 })
     }
 
-    // Verify user is member of this organization
+    // Check if user is owner of organization
+    const organization = await prisma.organization.findUnique({
+      where: { id: idea.category.organizationId },
+      select: { ownerId: true },
+    })
+
+    const isOwner = organization?.ownerId === session.user.id
+
+    // Verify user is member of this organization (or owner)
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId: idea.category.organizationId,
@@ -37,7 +45,7 @@ export async function GET(
       },
     })
 
-    if (!membership) {
+    if (!membership && !isOwner) {
       return NextResponse.json({ error: "Not a member of this organization" }, { status: 403 })
     }
 
@@ -94,7 +102,15 @@ export async function POST(
       return NextResponse.json({ error: "Idea not found" }, { status: 404 })
     }
 
-    // Verify user is member of this organization
+    // Check if user is owner of organization
+    const organization = await prisma.organization.findUnique({
+      where: { id: idea.category.organizationId },
+      select: { ownerId: true },
+    })
+
+    const isOwner = organization?.ownerId === session.user.id
+
+    // Verify user is member of this organization (or owner)
     const membership = await prisma.organizationMember.findFirst({
       where: {
         organizationId: idea.category.organizationId,
@@ -102,7 +118,7 @@ export async function POST(
       },
     })
 
-    if (!membership) {
+    if (!membership && !isOwner) {
       return NextResponse.json({ error: "Not a member of this organization" }, { status: 403 })
     }
 
