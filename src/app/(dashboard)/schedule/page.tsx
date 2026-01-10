@@ -694,11 +694,15 @@ export default function SchedulePage() {
     if (!task) return
 
     const targetDateString = format(targetDate, "yyyy-MM-dd")
+    const sourceDateString = task.scheduledDate ? format(new Date(task.scheduledDate), "yyyy-MM-dd") : null
 
     // Close popover immediately
     setTransferTaskId(null)
 
-    // Optimistic update: increment count for target date
+    // Optimistic update: decrement count for source date, increment for target date
+    if (sourceDateString) {
+      decrementCount(sourceDateString)
+    }
     incrementCount(targetDateString)
 
     // Optimistic update: remove from overdue list immediately
@@ -743,6 +747,9 @@ export default function SchedulePage() {
       toast.error("Nie udało się przenieść zaległego zadania")
       // Rollback on error
       decrementCount(targetDateString)
+      if (sourceDateString) {
+        incrementCount(sourceDateString)
+      }
       mutateOverdue() // Refetch to restore
     }
   }
