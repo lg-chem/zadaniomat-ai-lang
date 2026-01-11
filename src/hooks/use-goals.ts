@@ -9,6 +9,9 @@ interface Goal {
   currentValue: number
   unit?: string
   isCompleted: boolean
+  isStep?: boolean
+  parentGoalId?: string
+  order?: number
   category?: {
     id: string
     name: string
