@@ -547,13 +547,35 @@ export default function AIPage() {
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }, [])
 
-  const handleFormSubmit = useCallback((e: React.FormEvent) => {
+  // Convert File to data URL for Vercel AI SDK Attachment format
+  const fileToDataUrl = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }, [])
+
+  const handleFormSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!input.trim() && attachments.length === 0) || isLoading) return
 
+    // Convert files to Attachment format with data URLs
+    let formattedAttachments: { name: string; contentType: string; url: string }[] | undefined
+    if (attachments.length > 0) {
+      formattedAttachments = await Promise.all(
+        attachments.map(async (file) => ({
+          name: file.name,
+          contentType: file.type,
+          url: await fileToDataUrl(file),
+        }))
+      )
+    }
+
     // Submit with attachments
     originalHandleSubmit(e, {
-      experimental_attachments: attachments.length > 0 ? attachments : undefined,
+      experimental_attachments: formattedAttachments,
     })
 
     // Clear attachments after submit
@@ -563,19 +585,31 @@ export default function AIPage() {
     setTimeout(() => {
       saveToConversation(messages)
     }, 100)
-  }, [input, attachments, isLoading, originalHandleSubmit, messages])
+  }, [input, attachments, isLoading, originalHandleSubmit, messages, fileToDataUrl])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       if ((input.trim() || attachments.length > 0) && !isLoading) {
+        // Convert files to Attachment format
+        let formattedAttachments: { name: string; contentType: string; url: string }[] | undefined
+        if (attachments.length > 0) {
+          formattedAttachments = await Promise.all(
+            attachments.map(async (file) => ({
+              name: file.name,
+              contentType: file.type,
+              url: await fileToDataUrl(file),
+            }))
+          )
+        }
+
         originalHandleSubmit(e as unknown as React.FormEvent, {
-          experimental_attachments: attachments.length > 0 ? attachments : undefined,
+          experimental_attachments: formattedAttachments,
         })
         setAttachments([])
       }
     }
-  }, [input, attachments, isLoading, originalHandleSubmit])
+  }, [input, attachments, isLoading, originalHandleSubmit, fileToDataUrl])
 
   const handleStartAddGoal = (goal: GoalProposal) => {
     setAddingGoal(goal)
