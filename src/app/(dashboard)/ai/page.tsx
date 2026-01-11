@@ -280,6 +280,12 @@ export default function AIPage() {
   // Memoize body to prevent re-renders
   const chatBody = useMemo(() => ({ mode }), [mode])
 
+  // Memoize onError to prevent useChat re-initialization
+  const handleChatError = useCallback((error: Error) => {
+    console.error("Chat error:", error)
+    toast.error("Wystąpił błąd podczas komunikacji z AI")
+  }, [])
+
   // Vercel AI SDK useChat hook
   const {
     messages,
@@ -289,12 +295,10 @@ export default function AIPage() {
     isLoading,
     setMessages,
   } = useChat({
+    id: `chat-${mode}`, // Stable ID prevents re-initialization
     api: "/api/ai/chat",
     body: chatBody,
-    onError: (error) => {
-      console.error("Chat error:", error)
-      toast.error("Wystąpił błąd podczas komunikacji z AI")
-    },
+    onError: handleChatError,
   })
 
   // Extract proposals from messages - memoized
@@ -442,11 +446,11 @@ export default function AIPage() {
     }
   }
 
-  const startNewConversation = () => {
+  const startNewConversation = useCallback(() => {
     setMessages([])
     setCurrentConversationId(null)
     setShowHistory(false)
-  }
+  }, [setMessages])
 
   const saveSettings = async () => {
     setSavingSettings(true)
@@ -810,6 +814,14 @@ export default function AIPage() {
     return proposals.filter((p) => p.messageIndex === messageIndex)
   }, [proposals])
 
+  // Memoized tab click handler
+  const handleModeChange = useCallback((newMode: ChatMode) => {
+    if (mode !== newMode) {
+      setMode(newMode)
+      startNewConversation()
+    }
+  }, [mode, startNewConversation])
+
   return (
     <div className="flex flex-col h-[calc(100dvh-6rem)] md:h-[calc(100dvh-8rem)]">
       {/* Header - compact */}
@@ -887,12 +899,7 @@ export default function AIPage() {
           return (
             <button
               key={key}
-              onClick={() => {
-                if (mode !== key) {
-                  setMode(key)
-                  startNewConversation()
-                }
-              }}
+              onClick={() => handleModeChange(key)}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
                 mode === key
