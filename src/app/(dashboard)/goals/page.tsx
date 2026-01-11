@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X } from "lucide-react"
+import { useState, useCallback, useEffect } from "react"
+import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
@@ -10,16 +10,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
-import { Skeleton, SkeletonStats } from "@/components/ui/skeleton"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useGoals } from "@/hooks/use-goals"
 import { useCategories } from "@/hooks/use-categories"
 import useSWR from "swr"
+
+interface Step {
+  id: string
+  title: string
+  description?: string | null
+  isCompleted: boolean
+  order: number
+  sprintId?: string | null
+  sprint?: { id: string; name: string } | null
+  taskProgress?: {
+    total: number
+    completed: number
+    percentage: number
+  }
+}
 
 interface Goal {
   id: string
@@ -29,9 +51,12 @@ interface Goal {
   currentValue: number
   unit?: string | null
   isCompleted: boolean
+  isStep?: boolean
+  parentGoalId?: string | null
   category?: { id: string; name: string; color: string } | null
   period?: { id: string; name: string } | null
   sprint?: { id: string; name: string } | null
+  childGoals?: Goal[]
 }
 
 interface Category {
@@ -64,27 +89,43 @@ function GoalCard({
   onToggleComplete,
   onDelete,
   onEdit,
+  onPlanWithAI,
   editingGoalId,
   editingTitle,
   setEditingTitle,
   onSaveEdit,
   onCancelEdit,
+  steps,
+  onToggleStepComplete,
+  onPromoteToSprint,
+  sprints,
+  isSprintGoal,
 }: {
   goal: Goal
   onToggleComplete: (goal: Goal) => void
   onDelete: (id: string) => void
   onEdit: (goal: Goal) => void
+  onPlanWithAI: (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => void
   editingGoalId: string | null
   editingTitle: string
   setEditingTitle: (title: string) => void
   onSaveEdit: (id: string) => void
   onCancelEdit: () => void
+  steps?: Step[]
+  onToggleStepComplete?: (step: Step) => void
+  onPromoteToSprint?: (stepId: string, sprintId: string) => void
+  sprints?: { id: string; name: string }[]
+  isSprintGoal?: boolean
 }) {
   const isEditing = editingGoalId === goal.id
+  const [showSteps, setShowSteps] = useState(false)
   const getProgress = (g: Goal) => {
     if (!g.targetValue) return g.isCompleted ? 100 : 0
     return Math.min(100, (g.currentValue / g.targetValue) * 100)
   }
+
+  const hasSteps = steps && steps.length > 0
+  const completedSteps = steps?.filter(s => s.isCompleted).length || 0
 
   return (
     <div
@@ -127,10 +168,36 @@ function GoalCard({
           </div>
         ) : (
           <>
-            <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-              {goal.title}
-            </span>
+            <div className="flex items-center gap-1">
+              {hasSteps && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={() => setShowSteps(!showSteps)}
+                >
+                  {showSteps ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                </Button>
+              )}
+              <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                {goal.title}
+              </span>
+              {hasSteps && (
+                <Badge variant="outline" className="text-[10px] ml-1">
+                  {completedSteps}/{steps.length}
+                </Badge>
+              )}
+            </div>
             <div className="flex gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => onPlanWithAI(goal, isSprintGoal ? "breakdown_tasks" : "planning_steps")}
+                title={isSprintGoal ? "Rozpisz na zadania z AI" : "Zaplanuj kroki z AI"}
+              >
+                <Sparkles className="h-3 w-3 text-purple-500" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -159,6 +226,8 @@ function GoalCard({
           </>
         )}
       </div>
+
+      {/* Progress bar */}
       {goal.targetValue ? (
         <div className="mt-1">
           <Progress value={getProgress(goal)} className="h-1" />
@@ -166,8 +235,65 @@ function GoalCard({
             {goal.currentValue}/{goal.targetValue} {goal.unit}
           </span>
         </div>
-      ) : (
+      ) : !hasSteps && (
         <Badge variant="secondary" className="text-[10px] mt-1">Cel jakościowy</Badge>
+      )}
+
+      {/* Steps (Strategy) section */}
+      {showSteps && hasSteps && (
+        <div className="mt-2 pl-4 border-l-2 border-purple-200 space-y-1">
+          <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
+            <ListTodo className="h-3 w-3" /> Kroki realizacji
+          </div>
+          {steps.map((step) => (
+            <div
+              key={step.id}
+              className={`flex items-center justify-between p-1.5 rounded text-xs ${
+                step.isCompleted ? "bg-green-50 dark:bg-green-950/20" : "bg-muted/50"
+              }`}
+            >
+              <div className="flex items-center gap-2 flex-1">
+                <button
+                  onClick={() => onToggleStepComplete?.(step)}
+                  className={`h-4 w-4 rounded border flex items-center justify-center ${
+                    step.isCompleted ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                  }`}
+                >
+                  {step.isCompleted && <Check className="h-3 w-3" />}
+                </button>
+                <span className={step.isCompleted ? "line-through text-muted-foreground" : ""}>
+                  {step.title}
+                </span>
+                {step.sprint && (
+                  <Badge variant="outline" className="text-[9px]">
+                    {step.sprint.name}
+                  </Badge>
+                )}
+                {step.taskProgress && step.taskProgress.total > 0 && (
+                  <Badge variant="secondary" className="text-[9px]">
+                    {step.taskProgress.completed}/{step.taskProgress.total} zadań
+                  </Badge>
+                )}
+              </div>
+              {!step.sprintId && sprints && sprints.length > 0 && (
+                <select
+                  className="text-[10px] border rounded px-1 py-0.5 bg-background"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      onPromoteToSprint?.(step.id, e.target.value)
+                    }
+                  }}
+                >
+                  <option value="">Przypisz do sprintu</option>
+                  {sprints.map((sprint) => (
+                    <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -185,11 +311,16 @@ function CategoryTemplate({
   onToggleComplete,
   onDelete,
   onEdit,
+  onPlanWithAI,
   editingGoalId,
   editingTitle,
   setEditingTitle,
   onSaveEdit,
   onCancelEdit,
+  stepsMap,
+  onToggleStepComplete,
+  onPromoteToSprint,
+  sprints,
 }: {
   category: Category
   periodId?: string
@@ -201,11 +332,16 @@ function CategoryTemplate({
   onToggleComplete: (goal: Goal) => void
   onDelete: (id: string) => void
   onEdit: (goal: Goal) => void
+  onPlanWithAI: (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => void
   editingGoalId: string | null
   editingTitle: string
   setEditingTitle: (title: string) => void
   onSaveEdit: (id: string) => void
   onCancelEdit: () => void
+  stepsMap: Record<string, Step[]>
+  onToggleStepComplete: (step: Step) => void
+  onPromoteToSprint: (stepId: string, sprintId: string) => void
+  sprints: { id: string; name: string }[]
 }) {
   const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
 
@@ -232,11 +368,17 @@ function CategoryTemplate({
               onToggleComplete={onToggleComplete}
               onDelete={onDelete}
               onEdit={onEdit}
+              onPlanWithAI={onPlanWithAI}
               editingGoalId={editingGoalId}
               editingTitle={editingTitle}
               setEditingTitle={setEditingTitle}
               onSaveEdit={onSaveEdit}
               onCancelEdit={onCancelEdit}
+              steps={stepsMap[goal.id]}
+              onToggleStepComplete={onToggleStepComplete}
+              onPromoteToSprint={onPromoteToSprint}
+              sprints={sprints}
+              isSprintGoal={!!sprintId}
             />
           ))}
         </div>
@@ -308,6 +450,180 @@ export default function GoalsPage() {
   // Editing state
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
+
+  // AI Planning dialog state
+  const [aiPlanningGoal, setAiPlanningGoal] = useState<{
+    goal: Goal
+    stage: "planning_steps" | "breakdown_tasks"
+  } | null>(null)
+  const [aiMessage, setAiMessage] = useState("")
+  const [aiHistory, setAiHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
+  const [proposedSteps, setProposedSteps] = useState<{ title: string; description?: string }[]>([])
+
+  // Steps data - fetch for each goal that has steps
+  const [stepsMap, setStepsMap] = useState<Record<string, Step[]>>({})
+
+  // Fetch steps for all goals
+  const fetchStepsForGoals = useCallback(async () => {
+    const goalsWithoutSteps = goals.filter(g => !g.isStep && !stepsMap[g.id])
+    for (const goal of goalsWithoutSteps) {
+      try {
+        const res = await fetch(`/api/goals/${goal.id}/steps`)
+        if (res.ok) {
+          const steps = await res.json()
+          if (steps.length > 0) {
+            setStepsMap(prev => ({ ...prev, [goal.id]: steps }))
+          }
+        }
+      } catch (error) {
+        // Ignore errors for individual fetches
+      }
+    }
+  }, [goals, stepsMap])
+
+  // Fetch steps when goals change
+  useEffect(() => {
+    if (goals.length > 0) {
+      fetchStepsForGoals()
+    }
+  }, [goals.length, fetchStepsForGoals])
+
+  // AI Chat handler
+  const handleSendAiMessage = async () => {
+    if (!aiMessage.trim() || !aiPlanningGoal || aiLoading) return
+
+    const userMessage = aiMessage.trim()
+    setAiMessage("")
+    setAiHistory(prev => [...prev, { role: "user", content: userMessage }])
+    setAiLoading(true)
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage,
+          mode: aiPlanningGoal.stage === "planning_steps" ? "period_goals" : "sprint_goals",
+          history: aiHistory,
+          goalContext: {
+            goalId: aiPlanningGoal.goal.id,
+            goalTitle: aiPlanningGoal.goal.title,
+            goalDescription: aiPlanningGoal.goal.description,
+            stage: aiPlanningGoal.stage,
+          },
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+
+        if (data.type === "steps_proposal") {
+          setProposedSteps(data.steps || [])
+          setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
+        } else if (data.type === "tasks_proposal") {
+          // Handle tasks proposal - redirect to schedule or save directly
+          setAiHistory(prev => [...prev, { role: "assistant", content: data.message + "\n\n[Zadania zostaną dodane do harmonogramu]" }])
+          // TODO: Implement tasks creation
+        } else {
+          setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
+        }
+      } else {
+        toast.error("Błąd komunikacji z AI")
+      }
+    } catch (error) {
+      console.error("AI chat error:", error)
+      toast.error("Wystąpił błąd")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // Save proposed steps
+  const handleSaveSteps = async () => {
+    if (!aiPlanningGoal || proposedSteps.length === 0) return
+
+    try {
+      const res = await fetch(`/api/goals/${aiPlanningGoal.goal.id}/steps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ steps: proposedSteps }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(`Dodano ${data.steps.length} kroków realizacji`)
+        setStepsMap(prev => ({ ...prev, [aiPlanningGoal.goal.id]: data.steps }))
+        setAiPlanningGoal(null)
+        setAiHistory([])
+        setProposedSteps([])
+        mutateGoals()
+      } else {
+        toast.error("Nie udało się zapisać kroków")
+      }
+    } catch (error) {
+      console.error("Error saving steps:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Open AI planning dialog
+  const handlePlanWithAI = (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => {
+    setAiPlanningGoal({ goal, stage })
+    setAiHistory([])
+    setProposedSteps([])
+    setAiMessage("")
+  }
+
+  // Toggle step complete
+  const handleToggleStepComplete = async (step: Step) => {
+    try {
+      const res = await fetch(`/api/goals/${step.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isCompleted: !step.isCompleted }),
+      })
+      if (res.ok) {
+        // Refresh steps for parent goal
+        const parentGoalId = Object.keys(stepsMap).find(key =>
+          stepsMap[key].some(s => s.id === step.id)
+        )
+        if (parentGoalId) {
+          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
+          if (stepsRes.ok) {
+            const steps = await stepsRes.json()
+            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
+          }
+        }
+        mutateGoals()
+        toast.success(step.isCompleted ? "Krok oznaczony jako nieukończony" : "Krok ukończony!")
+      }
+    } catch (error) {
+      console.error("Error toggling step:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Promote step to sprint goal
+  const handlePromoteToSprint = async (stepId: string, sprintId: string) => {
+    try {
+      const res = await fetch(`/api/goals/${stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sprintId }),
+      })
+      if (res.ok) {
+        mutateGoals()
+        toast.success("Krok przypisany do sprintu")
+      }
+    } catch (error) {
+      console.error("Error promoting step:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Get all sprints from all periods for dropdown
+  const allSprints = periods.flatMap(p => p.sprints.map(s => ({ id: s.id, name: s.name })))
 
   const handleToggleComplete = async (goal: Goal) => {
     try {
@@ -581,11 +897,16 @@ export default function GoalsPage() {
                           onToggleComplete={handleToggleComplete}
                           onDelete={handleDelete}
                           onEdit={handleEdit}
+                          onPlanWithAI={handlePlanWithAI}
                           editingGoalId={editingGoalId}
                           editingTitle={editingTitle}
                           setEditingTitle={setEditingTitle}
                           onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
+                          stepsMap={stepsMap}
+                          onToggleStepComplete={handleToggleStepComplete}
+                          onPromoteToSprint={handlePromoteToSprint}
+                          sprints={allSprints}
                         />
                       ))}
                     </div>
@@ -655,11 +976,16 @@ export default function GoalsPage() {
                                         onToggleComplete={handleToggleComplete}
                                         onDelete={handleDelete}
                                         onEdit={handleEdit}
+                                        onPlanWithAI={handlePlanWithAI}
                                         editingGoalId={editingGoalId}
                                         editingTitle={editingTitle}
                                         setEditingTitle={setEditingTitle}
                                         onSaveEdit={handleSaveEdit}
                                         onCancelEdit={handleCancelEdit}
+                                        stepsMap={stepsMap}
+                                        onToggleStepComplete={handleToggleStepComplete}
+                                        onPromoteToSprint={handlePromoteToSprint}
+                                        sprints={allSprints}
                                       />
                                     ))}
                                   </div>
@@ -690,6 +1016,105 @@ export default function GoalsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* AI Planning Dialog */}
+      <Dialog open={!!aiPlanningGoal} onOpenChange={(open) => !open && setAiPlanningGoal(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              {aiPlanningGoal?.stage === "planning_steps"
+                ? "Planowanie kroków realizacji"
+                : "Rozbijanie na zadania"}
+            </DialogTitle>
+            <DialogDescription>
+              Cel: <span className="font-medium">{aiPlanningGoal?.goal.title}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Chat history */}
+          <div className="flex-1 overflow-y-auto space-y-3 py-4 min-h-[200px] max-h-[300px]">
+            {aiHistory.length === 0 && (
+              <div className="text-center text-muted-foreground text-sm py-8">
+                {aiPlanningGoal?.stage === "planning_steps"
+                  ? "Opisz cel i porozmawiaj z AI, aby wspólnie zaplanować kroki realizacji."
+                  : "Porozmawiaj z AI, aby rozbić cel na konkretne zadania do wykonania."}
+              </div>
+            )}
+            {aiHistory.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {aiLoading && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-lg px-3 py-2 text-sm">
+                  <span className="animate-pulse">AI pisze...</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Proposed steps preview */}
+          {proposedSteps.length > 0 && (
+            <div className="border rounded-lg p-3 bg-purple-50 dark:bg-purple-950/20">
+              <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                <ListTodo className="h-4 w-4" />
+                Proponowane kroki ({proposedSteps.length})
+              </div>
+              <div className="space-y-1">
+                {proposedSteps.map((step, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">{i + 1}.</span>
+                    <span>{step.title}</span>
+                  </div>
+                ))}
+              </div>
+              <Button
+                className="w-full mt-3"
+                onClick={handleSaveSteps}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Zatwierdź i zapisz kroki
+              </Button>
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="flex gap-2 pt-2 border-t">
+            <Input
+              placeholder={
+                aiPlanningGoal?.stage === "planning_steps"
+                  ? "Opisz cel lub poproś o propozycję kroków..."
+                  : "Opisz lub poproś o propozycję zadań..."
+              }
+              value={aiMessage}
+              onChange={(e) => setAiMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendAiMessage()
+                }
+              }}
+              disabled={aiLoading}
+            />
+            <Button onClick={handleSendAiMessage} disabled={aiLoading || !aiMessage.trim()}>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

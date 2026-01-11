@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { updateGoalProgressFromTasks } from "@/lib/goal-progress"
 
 export async function GET(
   req: Request,
@@ -196,6 +197,11 @@ export async function PATCH(
         }
       },
     })
+
+    // Sync goal progress when task status changes
+    if (status !== undefined && existingTask.goalId) {
+      await updateGoalProgressFromTasks(existingTask.goalId)
+    }
 
     return NextResponse.json(task)
   } catch (error) {

@@ -256,6 +256,8 @@ model Goal {
   currentValue  Float         @default(0)
   unit          String?       // e.g., "tasks", "hours", "%"
   isCompleted   Boolean       @default(false)
+  isStep        Boolean       @default(false)  // True if this is an implementation step
+  order         Int           @default(0)      // Order within parent goal
   workspaceType WorkspaceType
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -271,9 +273,15 @@ model Goal {
   sprint        Sprint?       @relation("SprintGoals", fields: [sprintId], references: [id], onDelete: SetNull)
   tasks         Task[]
 
+  // Hierarchical goals (parent-child for implementation steps)
+  parentGoalId  String?
+  parentGoal    Goal?         @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: Cascade)
+  childGoals    Goal[]        @relation("GoalHierarchy")
+
   @@index([userId, workspaceType])
   @@index([periodId])
   @@index([sprintId])
+  @@index([parentGoalId])
 }
 
 // ==================== TASKS ====================

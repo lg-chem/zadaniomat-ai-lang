@@ -9,10 +9,18 @@ import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
 
 type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
+interface GoalContext {
+  goalId: string
+  goalTitle: string
+  goalDescription?: string
+  stage: "planning_steps" | "breakdown_tasks"  // planning_steps = Cel Okresu -> Kroki, breakdown_tasks = Cel Sprintu -> Zadania
+}
+
 interface ChatRequest {
   message: string
   mode: ChatMode
   history?: { role: "user" | "assistant"; content: string }[]
+  goalContext?: GoalContext  // Context when planning specific goal
 }
 
 // Helper function to get team knowledge category IDs for a user
@@ -365,7 +373,7 @@ async function fetchContext(userId: string, contextType: string, params?: string
   }
 }
 
-function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getMinimalContext>>) {
+function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getMinimalContext>>, goalContext?: GoalContext) {
   // Get meta prompt (global instructions) - comes FIRST
   const metaPrompt = context.knowledgeBase?.metaPrompt ?? DEFAULT_META_PROMPT
 
@@ -410,19 +418,49 @@ function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getM
 [Okres]: ${context.currentPeriod || "brak aktywnego"} → Cele: ${context.periodGoals || "brak"}
 [Sprint]: ${context.currentSprint || "brak aktywnego"} → Cele: ${context.sprintGoals || "brak"}${companyContext}${knowledgeContext}${customInstructions}`
 
+  // Goal planning context - when user is planning specific goal
+  let goalPlanningContext = ""
+  if (goalContext) {
+    if (goalContext.stage === "planning_steps") {
+      goalPlanningContext = `
+
+[TRYB PLANOWANIA CELU]
+Aktualnie pomagasz zaplanować realizację konkretnego Celu Okresu:
+- Cel: "${goalContext.goalTitle}"
+${goalContext.goalDescription ? `- Opis: ${goalContext.goalDescription}` : ""}
+
+Twoim zadaniem jest pomóc użytkownikowi wymyślić KROKI REALIZACJI tego celu.
+Kroki to konkretne działania/etapy, które prowadzą do osiągnięcia celu.
+Gdy użytkownik będzie gotowy, zaproponuj listę kroków używając typu "steps_proposal".
+Każdy krok może później stać się osobnym Celem Sprintu.`
+    } else if (goalContext.stage === "breakdown_tasks") {
+      goalPlanningContext = `
+
+[TRYB ROZBIJANIA NA ZADANIA]
+Aktualnie pomagasz rozbić Cel Sprintu na konkretne Zadania:
+- Cel Sprintu: "${goalContext.goalTitle}"
+${goalContext.goalDescription ? `- Opis: ${goalContext.goalDescription}` : ""}
+
+Twoim zadaniem jest pomóc użytkownikowi rozbić ten cel na ZADANIA (Tasks).
+Zadania to konkretne akcje do wykonania, które można zaplanować na konkretny dzień.
+Gdy użytkownik będzie gotowy, zaproponuj listę zadań używając typu "tasks_proposal".`
+    }
+  }
+
   const jsonInstructions = `
 
 ODPOWIADAJ W JSON:
 - Zwykła rozmowa: {"type": "message", "message": "..."}
 - Propozycja celów: {"type": "goals_proposal", "goals": [{"title": "...", "targetValue": N, "unit": "...", "category": "...lub null"}], "message": "..."}
-- Propozycja zadań: {"type": "tasks_proposal", "tasks": [{"title": "...", "category": "...lub null", "plannedMinutes": N}], "message": "..."}
+- Propozycja kroków realizacji: {"type": "steps_proposal", "steps": [{"title": "...", "description": "...opcjonalnie"}], "parentGoalId": "${goalContext?.goalId || "ID_CELU"}", "message": "..."}
+- Propozycja zadań: {"type": "tasks_proposal", "tasks": [{"title": "...", "category": "...lub null", "plannedMinutes": N, "goalId": "...opcjonalnie, ID celu sprintu"}], "message": "..."}
 - Potrzebujesz więcej danych: {"type": "need_context", "contextType": "today_tasks|recent_tasks|backlog|knowledge|upcoming_tasks|webpage", "params": "opcjonalne (dla webpage podaj URL)", "message": "Co sprawdzam..."}
 
 ZAWSZE odpowiadaj TYLKO poprawnym JSON.`
 
-  // Meta prompt comes FIRST, then base prompt, then context, then JSON format
+  // Meta prompt comes FIRST, then base prompt, then context, then goal planning, then JSON format
   return `${metaPrompt}${basePrompt}
-${baseContext}${jsonInstructions}`
+${baseContext}${goalPlanningContext}${jsonInstructions}`
 }
 
 export async function POST(req: Request) {
@@ -433,7 +471,7 @@ export async function POST(req: Request) {
     }
 
     const body: ChatRequest = await req.json()
-    const { message, mode, history = [] } = body
+    const { message, mode, history = [], goalContext } = body
 
     if (!message || !mode) {
       return NextResponse.json({ error: "Message and mode are required" }, { status: 400 })
@@ -469,8 +507,8 @@ export async function POST(req: Request) {
       ? `${conversationHistory}\n\nTy: ${message}${webpageContext}`
       : `${message}${webpageContext}`
 
-    // Get system prompt
-    const systemPrompt = getSystemPrompt(mode, context)
+    // Get system prompt (with optional goal context for planning)
+    const systemPrompt = getSystemPrompt(mode, context, goalContext)
 
     // Generate response
     let response = await generateAIResponse(fullPrompt, systemPrompt)
