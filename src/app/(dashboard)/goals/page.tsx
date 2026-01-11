@@ -108,6 +108,13 @@ function GoalCard({
   steps,
   onToggleStepComplete,
   onPromoteToSprint,
+  onEditStep,
+  onSaveStepEdit,
+  onCancelStepEdit,
+  onDeleteStep,
+  editingStepId,
+  editingStepTitle,
+  setEditingStepTitle,
   sprints,
   isSprintGoal,
 }: {
@@ -668,14 +675,14 @@ export default function GoalsPage() {
       const res = await fetch(`/api/knowledge/categories?workspace=${workspace}`)
       if (res.ok) {
         const data = await res.json()
-        // Flatten hierarchy for select
-        const flatten = (cats: KnowledgeCategory[], prefix = ""): { id: string; name: string }[] => {
-          return cats.flatMap(c => [
-            { id: c.id, name: prefix + c.name },
-            ...(c.children ? flatten(c.children, prefix + "  ") : [])
-          ])
+        // API returns { strategicCategories, customCategories, allCategories }
+        // Use allCategories (flat list) for the select dropdown
+        if (data.allCategories && Array.isArray(data.allCategories)) {
+          setKnowledgeCategories(data.allCategories.map((c: KnowledgeCategory) => ({
+            id: c.id,
+            name: c.name
+          })))
         }
-        setKnowledgeCategories(flatten(data))
       }
     } catch (error) {
       console.error("Error fetching knowledge categories:", error)
