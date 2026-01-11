@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight } from "lucide-react"
+import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight, BookmarkPlus } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Collapsible,
@@ -26,7 +28,7 @@ import {
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useGoals } from "@/hooks/use-goals"
 import { useCategories } from "@/hooks/use-categories"
-import useSWR from "swr"
+import useSWR, { mutate } from "swr"
 
 interface Step {
   id: string
@@ -64,6 +66,14 @@ interface Category {
   name: string
   color: string
   isStrategic: boolean
+}
+
+interface KnowledgeCategory {
+  id: string
+  name: string
+  color: string
+  parentId?: string | null
+  children?: KnowledgeCategory[]
 }
 
 interface Sprint {
@@ -461,6 +471,11 @@ export default function GoalsPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [proposedSteps, setProposedSteps] = useState<{ title: string; description?: string }[]>([])
 
+  // Knowledge save state
+  const [knowledgeStep, setKnowledgeStep] = useState<"idle" | "generating" | "review" | "saving" | "saved">("idle")
+  const [knowledgeForm, setKnowledgeForm] = useState({ content: "", categoryId: "" })
+  const [knowledgeCategories, setKnowledgeCategories] = useState<{ id: string; name: string }[]>([])
+
   // Steps data - fetch for each goal that has steps
   const [stepsMap, setStepsMap] = useState<Record<string, Step[]>>({})
 
@@ -567,12 +582,112 @@ export default function GoalsPage() {
     }
   }
 
+  // Fetch knowledge categories
+  const fetchKnowledgeCategories = async () => {
+    try {
+      const res = await fetch(`/api/knowledge/categories?workspace=${workspace}`)
+      if (res.ok) {
+        const data = await res.json()
+        // Flatten hierarchy for select
+        const flatten = (cats: KnowledgeCategory[], prefix = ""): { id: string; name: string }[] => {
+          return cats.flatMap(c => [
+            { id: c.id, name: prefix + c.name },
+            ...(c.children ? flatten(c.children, prefix + "  ") : [])
+          ])
+        }
+        setKnowledgeCategories(flatten(data))
+      }
+    } catch (error) {
+      console.error("Error fetching knowledge categories:", error)
+    }
+  }
+
+  // Start saving to knowledge - generate summary
+  const handleStartSaveKnowledge = async () => {
+    if (aiHistory.length === 0) {
+      toast.error("Brak rozmowy do zapisania")
+      return
+    }
+
+    fetchKnowledgeCategories()
+    setKnowledgeStep("generating")
+
+    try {
+      const conversationText = aiHistory.map(m =>
+        `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${m.content}`
+      ).join("\n\n")
+
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Stwórz zwięzłe podsumowanie poniższej rozmowy. Wyciągnij kluczowe informacje, ustalenia i wnioski. Pisz konkretnie, bez zbędnych wstępów.\n\nRozmowa:\n${conversationText}`,
+          mode: "general",
+          history: [],
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setKnowledgeForm(prev => ({ ...prev, content: data.message }))
+        setKnowledgeStep("review")
+      } else {
+        toast.error("Nie udało się wygenerować podsumowania")
+        setKnowledgeStep("idle")
+      }
+    } catch (error) {
+      console.error("Error generating summary:", error)
+      toast.error("Wystąpił błąd")
+      setKnowledgeStep("idle")
+    }
+  }
+
+  // Save to knowledge base
+  const handleSaveKnowledge = async () => {
+    if (!knowledgeForm.content.trim() || !knowledgeForm.categoryId) {
+      toast.error("Wypełnij treść i wybierz kategorię")
+      return
+    }
+
+    setKnowledgeStep("saving")
+
+    try {
+      const res = await fetch("/api/knowledge/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: aiPlanningGoal?.goal.title ? `Notatka: ${aiPlanningGoal.goal.title}` : "Notatka z rozmowy AI",
+          newInfo: knowledgeForm.content,
+          categoryId: knowledgeForm.categoryId,
+          workspace: workspace,
+        }),
+      })
+
+      if (res.ok) {
+        setKnowledgeStep("saved")
+        mutate("/api/knowledge/categories?workspace=" + workspace)
+        mutate((key: unknown) => typeof key === "string" && key.includes("/api/knowledge/entries"), undefined, { revalidate: true })
+        toast.success("Zapisano do bazy wiedzy")
+        setTimeout(() => setKnowledgeStep("idle"), 2000)
+      } else {
+        toast.error("Nie udało się zapisać")
+        setKnowledgeStep("review")
+      }
+    } catch (error) {
+      console.error("Error saving knowledge:", error)
+      toast.error("Wystąpił błąd")
+      setKnowledgeStep("review")
+    }
+  }
+
   // Open AI planning dialog
   const handlePlanWithAI = (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => {
     setAiPlanningGoal({ goal, stage })
     setAiHistory([])
     setProposedSteps([])
     setAiMessage("")
+    setKnowledgeStep("idle")
+    setKnowledgeForm({ content: "", categoryId: "" })
   }
 
   // Toggle step complete
@@ -1091,6 +1206,63 @@ export default function GoalsPage() {
             </div>
           )}
 
+          {/* Save to knowledge section */}
+          {knowledgeStep === "generating" && (
+            <div className="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 text-center text-sm">
+              <span className="animate-pulse">Tworzę podsumowanie...</span>
+            </div>
+          )}
+
+          {knowledgeStep === "review" && (
+            <div className="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 space-y-3">
+              <div className="text-sm font-medium flex items-center gap-2">
+                <BookmarkPlus className="h-4 w-4" />
+                Zapisz do bazy wiedzy
+              </div>
+              <div className="space-y-2">
+                <Textarea
+                  value={knowledgeForm.content}
+                  onChange={(e) => setKnowledgeForm(prev => ({ ...prev, content: e.target.value }))}
+                  placeholder="Treść do zapisania..."
+                  className="min-h-[80px] text-sm"
+                />
+                <div>
+                  <Label className="text-xs">Kategoria</Label>
+                  <select
+                    className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                    value={knowledgeForm.categoryId}
+                    onChange={(e) => setKnowledgeForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                  >
+                    <option value="">Wybierz kategorię...</option>
+                    {knowledgeCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveKnowledge} disabled={!knowledgeForm.content.trim() || !knowledgeForm.categoryId}>
+                  <Check className="h-3 w-3 mr-1" /> Zapisz
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setKnowledgeStep("idle")}>
+                  Anuluj
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {knowledgeStep === "saving" && (
+            <div className="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 text-center text-sm">
+              <span className="animate-pulse">Zapisuję...</span>
+            </div>
+          )}
+
+          {knowledgeStep === "saved" && (
+            <div className="border rounded-lg p-3 bg-green-50 dark:bg-green-950/20 text-center text-sm text-green-600">
+              Zapisano do bazy wiedzy!
+            </div>
+          )}
+
           {/* Input */}
           <div className="flex gap-2 pt-2 border-t">
             <Input
@@ -1107,11 +1279,16 @@ export default function GoalsPage() {
                   handleSendAiMessage()
                 }
               }}
-              disabled={aiLoading}
+              disabled={aiLoading || knowledgeStep !== "idle"}
             />
-            <Button onClick={handleSendAiMessage} disabled={aiLoading || !aiMessage.trim()}>
+            <Button onClick={handleSendAiMessage} disabled={aiLoading || !aiMessage.trim() || knowledgeStep !== "idle"}>
               <ArrowRight className="h-4 w-4" />
             </Button>
+            {aiHistory.length > 0 && knowledgeStep === "idle" && (
+              <Button variant="outline" onClick={handleStartSaveKnowledge} title="Zapisz do bazy wiedzy">
+                <BookmarkPlus className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
