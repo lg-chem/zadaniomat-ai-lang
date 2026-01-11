@@ -564,6 +564,7 @@ export default function GoalsPage() {
   const [aiHistory, setAiHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([])
   const [aiLoading, setAiLoading] = useState(false)
   const [proposedSteps, setProposedSteps] = useState<{ title: string; description?: string }[]>([])
+  const [proposedTasks, setProposedTasks] = useState<{ title: string; description?: string }[]>([])
 
   // Knowledge save state
   const [knowledgeStep, setKnowledgeStep] = useState<"idle" | "generating" | "review" | "saving" | "saved">("idle")
@@ -631,9 +632,9 @@ export default function GoalsPage() {
           setProposedSteps(data.steps || [])
           setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
         } else if (data.type === "tasks_proposal") {
-          // Handle tasks proposal - redirect to schedule or save directly
-          setAiHistory(prev => [...prev, { role: "assistant", content: data.message + "\n\n[Zadania zostaną dodane do harmonogramu]" }])
-          // TODO: Implement tasks creation
+          // Handle tasks proposal - show tasks for acceptance
+          setProposedTasks(data.tasks || [])
+          setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
         } else {
           setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
         }
@@ -672,6 +673,42 @@ export default function GoalsPage() {
       }
     } catch (error) {
       console.error("Error saving steps:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Save proposed tasks to schedule
+  const handleSaveTasks = async () => {
+    if (!aiPlanningGoal || proposedTasks.length === 0) return
+
+    try {
+      // Create tasks one by one linked to the goal
+      let successCount = 0
+      for (const task of proposedTasks) {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: task.title,
+            description: task.description,
+            goalId: aiPlanningGoal.goal.id,
+            workspaceType: workspace,
+          }),
+        })
+        if (res.ok) successCount++
+      }
+
+      if (successCount > 0) {
+        toast.success(`Dodano ${successCount} zadań do harmonogramu`)
+        setAiPlanningGoal(null)
+        setAiHistory([])
+        setProposedTasks([])
+        mutateGoals()
+      } else {
+        toast.error("Nie udało się zapisać zadań")
+      }
+    } catch (error) {
+      console.error("Error saving tasks:", error)
       toast.error("Wystąpił błąd")
     }
   }
@@ -779,6 +816,7 @@ export default function GoalsPage() {
     setAiPlanningGoal({ goal, stage })
     setAiHistory([])
     setProposedSteps([])
+    setProposedTasks([])
     setAiMessage("")
     setKnowledgeStep("idle")
     setKnowledgeForm({ content: "", categoryId: "" })
@@ -1398,6 +1436,31 @@ export default function GoalsPage() {
               >
                 <Check className="h-4 w-4 mr-2" />
                 Zatwierdź i zapisz kroki
+              </Button>
+            </div>
+          )}
+
+          {/* Proposed tasks preview */}
+          {proposedTasks.length > 0 && (
+            <div className="border rounded-lg p-3 bg-green-50 dark:bg-green-950/20">
+              <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                <ListTodo className="h-4 w-4" />
+                Proponowane zadania ({proposedTasks.length})
+              </div>
+              <div className="space-y-1">
+                {proposedTasks.map((task, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">{i + 1}.</span>
+                    <span>{task.title}</span>
+                  </div>
+                ))}
+              </div>
+              <Button
+                className="w-full mt-3"
+                onClick={handleSaveTasks}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Dodaj do harmonogramu
               </Button>
             </div>
           )}
