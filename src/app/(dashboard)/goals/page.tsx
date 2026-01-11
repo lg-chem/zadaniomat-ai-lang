@@ -401,6 +401,13 @@ function CategoryTemplate({
   stepsMap,
   onToggleStepComplete,
   onPromoteToSprint,
+  onEditStep,
+  onSaveStepEdit,
+  onCancelStepEdit,
+  onDeleteStep,
+  editingStepId,
+  editingStepTitle,
+  setEditingStepTitle,
   sprints,
 }: {
   category: Category
