@@ -54,6 +54,7 @@ interface GoalTask {
   status: string
   priority: number
   plannedMinutes?: number | null
+  scheduledDate?: string | null
   subtasks?: Subtask[]
   category?: { id: string; name: string; color: string } | null
 }
@@ -137,6 +138,12 @@ function GoalCard({
   onRefreshTasks,
   expandedTaskId,
   onExpandTask,
+  onEditTask,
+  onSaveTaskEdit,
+  onCancelTaskEdit,
+  editingTaskId,
+  editingTaskTitle,
+  setEditingTaskTitle,
 }: {
   goal: Goal
   onToggleComplete: (goal: Goal) => void
@@ -167,6 +174,12 @@ function GoalCard({
   onRefreshTasks?: (goalId: string) => void
   expandedTaskId?: string | null
   onExpandTask?: (taskId: string | null) => void
+  onEditTask?: (task: GoalTask) => void
+  onSaveTaskEdit?: (taskId: string, goalId: string) => void
+  onCancelTaskEdit?: () => void
+  editingTaskId?: string | null
+  editingTaskTitle?: string
+  setEditingTaskTitle?: (title: string) => void
 }) {
   const isEditing = editingGoalId === goal.id
   const [showSteps, setShowSteps] = useState(false)
@@ -423,15 +436,17 @@ function GoalCard({
           </div>
           {tasks.map((task) => {
             const isExpanded = expandedTaskId === task.id
+            const isTaskEditing = editingTaskId === task.id
             const hasSubtasks = task.subtasks && task.subtasks.length > 0
             const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0
+            const isScheduled = !!task.scheduledDate
 
             return (
               <div
                 key={task.id}
                 className={`rounded border bg-background ${
                   task.status === "COMPLETED" ? "bg-green-50 dark:bg-green-950/20" : ""
-                }`}
+                } ${isScheduled ? "border-blue-200" : ""}`}
               >
                 <div className="flex items-center justify-between p-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -443,42 +458,104 @@ function GoalCard({
                     >
                       {task.status === "COMPLETED" && <Check className="h-3 w-3" />}
                     </button>
-                    <span className={`text-xs ${task.status === "COMPLETED" ? "line-through text-muted-foreground" : ""}`}>
-                      {task.title}
-                    </span>
-                    {hasSubtasks && (
-                      <Badge variant="outline" className="text-[9px]">
-                        {completedSubtasks}/{task.subtasks!.length}
-                      </Badge>
-                    )}
-                    {task.plannedMinutes && (
-                      <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                        <Clock className="h-2.5 w-2.5" />
-                        {task.plannedMinutes}min
-                      </span>
+                    {isTaskEditing ? (
+                      <div className="flex-1 flex gap-1">
+                        <Input
+                          value={editingTaskTitle}
+                          onChange={(e) => setEditingTaskTitle?.(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              onSaveTaskEdit?.(task.id, goal.id)
+                            } else if (e.key === "Escape") {
+                              onCancelTaskEdit?.()
+                            }
+                          }}
+                          className="h-6 text-xs"
+                          autoFocus
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => onSaveTaskEdit?.(task.id, goal.id)}
+                        >
+                          <Save className="h-3 w-3 text-green-500" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={onCancelTaskEdit}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className={`text-xs ${task.status === "COMPLETED" ? "line-through text-muted-foreground" : ""}`}>
+                          {task.title}
+                        </span>
+                        {isScheduled && (
+                          <Badge variant="secondary" className="text-[9px] bg-blue-100 text-blue-700">
+                            <Calendar className="h-2 w-2 mr-0.5" />
+                            {format(new Date(task.scheduledDate!), "d MMM", { locale: pl })}
+                          </Badge>
+                        )}
+                        {hasSubtasks && (
+                          <Badge variant="outline" className="text-[9px]">
+                            {completedSubtasks}/{task.subtasks!.length}
+                          </Badge>
+                        )}
+                        {task.plannedMinutes && (
+                          <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                            <Clock className="h-2.5 w-2.5" />
+                            {task.plannedMinutes}min
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5"
-                      onClick={() => onExpandTask?.(isExpanded ? null : task.id)}
-                    >
-                      {isExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-5 text-[10px] px-1.5"
-                      onClick={() => {
-                        onScheduleTask?.(task, goal.id)
-                      }}
-                    >
-                      <Calendar className="h-2.5 w-2.5 mr-0.5" />
-                      Zaplanuj
-                    </Button>
-                  </div>
+                  {!isTaskEditing && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => onEditTask?.(task)}
+                      >
+                        <Pencil className="h-2.5 w-2.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => onExpandTask?.(isExpanded ? null : task.id)}
+                      >
+                        {isExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                      </Button>
+                      {!isScheduled ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-5 text-[10px] px-1.5"
+                          onClick={() => onScheduleTask?.(task, goal.id)}
+                        >
+                          <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                          Zaplanuj
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 text-[10px] px-1.5 text-blue-600"
+                          onClick={() => onScheduleTask?.(task, goal.id)}
+                        >
+                          <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                          Zmień
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Expanded content */}
@@ -552,6 +629,12 @@ function CategoryTemplate({
   onRefreshTasks,
   expandedTaskId,
   onExpandTask,
+  onEditTask,
+  onSaveTaskEdit,
+  onCancelTaskEdit,
+  editingTaskId,
+  editingTaskTitle,
+  setEditingTaskTitle,
 }: {
   category: Category
   periodId?: string
@@ -587,6 +670,12 @@ function CategoryTemplate({
   onRefreshTasks: (goalId: string) => void
   expandedTaskId: string | null
   onExpandTask: (taskId: string | null) => void
+  onEditTask: (task: GoalTask) => void
+  onSaveTaskEdit: (taskId: string, goalId: string) => void
+  onCancelTaskEdit: () => void
+  editingTaskId: string | null
+  editingTaskTitle: string
+  setEditingTaskTitle: (title: string) => void
 }) {
   const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
 
@@ -638,6 +727,12 @@ function CategoryTemplate({
               onRefreshTasks={onRefreshTasks}
               expandedTaskId={expandedTaskId}
               onExpandTask={onExpandTask}
+              onEditTask={onEditTask}
+              onSaveTaskEdit={onSaveTaskEdit}
+              onCancelTaskEdit={onCancelTaskEdit}
+              editingTaskId={editingTaskId}
+              editingTaskTitle={editingTaskTitle}
+              setEditingTaskTitle={setEditingTaskTitle}
             />
           ))}
         </div>
@@ -737,6 +832,8 @@ export default function GoalsPage() {
   const [schedulingTask, setSchedulingTask] = useState<GoalTask | null>(null)
   const [schedulingGoalId, setSchedulingGoalId] = useState<string | null>(null)
   const [scheduleDate, setScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingTaskTitle, setEditingTaskTitle] = useState("")
 
   // Fetch steps for all goals
   const fetchStepsForGoals = useCallback(async () => {
@@ -872,7 +969,7 @@ export default function GoalsPage() {
     if (!aiPlanningGoal || proposedTasks.length === 0) return
 
     try {
-      // Create tasks one by one linked to the goal
+      // Create tasks one by one linked to the goal, inherit category from goal
       let successCount = 0
       for (const task of proposedTasks) {
         const res = await fetch("/api/tasks", {
@@ -882,6 +979,7 @@ export default function GoalsPage() {
             title: task.title,
             description: task.description,
             goalId: aiPlanningGoal.goal.id,
+            categoryId: aiPlanningGoal.goal.category?.id, // Inherit category from goal
             workspaceType: workspace,
           }),
         })
@@ -919,12 +1017,14 @@ export default function GoalsPage() {
       })
 
       if (res.ok) {
-        // Remove task from tasksMap for this goal
+        // Update task in tasksMap with new scheduledDate (don't remove it!)
         setTasksMap(prev => ({
           ...prev,
-          [schedulingGoalId]: prev[schedulingGoalId]?.filter(t => t.id !== schedulingTask.id) || []
+          [schedulingGoalId]: prev[schedulingGoalId]?.map(t =>
+            t.id === schedulingTask.id ? { ...t, scheduledDate: scheduleDate } : t
+          ) || []
         }))
-        toast.success("Zadanie zaplanowane")
+        toast.success("Zadanie zaplanowane na " + format(new Date(scheduleDate), "d MMM", { locale: pl }))
         setSchedulingTask(null)
         setSchedulingGoalId(null)
       } else {
@@ -936,27 +1036,34 @@ export default function GoalsPage() {
     }
   }
 
-  // Complete a task
+  // Toggle task completion
   const handleCompleteTask = async (taskId: string, goalId: string) => {
+    const task = tasksMap[goalId]?.find(t => t.id === taskId)
+    if (!task) return
+
+    const newStatus = task.status === "COMPLETED" ? "TODO" : "COMPLETED"
+
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status: "COMPLETED",
+          status: newStatus,
         }),
       })
 
       if (res.ok) {
-        // Remove task from tasksMap for this goal
+        // Update task status in tasksMap (don't remove!)
         setTasksMap(prev => ({
           ...prev,
-          [goalId]: prev[goalId]?.filter(t => t.id !== taskId) || []
+          [goalId]: prev[goalId]?.map(t =>
+            t.id === taskId ? { ...t, status: newStatus } : t
+          ) || []
         }))
-        toast.success("Zadanie ukończone!")
+        toast.success(newStatus === "COMPLETED" ? "Zadanie ukończone!" : "Zadanie oznaczone jako nieukończone")
       }
     } catch (error) {
-      console.error("Error completing task:", error)
+      console.error("Error toggling task:", error)
       toast.error("Wystąpił błąd")
     }
   }
@@ -969,6 +1076,47 @@ export default function GoalsPage() {
         task.id === taskId ? { ...task, subtasks: newSubtasks } : task
       ) || []
     }))
+  }
+
+  // Edit task title
+  const handleEditTask = (task: GoalTask) => {
+    setEditingTaskId(task.id)
+    setEditingTaskTitle(task.title)
+  }
+
+  const handleCancelTaskEdit = () => {
+    setEditingTaskId(null)
+    setEditingTaskTitle("")
+  }
+
+  const handleSaveTaskEdit = async (taskId: string, goalId: string) => {
+    if (!editingTaskTitle.trim()) return
+
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editingTaskTitle.trim() }),
+      })
+
+      if (res.ok) {
+        // Update task title in tasksMap
+        setTasksMap(prev => ({
+          ...prev,
+          [goalId]: prev[goalId]?.map(t =>
+            t.id === taskId ? { ...t, title: editingTaskTitle.trim() } : t
+          ) || []
+        }))
+        setEditingTaskId(null)
+        setEditingTaskTitle("")
+        toast.success("Zadanie zaktualizowane")
+      } else {
+        toast.error("Nie udało się zaktualizować zadania")
+      }
+    } catch (error) {
+      console.error("Error updating task:", error)
+      toast.error("Wystąpił błąd")
+    }
   }
 
   // Refresh tasks for a goal
@@ -1524,13 +1672,19 @@ export default function GoalsPage() {
                           onScheduleTask={(task, goalId) => {
                             setSchedulingTask(task)
                             setSchedulingGoalId(goalId)
-                            setScheduleDate(format(new Date(), "yyyy-MM-dd"))
+                            setScheduleDate(task.scheduledDate || format(new Date(), "yyyy-MM-dd"))
                           }}
                           onCompleteTask={handleCompleteTask}
                           onTaskSubtasksChange={handleTaskSubtasksChange}
                           onRefreshTasks={refreshGoalTasks}
                           expandedTaskId={expandedTaskId}
                           onExpandTask={setExpandedTaskId}
+                          onEditTask={handleEditTask}
+                          onSaveTaskEdit={handleSaveTaskEdit}
+                          onCancelTaskEdit={handleCancelTaskEdit}
+                          editingTaskId={editingTaskId}
+                          editingTaskTitle={editingTaskTitle}
+                          setEditingTaskTitle={setEditingTaskTitle}
                         />
                       ))}
                     </div>
@@ -1621,13 +1775,19 @@ export default function GoalsPage() {
                                         onScheduleTask={(task, goalId) => {
                                           setSchedulingTask(task)
                                           setSchedulingGoalId(goalId)
-                                          setScheduleDate(format(new Date(), "yyyy-MM-dd"))
+                                          setScheduleDate(task.scheduledDate || format(new Date(), "yyyy-MM-dd"))
                                         }}
                                         onCompleteTask={handleCompleteTask}
                                         onTaskSubtasksChange={handleTaskSubtasksChange}
                                         onRefreshTasks={refreshGoalTasks}
                                         expandedTaskId={expandedTaskId}
                                         onExpandTask={setExpandedTaskId}
+                                        onEditTask={handleEditTask}
+                                        onSaveTaskEdit={handleSaveTaskEdit}
+                                        onCancelTaskEdit={handleCancelTaskEdit}
+                                        editingTaskId={editingTaskId}
+                                        editingTaskTitle={editingTaskTitle}
+                                        setEditingTaskTitle={setEditingTaskTitle}
                                       />
                                     ))}
                                   </div>

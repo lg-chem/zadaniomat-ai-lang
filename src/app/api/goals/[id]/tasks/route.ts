@@ -28,12 +28,11 @@ export async function GET(
       return NextResponse.json({ error: "Cel nie znaleziony" }, { status: 404 })
     }
 
-    // Get tasks for this goal that are NOT scheduled (no scheduledDate)
+    // Get ALL tasks for this goal (both scheduled and unscheduled)
     const tasks = await prisma.task.findMany({
       where: {
         goalId,
         userId: session.user.id,
-        scheduledDate: null, // Only unscheduled tasks
       },
       include: {
         category: true,
