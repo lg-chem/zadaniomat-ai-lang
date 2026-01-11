@@ -144,6 +144,8 @@ function GoalCard({
   editingTaskId,
   editingTaskTitle,
   setEditingTaskTitle,
+  onAddStep,
+  onAddTask,
 }: {
   goal: Goal
   onToggleComplete: (goal: Goal) => void
@@ -180,10 +182,14 @@ function GoalCard({
   editingTaskId?: string | null
   editingTaskTitle?: string
   setEditingTaskTitle?: (title: string) => void
+  onAddStep?: (goalId: string, title: string) => void
+  onAddTask?: (goalId: string, title: string) => void
 }) {
   const isEditing = editingGoalId === goal.id
   const [showSteps, setShowSteps] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
+  const [newStepTitle, setNewStepTitle] = useState("")
+  const [newTaskTitle, setNewTaskTitle] = useState("")
   const getProgress = (g: Goal) => {
     if (!g.targetValue) return g.isCompleted ? 100 : 0
     return Math.min(100, (g.currentValue / g.targetValue) * 100)
@@ -236,30 +242,29 @@ function GoalCard({
         ) : (
           <>
             <div className="flex items-center gap-1">
-              {(hasSteps || hasTasks) && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={() => {
-                    if (hasSteps) setShowSteps(!showSteps)
-                    if (hasTasks) setShowTasks(!showTasks)
-                  }}
-                >
-                  {(showSteps || showTasks) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                </Button>
-              )}
+              {/* Always show expand button - period goals have steps, sprint goals have tasks */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={() => {
+                  if (!isSprintGoal) setShowSteps(!showSteps)
+                  if (isSprintGoal) setShowTasks(!showTasks)
+                }}
+              >
+                {(showSteps || showTasks) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              </Button>
               <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
                 {goal.title}
               </span>
               {hasSteps && (
                 <Badge variant="outline" className="text-[10px] ml-1">
-                  {completedSteps}/{steps.length}
+                  {completedSteps}/{steps?.length}
                 </Badge>
               )}
               {hasTasks && (
                 <Badge variant="secondary" className="text-[10px] ml-1">
-                  {completedTasks}/{tasks.length} zadań
+                  {completedTasks}/{tasks?.length} zadań
                 </Badge>
               )}
             </div>
@@ -314,13 +319,13 @@ function GoalCard({
         <Badge variant="secondary" className="text-[10px] mt-1">Cel jakościowy</Badge>
       )}
 
-      {/* Steps (Strategy) section */}
-      {showSteps && hasSteps && (
+      {/* Steps (Strategy) section - for period goals */}
+      {showSteps && !isSprintGoal && (
         <div className="mt-2 pl-4 border-l-2 border-purple-200 space-y-1">
           <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
             <ListTodo className="h-3 w-3" /> Kroki realizacji
           </div>
-          {steps.map((step) => {
+          {steps?.map((step) => {
             const isStepEditing = editingStepId === step.id
             return (
               <div
@@ -425,16 +430,44 @@ function GoalCard({
               </div>
             )
           })}
+          {/* Manual step input */}
+          <div className="flex gap-1 mt-2">
+            <Input
+              value={newStepTitle}
+              onChange={(e) => setNewStepTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newStepTitle.trim()) {
+                  onAddStep?.(goal.id, newStepTitle.trim())
+                  setNewStepTitle("")
+                }
+              }}
+              placeholder="Dodaj krok..."
+              className="h-6 text-xs"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => {
+                if (newStepTitle.trim()) {
+                  onAddStep?.(goal.id, newStepTitle.trim())
+                  setNewStepTitle("")
+                }
+              }}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
       )}
 
       {/* Tasks section (for sprint goals) */}
-      {showTasks && hasTasks && (
+      {showTasks && isSprintGoal && (
         <div className="mt-2 pl-4 border-l-2 border-green-200 space-y-2">
           <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
             <ListTodo className="h-3 w-3" /> Zadania do wykonania
           </div>
-          {tasks.map((task) => {
+          {tasks?.map((task) => {
             const isExpanded = expandedTaskId === task.id
             const isTaskEditing = editingTaskId === task.id
             const hasSubtasks = task.subtasks && task.subtasks.length > 0
@@ -587,6 +620,34 @@ function GoalCard({
               </div>
             )
           })}
+          {/* Manual task input */}
+          <div className="flex gap-1 mt-2">
+            <Input
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newTaskTitle.trim()) {
+                  onAddTask?.(goal.id, newTaskTitle.trim())
+                  setNewTaskTitle("")
+                }
+              }}
+              placeholder="Dodaj zadanie..."
+              className="h-6 text-xs"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => {
+                if (newTaskTitle.trim()) {
+                  onAddTask?.(goal.id, newTaskTitle.trim())
+                  setNewTaskTitle("")
+                }
+              }}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -635,6 +696,8 @@ function CategoryTemplate({
   editingTaskId,
   editingTaskTitle,
   setEditingTaskTitle,
+  onAddStep,
+  onAddTask,
 }: {
   category: Category
   periodId?: string
@@ -676,6 +739,8 @@ function CategoryTemplate({
   editingTaskId: string | null
   editingTaskTitle: string
   setEditingTaskTitle: (title: string) => void
+  onAddStep: (goalId: string, title: string) => void
+  onAddTask: (goalId: string, title: string) => void
 }) {
   const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
 
@@ -733,6 +798,8 @@ function CategoryTemplate({
               editingTaskId={editingTaskId}
               editingTaskTitle={editingTaskTitle}
               setEditingTaskTitle={setEditingTaskTitle}
+              onAddStep={onAddStep}
+              onAddTask={onAddTask}
             />
           ))}
         </div>
@@ -1341,6 +1408,59 @@ export default function GoalsPage() {
     }
   }
 
+  // Add step manually (without AI)
+  const handleAddStep = async (goalId: string, title: string) => {
+    try {
+      const res = await fetch(`/api/goals/${goalId}/steps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ steps: [{ title }] }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setStepsMap(prev => ({
+          ...prev,
+          [goalId]: [...(prev[goalId] || []), ...data.steps]
+        }))
+        mutateGoals()
+        toast.success("Krok dodany")
+      } else {
+        toast.error("Nie udało się dodać kroku")
+      }
+    } catch (error) {
+      console.error("Error adding step:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Add task manually (without AI)
+  const handleAddTask = async (goalId: string, title: string) => {
+    const goal = goals.find(g => g.id === goalId)
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          goalId,
+          categoryId: goal?.category?.id,
+          workspaceType: workspace,
+        }),
+      })
+
+      if (res.ok) {
+        refreshGoalTasks(goalId)
+        toast.success("Zadanie dodane")
+      } else {
+        toast.error("Nie udało się dodać zadania")
+      }
+    } catch (error) {
+      console.error("Error adding task:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
   // Promote step to sprint goal - converts step to a real sprint goal
   const handlePromoteToSprint = async (stepId: string, sprintId: string) => {
     try {
@@ -1691,6 +1811,8 @@ export default function GoalsPage() {
                           editingTaskId={editingTaskId}
                           editingTaskTitle={editingTaskTitle}
                           setEditingTaskTitle={setEditingTaskTitle}
+                          onAddStep={handleAddStep}
+                          onAddTask={handleAddTask}
                         />
                       ))}
                     </div>
@@ -1798,6 +1920,8 @@ export default function GoalsPage() {
                                         editingTaskId={editingTaskId}
                                         editingTaskTitle={editingTaskTitle}
                                         setEditingTaskTitle={setEditingTaskTitle}
+                                        onAddStep={handleAddStep}
+                                        onAddTask={handleAddTask}
                                       />
                                     ))}
                                   </div>
