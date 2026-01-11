@@ -884,16 +884,20 @@ export default function GoalsPage() {
     }
   }
 
-  // Promote step to sprint goal
+  // Promote step to sprint goal - converts step to a real sprint goal
   const handlePromoteToSprint = async (stepId: string, sprintId: string) => {
     try {
+      // Set isStep=false to make it a real goal, and assign to sprint
       const res = await fetch(`/api/goals/${stepId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sprintId }),
+        body: JSON.stringify({
+          sprintId,
+          isStep: false,  // Convert to regular goal
+        }),
       })
       if (res.ok) {
-        // Find parent goal and refresh its steps
+        // Find parent goal and refresh its steps (step will be removed from list)
         const parentGoalId = Object.keys(stepsMap).find(key =>
           stepsMap[key].some(s => s.id === stepId)
         )
@@ -905,7 +909,7 @@ export default function GoalsPage() {
           }
         }
         mutateGoals()
-        toast.success("Krok przypisany do sprintu")
+        toast.success("Krok promowany do celu sprintu")
       }
     } catch (error) {
       console.error("Error promoting step:", error)
