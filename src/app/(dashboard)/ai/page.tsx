@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect, KeyboardEvent, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { useChat } from "ai/react"
 import { toast } from "sonner"
 import useSWR, { mutate } from "swr"
 import { format, formatDistanceToNow } from "date-fns"
@@ -25,8 +26,8 @@ import {
   RotateCcw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -52,76 +53,6 @@ import {
 import { cn } from "@/lib/utils"
 
 type ChatMode = "daily_tasks" | "period_goals" | "sprint_goals" | "general"
-
-interface ChatMessage {
-  role: "user" | "assistant"
-  content: string
-  data?: GoalProposal[] | TaskProposal[]
-  dataType?: "goals" | "tasks"
-  isTyping?: boolean
-}
-
-// Typing effect hook
-function useTypingEffect(text: string, speed: number = 15, enabled: boolean = true) {
-  const [displayText, setDisplayText] = useState("")
-  const [isComplete, setIsComplete] = useState(false)
-
-  useEffect(() => {
-    if (!enabled) {
-      setDisplayText(text)
-      setIsComplete(true)
-      return
-    }
-
-    setDisplayText("")
-    setIsComplete(false)
-
-    if (!text) return
-
-    let index = 0
-    const timer = setInterval(() => {
-      if (index < text.length) {
-        setDisplayText(text.slice(0, index + 1))
-        index++
-      } else {
-        setIsComplete(true)
-        clearInterval(timer)
-      }
-    }, speed)
-
-    return () => clearInterval(timer)
-  }, [text, speed, enabled])
-
-  return { displayText, isComplete }
-}
-
-// Typing message component with markdown
-function TypingMessage({ content, isNew }: { content: string; isNew: boolean }) {
-  const { displayText, isComplete } = useTypingEffect(content, 10, isNew)
-
-  return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
-      <ReactMarkdown
-        components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="text-sm">{children}</li>,
-          h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3">{children}</h1>,
-          h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3">{children}</h2>,
-          h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2">{children}</h3>,
-          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-          em: ({ children }) => <em className="italic">{children}</em>,
-          code: ({ children }) => <code className="bg-muted px-1 py-0.5 rounded text-xs">{children}</code>,
-          blockquote: ({ children }) => <blockquote className="border-l-2 border-primary pl-3 italic my-2">{children}</blockquote>,
-        }}
-      >
-        {displayText}
-      </ReactMarkdown>
-      {!isComplete && <span className="animate-pulse">▊</span>}
-    </div>
-  )
-}
 
 interface GoalProposal {
   title: string
@@ -221,15 +152,35 @@ const MODE_TO_API_TYPE: Record<ChatMode, string> = {
   general: "GENERAL",
 }
 
+// Extract proposals from tool invocations in messages
+function extractProposals(messages: Array<{ role: string; content: string; toolInvocations?: Array<{ toolName: string; state: string; result?: unknown }> }>) {
+  const proposals: Array<{ type: string; data: unknown; messageIndex: number }> = []
+
+  messages.forEach((msg, index) => {
+    if (msg.role === "assistant" && msg.toolInvocations) {
+      msg.toolInvocations.forEach((tool) => {
+        if (tool.state === "result" && tool.result) {
+          const result = tool.result as { type?: string; goals?: GoalProposal[]; tasks?: TaskProposal[]; steps?: Array<{ title: string; description?: string }> }
+          if (result.type === "goals_proposal" && result.goals) {
+            proposals.push({ type: "goals", data: result.goals, messageIndex: index })
+          } else if (result.type === "tasks_proposal" && result.tasks) {
+            proposals.push({ type: "tasks", data: result.tasks, messageIndex: index })
+          } else if (result.type === "steps_proposal" && result.steps) {
+            proposals.push({ type: "steps", data: result.steps, messageIndex: index })
+          }
+        }
+      })
+    }
+  })
+
+  return proposals
+}
+
 export default function AIPage() {
   const [mode, setMode] = useState<ChatMode>("general")
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [periods, setPeriods] = useState<Period[]>([])
-  const [lastAssistantIndex, setLastAssistantIndex] = useState<number>(-1)
 
   // Fetch organizations to check if user is owner
   const { data: orgsData } = useSWR<OrganizationsResponse>("/api/organizations", fetcher)
@@ -320,6 +271,31 @@ export default function AIPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const initialLoadDoneRef = useRef(false)
 
+  // Vercel AI SDK useChat hook
+  const {
+    messages,
+    input,
+    setInput,
+    handleSubmit,
+    isLoading,
+    setMessages,
+    append,
+  } = useChat({
+    api: "/api/ai/chat",
+    body: { mode },
+    onFinish: (message) => {
+      // Save to conversation after each response
+      saveToConversation([...messages, message])
+    },
+    onError: (error) => {
+      console.error("Chat error:", error)
+      toast.error("Wystąpił błąd podczas komunikacji z AI")
+    },
+  })
+
+  // Extract proposals from messages
+  const proposals = extractProposals(messages as Array<{ role: string; content: string; toolInvocations?: Array<{ toolName: string; state: string; result?: unknown }> }>)
+
   useEffect(() => {
     fetchCategories()
     fetchSprints()
@@ -327,9 +303,6 @@ export default function AIPage() {
     fetchConversations()
     fetchSettings()
   }, [])
-
-  // Mode change is now handled explicitly in the UI when user clicks on a mode button
-  // This prevents clearing messages when loading an existing conversation
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -419,8 +392,10 @@ export default function AIPage() {
         const data = await res.json()
         const conv = data.conversation
         setCurrentConversationId(conv.id)
+        // Convert to useChat format
         setMessages(
-          conv.messages.map((m: { role: string; content: string }) => ({
+          conv.messages.map((m: { role: string; content: string }, i: number) => ({
+            id: `loaded-${i}`,
             role: m.role as "user" | "assistant",
             content: m.content,
           }))
@@ -489,7 +464,7 @@ export default function AIPage() {
     }
   }
 
-  const saveToConversation = async (newMessages: ChatMessage[]) => {
+  const saveToConversation = async (newMessages: Array<{ role: string; content: string }>) => {
     try {
       if (currentConversationId) {
         await fetch(`/api/ai/conversations/${currentConversationId}`, {
@@ -499,7 +474,7 @@ export default function AIPage() {
             messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           }),
         })
-      } else {
+      } else if (newMessages.length > 0) {
         const createRes = await fetch("/api/ai/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -525,60 +500,18 @@ export default function AIPage() {
     }
   }
 
-  const handleSend = async () => {
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
     if (!input.trim() || isLoading) return
-
-    const userMessage: ChatMessage = { role: "user", content: input }
-    const updatedMessages = [...messages, userMessage]
-    setMessages(updatedMessages)
-    setInput("")
-    setIsLoading(true)
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: input,
-          mode,
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        const assistantMessage: ChatMessage = { role: "assistant", content: data.message || "" }
-
-        if (data.type === "goals_proposal" && data.goals) {
-          assistantMessage.data = data.goals
-          assistantMessage.dataType = "goals"
-        } else if (data.type === "tasks_proposal" && data.tasks) {
-          assistantMessage.data = data.tasks
-          assistantMessage.dataType = "tasks"
-        }
-
-        const finalMessages = [...updatedMessages, assistantMessage]
-        setMessages(finalMessages)
-        setLastAssistantIndex(finalMessages.length - 1)
-        saveToConversation(finalMessages)
-      } else {
-        const errorMessages = [...updatedMessages, { role: "assistant" as const, content: "Przepraszam, wystąpił błąd. Spróbuj ponownie." }]
-        setMessages(errorMessages)
-        setLastAssistantIndex(errorMessages.length - 1)
-      }
-    } catch (error) {
-      console.error("Error sending message:", error)
-      setMessages([...updatedMessages, { role: "assistant", content: "Przepraszam, wystąpił błąd. Spróbuj ponownie." }])
-    } finally {
-      setIsLoading(false)
-      inputRef.current?.focus()
-    }
+    handleSubmit(e)
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      if (input.trim() && !isLoading) {
+        handleSubmit(e as unknown as React.FormEvent)
+      }
     }
   }
 
@@ -676,19 +609,47 @@ export default function AIPage() {
     const conversationText = messages.map((m) => `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${m.content}`).join("\n\n")
 
     try {
+      // Use append to get AI summary
+      const summaryMessages = [
+        {
+          role: "user" as const,
+          content: `Stwórz zwięzłe podsumowanie poniższej rozmowy dla bazy wiedzy. Wyodrębnij kluczowe informacje. Odpowiedz tylko podsumowaniem.\n\nRozmowa:\n${conversationText}`,
+        },
+      ]
+
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `Stwórz zwięzłe podsumowanie poniższej rozmowy dla bazy wiedzy. Wyodrębnij kluczowe informacje. Odpowiedz tylko podsumowaniem.\n\nRozmowa:\n${conversationText}`,
-          mode: "general",
-          history: [],
-        }),
+        body: JSON.stringify({ messages: summaryMessages, mode: "general" }),
       })
 
       if (res.ok) {
-        const data = await res.json()
-        setKnowledgeForm({ title: "", content: data.message || conversationText, categoryId: "" })
+        // Read the stream to get the full response
+        const reader = res.body?.getReader()
+        const decoder = new TextDecoder()
+        let fullText = ""
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            const chunk = decoder.decode(value)
+            // Parse data stream format
+            const lines = chunk.split("\n")
+            for (const line of lines) {
+              if (line.startsWith("0:")) {
+                try {
+                  const text = JSON.parse(line.slice(2))
+                  fullText += text
+                } catch {
+                  // Skip non-JSON lines
+                }
+              }
+            }
+          }
+        }
+
+        setKnowledgeForm({ title: "", content: fullText || conversationText, categoryId: "" })
       } else {
         setKnowledgeForm({ title: "", content: conversationText, categoryId: "" })
       }
@@ -717,8 +678,7 @@ export default function AIPage() {
       })
       if (res.ok) {
         setKnowledgeStep("saved")
-        // Invalidate knowledge cache so the knowledge page shows new entry and category counts immediately
-        // Use specific keys to ensure proper revalidation
+        // Invalidate knowledge cache
         mutate("/api/knowledge/categories?workspace=WORK")
         mutate(
           (key) => typeof key === "string" && key.includes("/api/knowledge/entries"),
@@ -747,6 +707,11 @@ export default function AIPage() {
     if (mode === "sprint_goals") return ["Zaproponuj cele na sprint", "Co powinienem osiągnąć w najbliższych 2 tygodniach?"]
     if (mode === "general") return ["Co mam teraz na tapecie?", "Pomóż mi przemyśleć...", "Mam problem z..."]
     return ["Zaproponuj zadania na dziś", "Co powinienem dziś zrobić?"]
+  }
+
+  // Find proposals for a specific message
+  const getProposalsForMessage = (messageIndex: number) => {
+    return proposals.filter((p) => p.messageIndex === messageIndex)
   }
 
   return (
@@ -877,7 +842,7 @@ export default function AIPage() {
           <div className="space-y-4 py-4">
             {messages.map((message, index) => (
               <div
-                key={index}
+                key={message.id}
                 className={cn(
                   "flex gap-3 animate-fade-in",
                   message.role === "user" ? "flex-row-reverse" : ""
@@ -907,15 +872,33 @@ export default function AIPage() {
                     {message.role === "user" ? (
                       <p className="whitespace-pre-wrap text-sm">{message.content}</p>
                     ) : (
-                      <TypingMessage content={message.content} isNew={index === lastAssistantIndex} />
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        <ReactMarkdown
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                            li: ({ children }) => <li className="text-sm">{children}</li>,
+                            h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2">{children}</h3>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            code: ({ children }) => <code className="bg-muted px-1 py-0.5 rounded text-xs">{children}</code>,
+                            blockquote: ({ children }) => <blockquote className="border-l-2 border-primary pl-3 italic my-2">{children}</blockquote>,
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
                     )}
                   </div>
 
-                  {/* Goals proposal */}
-                  {message.dataType === "goals" && message.data && (
-                    <div className="mt-3 space-y-2">
-                      {(message.data as GoalProposal[]).map((goal, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-card border rounded-xl hover:border-primary/50 transition-colors">
+                  {/* Goals proposal from tool call */}
+                  {getProposalsForMessage(index).filter(p => p.type === "goals").map((proposal, i) => (
+                    <div key={i} className="mt-3 space-y-2">
+                      {(proposal.data as GoalProposal[]).map((goal, j) => (
+                        <div key={j} className="flex items-start gap-3 p-3 bg-card border rounded-xl hover:border-primary/50 transition-colors">
                           <div className="h-8 w-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
                             <Target className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                           </div>
@@ -931,13 +914,13 @@ export default function AIPage() {
                         </div>
                       ))}
                     </div>
-                  )}
+                  ))}
 
-                  {/* Tasks proposal */}
-                  {message.dataType === "tasks" && message.data && (
-                    <div className="mt-3 space-y-2">
-                      {(message.data as TaskProposal[]).map((task, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-card border rounded-xl hover:border-primary/50 transition-colors">
+                  {/* Tasks proposal from tool call */}
+                  {getProposalsForMessage(index).filter(p => p.type === "tasks").map((proposal, i) => (
+                    <div key={i} className="mt-3 space-y-2">
+                      {(proposal.data as TaskProposal[]).map((task, j) => (
+                        <div key={j} className="flex items-start gap-3 p-3 bg-card border rounded-xl hover:border-primary/50 transition-colors">
                           <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
                             <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                           </div>
@@ -955,7 +938,7 @@ export default function AIPage() {
                         </div>
                       ))}
                     </div>
-                  )}
+                  ))}
                 </div>
               </div>
             ))}
@@ -1079,7 +1062,7 @@ export default function AIPage() {
         )}
 
         {/* Input area */}
-        <div className="flex gap-2">
+        <form onSubmit={handleFormSubmit} className="flex gap-2">
           <Textarea
             ref={inputRef}
             value={input}
@@ -1091,14 +1074,14 @@ export default function AIPage() {
             rows={1}
           />
           <Button
-            onClick={handleSend}
+            type="submit"
             disabled={isLoading || !input.trim() || knowledgeStep !== "idle"}
             size="icon"
             className="h-11 w-11 rounded-xl flex-shrink-0"
           >
             <Send className="h-4 w-4" />
           </Button>
-        </div>
+        </form>
       </div>
 
       {/* Settings Dialog */}
@@ -1141,7 +1124,7 @@ export default function AIPage() {
                 <div className="mt-4 space-y-4">
                   {/* Meta Prompt - FIRST */}
                   <div className="space-y-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                    <Label className="text-sm font-medium">🔥 Nadrzędne instrukcje (czytane PIERWSZE)</Label>
+                    <Label className="text-sm font-medium">Nadrzędne instrukcje (czytane PIERWSZE)</Label>
                     <p className="text-xs text-muted-foreground">
                       Te zasady AI przeczyta PRZED wszystkim innym. Tutaj ustaw rzeczy typu "bądź elastyczny", "nie wracaj do poprzednich tematów" itp.
                     </p>

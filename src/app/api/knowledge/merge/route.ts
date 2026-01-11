@@ -2,9 +2,8 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { GoogleGenerativeAI } from "@google/generative-ai"
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
+import { generateText } from "ai"
+import { google } from "@ai-sdk/google"
 
 export async function POST(req: Request) {
   try {
@@ -40,8 +39,8 @@ export async function POST(req: Request) {
     let action = "create"
     let reason = "Zapisano nową informację"
 
-    // Check if GEMINI_API_KEY is configured
-    if (process.env.GEMINI_API_KEY) {
+    // Check if GOOGLE_GENERATIVE_AI_API_KEY is configured
+    if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
       try {
         // Get existing entries in this category
         const existingEntries = await prisma.knowledgeEntry.findMany({
@@ -62,8 +61,6 @@ export async function POST(req: Request) {
         ).join("\n\n")
 
         // Use AI to determine how to merge
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-
         const prompt = `Jesteś asystentem zarządzającym bazą wiedzy firmowej/osobistej.
 
 ISTNIEJĄCA WIEDZA w kategorii "${category.name}":
@@ -92,11 +89,13 @@ ${existingEntries.map((e: { id: string; title: string; content: string }) => `- 
 
 Odpowiedz TYLKO JSON, bez markdown.`
 
-        const result = await model.generateContent(prompt)
-        const responseText = result.response.text().trim()
+        const { text } = await generateText({
+          model: google("gemini-2.0-flash"),
+          prompt,
+        })
 
         // Parse AI response
-        const cleanJson = responseText.replace(/```json\n?|\n?```/g, "").trim()
+        const cleanJson = text.trim().replace(/```json\n?|\n?```/g, "").trim()
         const mergeDecision = JSON.parse(cleanJson)
 
         action = mergeDecision.action

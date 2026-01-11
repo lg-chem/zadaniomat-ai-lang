@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server"
+import { streamText, tool } from "ai"
+import { google } from "@ai-sdk/google"
+import { z } from "zod"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { generateAIResponse } from "@/lib/gemini"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
@@ -13,19 +14,11 @@ interface GoalContext {
   goalId: string
   goalTitle: string
   goalDescription?: string
-  stage: "planning_steps" | "breakdown_tasks"  // planning_steps = Cel Okresu -> Kroki, breakdown_tasks = Cel Sprintu -> Zadania
-}
-
-interface ChatRequest {
-  message: string
-  mode: ChatMode
-  history?: { role: "user" | "assistant"; content: string }[]
-  goalContext?: GoalContext  // Context when planning specific goal
+  stage: "planning_steps" | "breakdown_tasks"
 }
 
 // Helper function to get team knowledge category IDs for a user
 async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
-  // Get team memberships and assigned categories (legacy way)
   const teamMemberships = await prisma.organizationMember.findMany({
     where: { userId },
     include: {
@@ -35,7 +28,6 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
     },
   })
 
-  // Collect team strategic category IDs (legacy way)
   const teamCategoryIds: string[] = []
   for (const membership of teamMemberships) {
     for (const assignedCat of membership.assignedCategories) {
@@ -46,7 +38,6 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
     }
   }
 
-  // Also get categories shared via new many-to-many CategoryOrganization
   const categoriesViaOrg = await prisma.category.findMany({
     where: {
       isStrategic: true,
@@ -64,7 +55,6 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
     select: { id: true }
   })
 
-  // Add to teamCategoryIds (avoid duplicates)
   const existingIds = new Set(teamCategoryIds)
   for (const cat of categoriesViaOrg) {
     if (!existingIds.has(cat.id)) {
@@ -72,7 +62,6 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
     }
   }
 
-  // Get knowledge category IDs linked to team categories
   const teamKnowledgeCategories = await prisma.knowledgeCategory.findMany({
     where: {
       linkedCategoryId: { in: teamCategoryIds },
@@ -87,7 +76,6 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
 async function getMinimalContext(userId: string) {
   const today = new Date()
 
-  // Get team knowledge category IDs for shared knowledge access
   const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
 
   const [categories, activePeriod, activeSprint, knowledgeBase, importantKnowledge] = await Promise.all([
@@ -113,7 +101,6 @@ async function getMinimalContext(userId: string) {
       where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
       select: { chatInstructions: true, companyInfo: true, systemPrompts: true, metaPrompt: true },
     }),
-    // Fetch important knowledge entries (own + team shared)
     prisma.knowledgeEntry.findMany({
       where: {
         workspaceType: "WORK",
@@ -145,7 +132,6 @@ async function getMinimalContext(userId: string) {
       `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
 
-  // Format important knowledge - no character limit for important entries
   const knowledgeSummary = importantKnowledge.length > 0
     ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null; user: { name: string | null }; userId: string }) =>
         `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}${k.userId !== userId ? ` (od: ${k.user?.name || "zespół"})` : ""}: ${k.content || ""}`
@@ -164,7 +150,7 @@ async function getMinimalContext(userId: string) {
   }
 }
 
-// On-demand context fetchers
+// Tool implementations - these fetch additional context
 async function getTodayTasks(userId: string) {
   const today = new Date()
   const tasks = await prisma.task.findMany({
@@ -176,7 +162,7 @@ async function getTodayTasks(userId: string) {
     include: { category: true },
     orderBy: { orderInDay: "asc" },
   })
-  return tasks.map((t: { title: string; status: string; plannedMinutes: number | null; category: { name: string } | null }) => ({
+  return tasks.map((t) => ({
     title: t.title,
     status: t.status,
     category: t.category?.name,
@@ -196,7 +182,7 @@ async function getRecentTasks(userId: string, days: number = 7) {
     orderBy: { completedAt: "desc" },
     take: 15,
   })
-  return tasks.map((t: { title: string; completedAt: Date | null; category: { name: string } | null }) => ({
+  return tasks.map((t) => ({
     title: t.title,
     category: t.category?.name,
     date: t.completedAt ? format(t.completedAt, "d.MM", { locale: pl }) : null,
@@ -209,20 +195,17 @@ async function getBacklog(userId: string) {
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     take: 10,
   })
-  return items.map((i: { content: string; priority: number }) => ({ content: i.content, priority: i.priority }))
+  return items.map((i) => ({ content: i.content, priority: i.priority }))
 }
 
 async function getKnowledgeEntries(userId: string, query?: string) {
-  // Get team knowledge category IDs for shared knowledge access
   const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
 
   const items = await prisma.knowledgeEntry.findMany({
     where: {
       workspaceType: "WORK",
       OR: [
-        // User's own entries (any visibility)
         { userId },
-        // Team shared entries from linked categories
         ...(teamCategoryIds.length > 0 ? [{
           visibility: "TEAM" as const,
           categoryId: { in: teamCategoryIds }
@@ -240,11 +223,11 @@ async function getKnowledgeEntries(userId: string, query?: string) {
     include: { category: true, user: { select: { name: true } } },
     take: 15,
   })
-  return items.map((e: { title: string; content: string | null; category: { name: string } | null; user: { name: string | null }; userId: string }) => ({
+  return items.map((e) => ({
     title: e.title,
     content: e.content?.substring(0, 800),
     category: e.category?.name,
-    owner: e.userId !== userId ? e.user?.name : undefined, // Show owner if not current user
+    owner: e.userId !== userId ? e.user?.name : undefined,
   }))
 }
 
@@ -264,17 +247,15 @@ async function getUpcomingTasks(userId: string, days: number = 7) {
     orderBy: { scheduledDate: "asc" },
     take: 20,
   })
-  return tasks.map((t: { title: string; scheduledDate: Date | null; category: { name: string } | null }) => ({
+  return tasks.map((t) => ({
     title: t.title,
     date: t.scheduledDate ? format(t.scheduledDate, "EEEE d.MM", { locale: pl }) : null,
     category: t.category?.name,
   }))
 }
 
-// Fetch and extract content from a web page
 async function fetchWebPage(url: string): Promise<{ title: string; content: string; url: string } | null> {
   try {
-    // Validate URL
     const parsedUrl = new URL(url)
     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       return null
@@ -283,20 +264,11 @@ async function fetchWebPage(url: string): Promise<{ title: string; content: stri
     const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
       },
       redirect: "follow",
-      signal: AbortSignal.timeout(15000), // 15 second timeout
+      signal: AbortSignal.timeout(15000),
     })
 
     if (!response.ok) {
@@ -305,11 +277,9 @@ async function fetchWebPage(url: string): Promise<{ title: string; content: stri
 
     const html = await response.text()
 
-    // Extract title
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
     const title = titleMatch ? titleMatch[1].trim() : parsedUrl.hostname
 
-    // Remove scripts, styles, and other non-content elements
     let content = html
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -319,19 +289,17 @@ async function fetchWebPage(url: string): Promise<{ title: string; content: stri
       .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, "")
       .replace(/<!--[\s\S]*?-->/g, "")
 
-    // Extract text from remaining HTML
     content = content
-      .replace(/<[^>]+>/g, " ") // Remove all remaining tags
+      .replace(/<[^>]+>/g, " ")
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
-      .replace(/\s+/g, " ") // Collapse whitespace
+      .replace(/\s+/g, " ")
       .trim()
 
-    // Limit content length
     if (content.length > 8000) {
       content = content.substring(0, 8000) + "... (treść skrócona)"
     }
@@ -343,41 +311,14 @@ async function fetchWebPage(url: string): Promise<{ title: string; content: stri
   }
 }
 
-// Extract URLs from message
 function extractUrls(text: string): string[] {
   const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi
   return text.match(urlRegex) || []
 }
 
-// Context fetcher dispatcher
-async function fetchContext(userId: string, contextType: string, params?: string) {
-  switch (contextType) {
-    case "today_tasks":
-      return { todayTasks: await getTodayTasks(userId) }
-    case "recent_tasks":
-      return { recentTasks: await getRecentTasks(userId, params ? parseInt(params) : 7) }
-    case "backlog":
-      return { backlog: await getBacklog(userId) }
-    case "knowledge":
-      return { knowledge: await getKnowledgeEntries(userId, params) }
-    case "upcoming_tasks":
-      return { upcomingTasks: await getUpcomingTasks(userId, params ? parseInt(params) : 7) }
-    case "webpage":
-      if (params) {
-        const webContent = await fetchWebPage(params)
-        return webContent ? { webpage: webContent } : null
-      }
-      return null
-    default:
-      return null
-  }
-}
-
 function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getMinimalContext>>, goalContext?: GoalContext) {
-  // Get meta prompt (global instructions) - comes FIRST
   const metaPrompt = context.knowledgeBase?.metaPrompt ?? DEFAULT_META_PROMPT
 
-  // Parse custom instructions (additional per-mode instructions)
   let customInstructions = ""
   if (context.knowledgeBase?.chatInstructions) {
     try {
@@ -389,13 +330,10 @@ function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getM
     }
   }
 
-  // Get base system prompt - custom or default
-  // If user explicitly set empty string, use empty (not default)
   let basePrompt = DEFAULT_SYSTEM_PROMPTS[mode] || DEFAULT_SYSTEM_PROMPTS.general
   if (context.knowledgeBase?.systemPrompts) {
     try {
       const customPrompts = JSON.parse(context.knowledgeBase.systemPrompts)
-      // Check if key exists (even if empty string)
       if (mode in customPrompts) {
         basePrompt = customPrompts[mode]
       }
@@ -418,7 +356,6 @@ function getSystemPrompt(mode: ChatMode, context: Awaited<ReturnType<typeof getM
 [Okres]: ${context.currentPeriod || "brak aktywnego"} → Cele: ${context.periodGoals || "brak"}
 [Sprint]: ${context.currentSprint || "brak aktywnego"} → Cele: ${context.sprintGoals || "brak"}${companyContext}${knowledgeContext}${customInstructions}`
 
-  // Goal planning context - when user is planning specific goal
   let goalPlanningContext = ""
   if (goalContext) {
     if (goalContext.stage === "planning_steps") {
@@ -430,9 +367,7 @@ Aktualnie pomagasz zaplanować realizację konkretnego Celu Okresu:
 ${goalContext.goalDescription ? `- Opis: ${goalContext.goalDescription}` : ""}
 
 Twoim zadaniem jest pomóc użytkownikowi wymyślić KROKI REALIZACJI tego celu.
-Kroki to konkretne działania/etapy, które prowadzą do osiągnięcia celu.
-Gdy użytkownik będzie gotowy, zaproponuj listę kroków używając typu "steps_proposal".
-Każdy krok może później stać się osobnym Celem Sprintu.`
+Gdy użytkownik będzie gotowy, użyj narzędzia proposeSteps aby zaproponować listę kroków.`
     } else if (goalContext.stage === "breakdown_tasks") {
       goalPlanningContext = `
 
@@ -441,40 +376,37 @@ Aktualnie pomagasz rozbić Cel Sprintu na konkretne Zadania:
 - Cel Sprintu: "${goalContext.goalTitle}"
 ${goalContext.goalDescription ? `- Opis: ${goalContext.goalDescription}` : ""}
 
-Twoim zadaniem jest pomóc użytkownikowi rozbić ten cel na ZADANIA (Tasks).
-Zadania to konkretne akcje do wykonania, które można zaplanować na konkretny dzień.
-Gdy użytkownik będzie gotowy, zaproponuj listę zadań używając typu "tasks_proposal".`
+Twoim zadaniem jest pomóc użytkownikowi rozbić ten cel na ZADANIA.
+Gdy użytkownik będzie gotowy, użyj narzędzia proposeTasks aby zaproponować listę zadań.`
     }
   }
 
-  const jsonInstructions = `
+  const toolsInstructions = `
 
-ODPOWIADAJ W JSON:
-- Zwykła rozmowa: {"type": "message", "message": "..."}
-- Propozycja celów: {"type": "goals_proposal", "goals": [{"title": "...", "targetValue": N, "unit": "...", "category": "...lub null"}], "message": "..."}
-- Propozycja kroków realizacji: {"type": "steps_proposal", "steps": [{"title": "...", "description": "...opcjonalnie"}], "parentGoalId": "${goalContext?.goalId || "ID_CELU"}", "message": "..."}
-- Propozycja zadań: {"type": "tasks_proposal", "tasks": [{"title": "...", "category": "...lub null", "plannedMinutes": N, "goalId": "...opcjonalnie, ID celu sprintu"}], "message": "..."}
-- Potrzebujesz więcej danych: {"type": "need_context", "contextType": "today_tasks|recent_tasks|backlog|knowledge|upcoming_tasks|webpage", "params": "opcjonalne (dla webpage podaj URL)", "message": "Co sprawdzam..."}
+NARZĘDZIA DO DYSPOZYCJI:
+- Jeśli potrzebujesz danych (zadania na dziś, backlog, ostatnie zadania, wiedza, strona www) - użyj odpowiedniego narzędzia.
+- Gdy chcesz zaproponować cele - użyj proposeGoals
+- Gdy chcesz zaproponować zadania - użyj proposeTasks
+- Gdy chcesz zaproponować kroki realizacji celu - użyj proposeSteps
 
-ZAWSZE odpowiadaj TYLKO poprawnym JSON.`
+Odpowiadaj naturalnie po polsku. Bądź zwięzły.`
 
-  // Meta prompt comes FIRST, then base prompt, then context, then goal planning, then JSON format
   return `${metaPrompt}${basePrompt}
-${baseContext}${goalPlanningContext}${jsonInstructions}`
+${baseContext}${goalPlanningContext}${toolsInstructions}`
 }
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return new Response("Unauthorized", { status: 401 })
     }
 
-    const body: ChatRequest = await req.json()
-    const { message, mode, history = [], goalContext } = body
+    const body = await req.json()
+    const { messages, mode = "general", goalContext } = body
 
-    if (!message || !mode) {
-      return NextResponse.json({ error: "Message and mode are required" }, { status: 400 })
+    if (!messages || !Array.isArray(messages)) {
+      return new Response("Messages array is required", { status: 400 })
     }
 
     const userId = session.user.id
@@ -482,68 +414,143 @@ export async function POST(req: Request) {
     // Get minimal context
     const context = await getMinimalContext(userId)
 
-    // Detect URLs in message and auto-fetch them
-    const urls = extractUrls(message)
+    // Check for URLs in the last user message and pre-fetch them
+    const lastUserMessage = messages.filter((m: { role: string }) => m.role === "user").pop()
     let webpageContext = ""
-    if (urls.length > 0) {
-      // Fetch up to 3 URLs to avoid timeouts
-      const urlsToFetch = urls.slice(0, 3)
-      const webpages = await Promise.all(urlsToFetch.map(url => fetchWebPage(url)))
-      const validWebpages = webpages.filter(Boolean)
+    if (lastUserMessage?.content) {
+      const urls = extractUrls(lastUserMessage.content)
+      if (urls.length > 0) {
+        const urlsToFetch = urls.slice(0, 3)
+        const webpages = await Promise.all(urlsToFetch.map(url => fetchWebPage(url)))
+        const validWebpages = webpages.filter(Boolean)
 
-      if (validWebpages.length > 0) {
-        webpageContext = "\n\n[Zawartość stron z linków]:\n" + validWebpages.map(page =>
-          `--- ${page!.title} (${page!.url}) ---\n${page!.content}`
-        ).join("\n\n")
-      }
-    }
-
-    // Build conversation
-    const conversationHistory = history
-      .map((h) => `${h.role === "user" ? "Ty" : "Ja"}: ${h.content}`)
-      .join("\n")
-
-    const fullPrompt = conversationHistory
-      ? `${conversationHistory}\n\nTy: ${message}${webpageContext}`
-      : `${message}${webpageContext}`
-
-    // Get system prompt (with optional goal context for planning)
-    const systemPrompt = getSystemPrompt(mode, context, goalContext)
-
-    // Generate response
-    let response = await generateAIResponse(fullPrompt, systemPrompt)
-
-    // Try to parse JSON response
-    try {
-      let parsed = JSON.parse(response)
-
-      // Handle context request - fetch data and regenerate response
-      if (parsed.type === "need_context") {
-        const additionalContext = await fetchContext(userId, parsed.contextType, parsed.params)
-
-        if (additionalContext) {
-          // Re-generate with additional context
-          const enrichedPrompt = `${fullPrompt}\n\n[Dodatkowy kontekst - ${parsed.contextType}]:\n${JSON.stringify(additionalContext, null, 2)}\n\nTeraz odpowiedz na podstawie tego kontekstu.`
-          response = await generateAIResponse(enrichedPrompt, systemPrompt)
-
-          try {
-            parsed = JSON.parse(response)
-          } catch {
-            parsed = { type: "message", message: response }
-          }
+        if (validWebpages.length > 0) {
+          webpageContext = "\n\n[Zawartość stron z linków w wiadomości]:\n" + validWebpages.map(page =>
+            `--- ${page!.title} (${page!.url}) ---\n${page!.content}`
+          ).join("\n\n")
         }
       }
-
-      return NextResponse.json(parsed)
-    } catch {
-      // If not JSON, wrap in message format
-      return NextResponse.json({
-        type: "message",
-        message: response,
-      })
     }
+
+    // Get system prompt
+    const systemPrompt = getSystemPrompt(mode as ChatMode, context, goalContext) + webpageContext
+
+    // Define tools for AI to use
+    const result = await streamText({
+      model: google("gemini-2.0-flash"),
+      system: systemPrompt,
+      messages,
+      maxSteps: 5,
+      tools: {
+        // Context fetching tools
+        getTodayTasks: tool({
+          description: "Pobierz listę zadań zaplanowanych na dzisiaj",
+          parameters: z.object({}),
+          execute: async () => {
+            const tasks = await getTodayTasks(userId)
+            return { tasks }
+          },
+        }),
+        getRecentTasks: tool({
+          description: "Pobierz ostatnio ukończone zadania",
+          parameters: z.object({
+            days: z.number().optional().describe("Liczba dni wstecz (domyślnie 7)"),
+          }),
+          execute: async ({ days }) => {
+            const tasks = await getRecentTasks(userId, days || 7)
+            return { tasks }
+          },
+        }),
+        getBacklog: tool({
+          description: "Pobierz listę pozycji z backlogu",
+          parameters: z.object({}),
+          execute: async () => {
+            const items = await getBacklog(userId)
+            return { items }
+          },
+        }),
+        getKnowledge: tool({
+          description: "Przeszukaj bazę wiedzy użytkownika",
+          parameters: z.object({
+            query: z.string().optional().describe("Fraza do wyszukania (opcjonalnie)"),
+          }),
+          execute: async ({ query }) => {
+            const entries = await getKnowledgeEntries(userId, query)
+            return { entries }
+          },
+        }),
+        getUpcomingTasks: tool({
+          description: "Pobierz zaplanowane zadania na najbliższe dni",
+          parameters: z.object({
+            days: z.number().optional().describe("Liczba dni (domyślnie 7)"),
+          }),
+          execute: async ({ days }) => {
+            const tasks = await getUpcomingTasks(userId, days || 7)
+            return { tasks }
+          },
+        }),
+        fetchWebpage: tool({
+          description: "Pobierz i przeanalizuj zawartość strony internetowej",
+          parameters: z.object({
+            url: z.string().url().describe("URL strony do pobrania"),
+          }),
+          execute: async ({ url }) => {
+            const content = await fetchWebPage(url)
+            return content || { error: "Nie udało się pobrać strony" }
+          },
+        }),
+
+        // Proposal tools - these return structured data
+        proposeGoals: tool({
+          description: "Zaproponuj listę celów do dodania (dla sprintu lub okresu)",
+          parameters: z.object({
+            goals: z.array(z.object({
+              title: z.string().describe("Tytuł celu"),
+              targetValue: z.number().optional().describe("Wartość docelowa"),
+              unit: z.string().optional().describe("Jednostka np. 'zadań', 'godzin'"),
+              category: z.string().nullable().optional().describe("Nazwa kategorii lub null"),
+            })).describe("Lista proponowanych celów"),
+            message: z.string().describe("Wiadomość towarzysząca propozycji"),
+          }),
+          execute: async ({ goals, message }) => {
+            return { type: "goals_proposal", goals, message }
+          },
+        }),
+        proposeTasks: tool({
+          description: "Zaproponuj listę zadań do dodania",
+          parameters: z.object({
+            tasks: z.array(z.object({
+              title: z.string().describe("Tytuł zadania"),
+              category: z.string().nullable().optional().describe("Nazwa kategorii lub null"),
+              plannedMinutes: z.number().optional().describe("Planowany czas w minutach"),
+              goalId: z.string().optional().describe("ID celu sprintu (jeśli powiązane)"),
+            })).describe("Lista proponowanych zadań"),
+            message: z.string().describe("Wiadomość towarzysząca propozycji"),
+          }),
+          execute: async ({ tasks, message }) => {
+            return { type: "tasks_proposal", tasks, message }
+          },
+        }),
+        proposeSteps: tool({
+          description: "Zaproponuj kroki realizacji celu (dla celów okresu)",
+          parameters: z.object({
+            steps: z.array(z.object({
+              title: z.string().describe("Tytuł kroku"),
+              description: z.string().optional().describe("Opis kroku"),
+            })).describe("Lista proponowanych kroków"),
+            parentGoalId: z.string().describe("ID celu nadrzędnego"),
+            message: z.string().describe("Wiadomość towarzysząca propozycji"),
+          }),
+          execute: async ({ steps, parentGoalId, message }) => {
+            return { type: "steps_proposal", steps, parentGoalId, message }
+          },
+        }),
+      },
+    })
+
+    return result.toDataStreamResponse()
   } catch (error) {
     console.error("Error in AI chat:", error)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    return new Response("Server error", { status: 500 })
   }
 }
