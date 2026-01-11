@@ -1383,7 +1383,9 @@ export default function GoalsPage() {
     for (const [goalId, steps] of Object.entries(stepsMap)) {
       const parentGoal = goals.find(g => g.id === goalId)
       for (const step of steps) {
-        if (step.sprintId === sprintId) {
+        // Check both sprint.id (from API) and sprintId (from local state after assignment)
+        const stepSprintId = step.sprint?.id || step.sprintId
+        if (stepSprintId === sprintId) {
           result.push({
             ...step,
             parentGoalTitle: parentGoal?.title || "Cel",
