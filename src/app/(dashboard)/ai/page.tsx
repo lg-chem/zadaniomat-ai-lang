@@ -24,6 +24,10 @@ import {
   Settings,
   Trash2,
   RotateCcw,
+  Paperclip,
+  X,
+  Image,
+  FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -265,6 +269,10 @@ export default function AIPage() {
   })
   const [knowledgeError, setKnowledgeError] = useState("")
 
+  // File attachments
+  const [attachments, setAttachments] = useState<File[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const initialLoadDoneRef = useRef(false)
@@ -499,24 +507,75 @@ export default function AIPage() {
     }
   }
 
+  // File handling functions
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    const validFiles: File[] = []
+    const maxSize = 10 * 1024 * 1024 // 10MB
+
+    Array.from(files).forEach(file => {
+      // Check file type
+      const isImage = file.type.startsWith('image/')
+      const isPDF = file.type === 'application/pdf'
+
+      if (!isImage && !isPDF) {
+        toast.error(`${file.name}: Obsługiwane są tylko obrazy i PDF`)
+        return
+      }
+
+      if (file.size > maxSize) {
+        toast.error(`${file.name}: Plik jest za duży (max 10MB)`)
+        return
+      }
+
+      validFiles.push(file)
+    })
+
+    if (validFiles.length > 0) {
+      setAttachments(prev => [...prev, ...validFiles].slice(0, 5)) // Max 5 files
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [])
+
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+  }, [])
+
   const handleFormSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isLoading) return
-    originalHandleSubmit(e)
+    if ((!input.trim() && attachments.length === 0) || isLoading) return
+
+    // Submit with attachments
+    originalHandleSubmit(e, {
+      experimental_attachments: attachments.length > 0 ? attachments : undefined,
+    })
+
+    // Clear attachments after submit
+    setAttachments([])
+
     // Save conversation after submit
     setTimeout(() => {
       saveToConversation(messages)
     }, 100)
-  }, [input, isLoading, originalHandleSubmit, messages])
+  }, [input, attachments, isLoading, originalHandleSubmit, messages])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      if (input.trim() && !isLoading) {
-        originalHandleSubmit(e as unknown as React.FormEvent)
+      if ((input.trim() || attachments.length > 0) && !isLoading) {
+        originalHandleSubmit(e as unknown as React.FormEvent, {
+          experimental_attachments: attachments.length > 0 ? attachments : undefined,
+        })
+        setAttachments([])
       }
     }
-  }, [input, isLoading, originalHandleSubmit])
+  }, [input, attachments, isLoading, originalHandleSubmit])
 
   const handleStartAddGoal = (goal: GoalProposal) => {
     setAddingGoal(goal)
@@ -1064,21 +1123,70 @@ export default function AIPage() {
           </div>
         )}
 
+        {/* Attachments preview */}
+        {attachments.length > 0 && (
+          <div className="flex gap-2 flex-wrap pb-2">
+            {attachments.map((file, index) => (
+              <div
+                key={`${file.name}-${index}`}
+                className="relative group flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg border"
+              >
+                {file.type.startsWith('image/') ? (
+                  <Image className="h-4 w-4 text-blue-500" />
+                ) : (
+                  <FileText className="h-4 w-4 text-red-500" />
+                )}
+                <span className="text-xs truncate max-w-[120px]">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(index)}
+                  className="ml-1 p-0.5 rounded-full hover:bg-background/80 transition-colors"
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Input area */}
         <form onSubmit={handleFormSubmit} className="flex gap-2">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {/* Attachment button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || knowledgeStep !== "idle" || attachments.length >= 5}
+            className="h-11 w-11 rounded-xl flex-shrink-0"
+            title="Dodaj zdjęcie lub PDF (max 5 plików)"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+
           <Textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Napisz wiadomość..."
+            placeholder={attachments.length > 0 ? "Dodaj opis do załączników..." : "Napisz wiadomość..."}
             disabled={isLoading || knowledgeStep !== "idle"}
             className="min-h-[44px] max-h-32 resize-none"
             rows={1}
           />
           <Button
             type="submit"
-            disabled={isLoading || !input.trim() || knowledgeStep !== "idle"}
+            disabled={isLoading || (!input.trim() && attachments.length === 0) || knowledgeStep !== "idle"}
             size="icon"
             className="h-11 w-11 rounded-xl flex-shrink-0"
           >
