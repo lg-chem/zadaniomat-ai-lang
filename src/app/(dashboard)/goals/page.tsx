@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight, BookmarkPlus } from "lucide-react"
+import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight, BookmarkPlus, Clock } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
@@ -29,6 +29,8 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useGoals } from "@/hooks/use-goals"
 import { useCategories } from "@/hooks/use-categories"
 import useSWR, { mutate } from "swr"
+import { SubtaskList, type Subtask } from "@/components/tasks/subtask-list"
+import { EditableDescription } from "@/components/tasks/editable-description"
 
 interface Step {
   id: string
@@ -43,6 +45,17 @@ interface Step {
     completed: number
     percentage: number
   }
+}
+
+interface GoalTask {
+  id: string
+  title: string
+  description?: string | null
+  status: string
+  priority: number
+  plannedMinutes?: number | null
+  subtasks?: Subtask[]
+  category?: { id: string; name: string; color: string } | null
 }
 
 interface Goal {
@@ -117,6 +130,13 @@ function GoalCard({
   setEditingStepTitle,
   sprints,
   isSprintGoal,
+  tasks,
+  onScheduleTask,
+  onCompleteTask,
+  onTaskSubtasksChange,
+  onRefreshTasks,
+  expandedTaskId,
+  onExpandTask,
 }: {
   goal: Goal
   onToggleComplete: (goal: Goal) => void
@@ -140,9 +160,17 @@ function GoalCard({
   setEditingStepTitle?: (title: string) => void
   sprints?: { id: string; name: string }[]
   isSprintGoal?: boolean
+  tasks?: GoalTask[]
+  onScheduleTask?: (task: GoalTask, goalId: string) => void
+  onCompleteTask?: (taskId: string, goalId: string) => void
+  onTaskSubtasksChange?: (taskId: string, goalId: string, subtasks: Subtask[]) => void
+  onRefreshTasks?: (goalId: string) => void
+  expandedTaskId?: string | null
+  onExpandTask?: (taskId: string | null) => void
 }) {
   const isEditing = editingGoalId === goal.id
   const [showSteps, setShowSteps] = useState(false)
+  const [showTasks, setShowTasks] = useState(false)
   const getProgress = (g: Goal) => {
     if (!g.targetValue) return g.isCompleted ? 100 : 0
     return Math.min(100, (g.currentValue / g.targetValue) * 100)
@@ -150,6 +178,8 @@ function GoalCard({
 
   const hasSteps = steps && steps.length > 0
   const completedSteps = steps?.filter(s => s.isCompleted).length || 0
+  const hasTasks = tasks && tasks.length > 0
+  const completedTasks = tasks?.filter(t => t.status === "COMPLETED").length || 0
 
   return (
     <div
@@ -193,14 +223,17 @@ function GoalCard({
         ) : (
           <>
             <div className="flex items-center gap-1">
-              {hasSteps && (
+              {(hasSteps || hasTasks) && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
-                  onClick={() => setShowSteps(!showSteps)}
+                  onClick={() => {
+                    if (hasSteps) setShowSteps(!showSteps)
+                    if (hasTasks) setShowTasks(!showTasks)
+                  }}
                 >
-                  {showSteps ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  {(showSteps || showTasks) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                 </Button>
               )}
               <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
@@ -209,6 +242,11 @@ function GoalCard({
               {hasSteps && (
                 <Badge variant="outline" className="text-[10px] ml-1">
                   {completedSteps}/{steps.length}
+                </Badge>
+              )}
+              {hasTasks && (
+                <Badge variant="secondary" className="text-[10px] ml-1">
+                  {completedTasks}/{tasks.length} zadań
                 </Badge>
               )}
             </div>
@@ -376,6 +414,104 @@ function GoalCard({
           })}
         </div>
       )}
+
+      {/* Tasks section (for sprint goals) */}
+      {showTasks && hasTasks && (
+        <div className="mt-2 pl-4 border-l-2 border-green-200 space-y-2">
+          <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
+            <ListTodo className="h-3 w-3" /> Zadania do wykonania
+          </div>
+          {tasks.map((task) => {
+            const isExpanded = expandedTaskId === task.id
+            const hasSubtasks = task.subtasks && task.subtasks.length > 0
+            const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0
+
+            return (
+              <div
+                key={task.id}
+                className={`rounded border bg-background ${
+                  task.status === "COMPLETED" ? "bg-green-50 dark:bg-green-950/20" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between p-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <button
+                      onClick={() => onCompleteTask?.(task.id, goal.id)}
+                      className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
+                        task.status === "COMPLETED" ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                      }`}
+                    >
+                      {task.status === "COMPLETED" && <Check className="h-3 w-3" />}
+                    </button>
+                    <span className={`text-xs ${task.status === "COMPLETED" ? "line-through text-muted-foreground" : ""}`}>
+                      {task.title}
+                    </span>
+                    {hasSubtasks && (
+                      <Badge variant="outline" className="text-[9px]">
+                        {completedSubtasks}/{task.subtasks!.length}
+                      </Badge>
+                    )}
+                    {task.plannedMinutes && (
+                      <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                        <Clock className="h-2.5 w-2.5" />
+                        {task.plannedMinutes}min
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={() => onExpandTask?.(isExpanded ? null : task.id)}
+                    >
+                      {isExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-5 text-[10px] px-1.5"
+                      onClick={() => {
+                        onScheduleTask?.(task, goal.id)
+                      }}
+                    >
+                      <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                      Zaplanuj
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Expanded content */}
+                {isExpanded && (
+                  <div className="px-2 pb-2 space-y-2 border-t pt-2 bg-muted/30">
+                    {/* Description */}
+                    <div>
+                      <div className="text-[10px] font-medium mb-1">Opis</div>
+                      <EditableDescription
+                        taskId={task.id}
+                        initialValue={task.description}
+                        onSaved={() => onRefreshTasks?.(goal.id)}
+                        placeholder="Dodaj opis..."
+                        rows={2}
+                      />
+                    </div>
+
+                    {/* Subtasks / Checklist */}
+                    <div>
+                      <div className="text-[10px] font-medium mb-1">Lista kontrolna</div>
+                      <SubtaskList
+                        taskId={task.id}
+                        subtasks={task.subtasks || []}
+                        onSubtasksChange={(newSubtasks) => onTaskSubtasksChange?.(task.id, goal.id, newSubtasks)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -409,6 +545,13 @@ function CategoryTemplate({
   editingStepTitle,
   setEditingStepTitle,
   sprints,
+  tasksMap,
+  onScheduleTask,
+  onCompleteTask,
+  onTaskSubtasksChange,
+  onRefreshTasks,
+  expandedTaskId,
+  onExpandTask,
 }: {
   category: Category
   periodId?: string
@@ -437,6 +580,13 @@ function CategoryTemplate({
   editingStepTitle: string
   setEditingStepTitle: (title: string) => void
   sprints: { id: string; name: string }[]
+  tasksMap: Record<string, GoalTask[]>
+  onScheduleTask: (task: GoalTask, goalId: string) => void
+  onCompleteTask: (taskId: string, goalId: string) => void
+  onTaskSubtasksChange: (taskId: string, goalId: string, subtasks: Subtask[]) => void
+  onRefreshTasks: (goalId: string) => void
+  expandedTaskId: string | null
+  onExpandTask: (taskId: string | null) => void
 }) {
   const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
 
@@ -481,6 +631,13 @@ function CategoryTemplate({
               setEditingStepTitle={setEditingStepTitle}
               sprints={sprints}
               isSprintGoal={!!sprintId}
+              tasks={tasksMap[goal.id]}
+              onScheduleTask={onScheduleTask}
+              onCompleteTask={onCompleteTask}
+              onTaskSubtasksChange={onTaskSubtasksChange}
+              onRefreshTasks={onRefreshTasks}
+              expandedTaskId={expandedTaskId}
+              onExpandTask={onExpandTask}
             />
           ))}
         </div>
@@ -574,6 +731,13 @@ export default function GoalsPage() {
   // Steps data - fetch for each goal that has steps
   const [stepsMap, setStepsMap] = useState<Record<string, Step[]>>({})
 
+  // Tasks data - fetch for each sprint goal
+  const [tasksMap, setTasksMap] = useState<Record<string, GoalTask[]>>({})
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
+  const [schedulingTask, setSchedulingTask] = useState<GoalTask | null>(null)
+  const [schedulingGoalId, setSchedulingGoalId] = useState<string | null>(null)
+  const [scheduleDate, setScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"))
+
   // Fetch steps for all goals
   const fetchStepsForGoals = useCallback(async () => {
     const goalsWithoutSteps = goals.filter(g => !g.isStep && !stepsMap[g.id])
@@ -598,6 +762,32 @@ export default function GoalsPage() {
       fetchStepsForGoals()
     }
   }, [goals.length, fetchStepsForGoals])
+
+  // Fetch tasks for sprint goals
+  const fetchTasksForGoals = useCallback(async () => {
+    // Only fetch for sprint goals (goals that have a sprintId)
+    const sprintGoals = goals.filter(g => !g.isStep && g.sprint && !tasksMap[g.id])
+    for (const goal of sprintGoals) {
+      try {
+        const res = await fetch(`/api/goals/${goal.id}/tasks`)
+        if (res.ok) {
+          const tasks = await res.json()
+          if (tasks.length > 0) {
+            setTasksMap(prev => ({ ...prev, [goal.id]: tasks }))
+          }
+        }
+      } catch (error) {
+        // Ignore errors for individual fetches
+      }
+    }
+  }, [goals, tasksMap])
+
+  // Fetch tasks when goals change
+  useEffect(() => {
+    if (goals.length > 0) {
+      fetchTasksForGoals()
+    }
+  }, [goals.length, fetchTasksForGoals])
 
   // AI Chat handler
   const handleSendAiMessage = async () => {
@@ -699,7 +889,9 @@ export default function GoalsPage() {
       }
 
       if (successCount > 0) {
-        toast.success(`Dodano ${successCount} zadań do harmonogramu`)
+        toast.success(`Dodano ${successCount} zadań`)
+        // Refresh tasks for this goal
+        refreshGoalTasks(aiPlanningGoal.goal.id)
         setAiPlanningGoal(null)
         setAiHistory([])
         setProposedTasks([])
@@ -710,6 +902,85 @@ export default function GoalsPage() {
     } catch (error) {
       console.error("Error saving tasks:", error)
       toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Schedule a task (set scheduledDate)
+  const handleScheduleTask = async () => {
+    if (!schedulingTask || !schedulingGoalId) return
+
+    try {
+      const res = await fetch(`/api/tasks/${schedulingTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduledDate: scheduleDate,
+        }),
+      })
+
+      if (res.ok) {
+        // Remove task from tasksMap for this goal
+        setTasksMap(prev => ({
+          ...prev,
+          [schedulingGoalId]: prev[schedulingGoalId]?.filter(t => t.id !== schedulingTask.id) || []
+        }))
+        toast.success("Zadanie zaplanowane")
+        setSchedulingTask(null)
+        setSchedulingGoalId(null)
+      } else {
+        toast.error("Nie udało się zaplanować zadania")
+      }
+    } catch (error) {
+      console.error("Error scheduling task:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Complete a task
+  const handleCompleteTask = async (taskId: string, goalId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "COMPLETED",
+        }),
+      })
+
+      if (res.ok) {
+        // Remove task from tasksMap for this goal
+        setTasksMap(prev => ({
+          ...prev,
+          [goalId]: prev[goalId]?.filter(t => t.id !== taskId) || []
+        }))
+        toast.success("Zadanie ukończone!")
+      }
+    } catch (error) {
+      console.error("Error completing task:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Handle subtasks change
+  const handleTaskSubtasksChange = (taskId: string, goalId: string, newSubtasks: Subtask[]) => {
+    setTasksMap(prev => ({
+      ...prev,
+      [goalId]: prev[goalId]?.map(task =>
+        task.id === taskId ? { ...task, subtasks: newSubtasks } : task
+      ) || []
+    }))
+  }
+
+  // Refresh tasks for a goal
+  const refreshGoalTasks = async (goalId: string) => {
+    try {
+      const res = await fetch(`/api/goals/${goalId}/tasks`)
+      if (res.ok) {
+        const tasks = await res.json()
+        setTasksMap(prev => ({ ...prev, [goalId]: tasks }))
+      }
+    } catch (error) {
+      console.error("Error refreshing tasks:", error)
     }
   }
 
@@ -1249,6 +1520,17 @@ export default function GoalsPage() {
                           editingStepTitle={editingStepTitle}
                           setEditingStepTitle={setEditingStepTitle}
                           sprints={allSprints}
+                          tasksMap={tasksMap}
+                          onScheduleTask={(task, goalId) => {
+                            setSchedulingTask(task)
+                            setSchedulingGoalId(goalId)
+                            setScheduleDate(format(new Date(), "yyyy-MM-dd"))
+                          }}
+                          onCompleteTask={handleCompleteTask}
+                          onTaskSubtasksChange={handleTaskSubtasksChange}
+                          onRefreshTasks={refreshGoalTasks}
+                          expandedTaskId={expandedTaskId}
+                          onExpandTask={setExpandedTaskId}
                         />
                       ))}
                     </div>
@@ -1335,6 +1617,17 @@ export default function GoalsPage() {
                                         editingStepTitle={editingStepTitle}
                                         setEditingStepTitle={setEditingStepTitle}
                                         sprints={allSprints}
+                                        tasksMap={tasksMap}
+                                        onScheduleTask={(task, goalId) => {
+                                          setSchedulingTask(task)
+                                          setSchedulingGoalId(goalId)
+                                          setScheduleDate(format(new Date(), "yyyy-MM-dd"))
+                                        }}
+                                        onCompleteTask={handleCompleteTask}
+                                        onTaskSubtasksChange={handleTaskSubtasksChange}
+                                        onRefreshTasks={refreshGoalTasks}
+                                        expandedTaskId={expandedTaskId}
+                                        onExpandTask={setExpandedTaskId}
                                       />
                                     ))}
                                   </div>
@@ -1548,6 +1841,50 @@ export default function GoalsPage() {
                 <BookmarkPlus className="h-4 w-4" />
               </Button>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Task Dialog */}
+      <Dialog open={!!schedulingTask} onOpenChange={(open) => !open && setSchedulingTask(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Zaplanuj zadanie
+            </DialogTitle>
+            <DialogDescription>
+              Wybierz datę, na którą chcesz zaplanować to zadanie
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-muted rounded-lg">
+              <div className="font-medium">{schedulingTask?.title}</div>
+              {schedulingTask?.description && (
+                <p className="text-sm text-muted-foreground mt-1">{schedulingTask.description}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Data wykonania</label>
+              <Input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setSchedulingTask(null)}>
+              Anuluj
+            </Button>
+            <Button onClick={handleScheduleTask}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Zaplanuj
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
