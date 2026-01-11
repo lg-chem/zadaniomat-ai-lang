@@ -403,10 +403,10 @@ function GoalCard({
                       >
                         <Trash2 className="h-2.5 w-2.5 text-destructive" />
                       </Button>
-                      {!step.sprintId && sprints && sprints.length > 0 && (
+                      {sprints && sprints.length > 0 && (
                         <select
                           className="text-[10px] border rounded px-1 py-0.5 bg-background"
-                          value=""
+                          value={step.sprint?.id || step.sprintId || ""}
                           onChange={(e) => {
                             if (e.target.value) {
                               onPromoteToSprint?.(step.id, e.target.value)
