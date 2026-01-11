@@ -1344,17 +1344,17 @@ export default function GoalsPage() {
   // Promote step to sprint goal - converts step to a real sprint goal
   const handlePromoteToSprint = async (stepId: string, sprintId: string) => {
     try {
-      // Set isStep=false to make it a real goal, and assign to sprint
+      // Just assign sprintId, keep isStep=true so it shows in BOTH places
       const res = await fetch(`/api/goals/${stepId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sprintId,
-          isStep: false,  // Convert to regular goal
+          // DON'T set isStep: false - keep it as a step so it shows under period goal too
         }),
       })
       if (res.ok) {
-        // Find parent goal and refresh its steps (step will be removed from list)
+        // Refresh steps for parent goal (to update sprint badge)
         const parentGoalId = Object.keys(stepsMap).find(key =>
           stepsMap[key].some(s => s.id === stepId)
         )
@@ -1366,16 +1366,34 @@ export default function GoalsPage() {
           }
         }
         mutateGoals()
-        toast.success("Krok promowany do celu sprintu")
+        toast.success("Krok przypisany do sprintu")
       }
     } catch (error) {
-      console.error("Error promoting step:", error)
+      console.error("Error assigning step to sprint:", error)
       toast.error("Wystąpił błąd")
     }
   }
 
   // Get all sprints from all periods for dropdown
   const allSprints = periods.flatMap(p => p.sprints.map(s => ({ id: s.id, name: s.name })))
+
+  // Get steps assigned to a specific sprint (from all goals)
+  const getStepsForSprint = (sprintId: string): (Step & { parentGoalTitle: string; parentGoalId: string })[] => {
+    const result: (Step & { parentGoalTitle: string; parentGoalId: string })[] = []
+    for (const [goalId, steps] of Object.entries(stepsMap)) {
+      const parentGoal = goals.find(g => g.id === goalId)
+      for (const step of steps) {
+        if (step.sprintId === sprintId) {
+          result.push({
+            ...step,
+            parentGoalTitle: parentGoal?.title || "Cel",
+            parentGoalId: goalId,
+          })
+        }
+      }
+    }
+    return result
+  }
 
   const handleToggleComplete = async (goal: Goal) => {
     try {
@@ -1704,6 +1722,9 @@ export default function GoalsPage() {
                         const sprintGoalsCount = goals.filter(
                           (g) => !g.isStep && g.sprint?.id === sprint.id
                         ).length
+                        const sprintSteps = getStepsForSprint(sprint.id)
+                        const sprintStepsCount = sprintSteps.length
+                        const completedStepsCount = sprintSteps.filter(s => s.isCompleted).length
 
                         return (
                           <Collapsible
@@ -1735,11 +1756,68 @@ export default function GoalsPage() {
                                       {format(new Date(sprint.endDate), "d MMM", { locale: pl })}
                                     </span>
                                   </div>
-                                  <Badge variant="outline">{sprintGoalsCount} celów</Badge>
+                                  <div className="flex items-center gap-2">
+                                    {sprintStepsCount > 0 && (
+                                      <Badge variant="secondary" className="text-[10px]">
+                                        {completedStepsCount}/{sprintStepsCount} kroków
+                                      </Badge>
+                                    )}
+                                    <Badge variant="outline">{sprintGoalsCount} celów</Badge>
+                                  </div>
                                 </div>
                               </CollapsibleTrigger>
                               <CollapsibleContent>
-                                <div className="p-3 pt-0">
+                                <div className="p-3 pt-0 space-y-4">
+                                  {/* Assigned steps from period goals */}
+                                  {sprintSteps.length > 0 && (
+                                    <div className="border rounded-lg p-3 bg-purple-50/50 dark:bg-purple-950/20">
+                                      <div className="text-xs font-medium mb-2 flex items-center gap-1 text-purple-700 dark:text-purple-300">
+                                        <ListTodo className="h-3 w-3" />
+                                        Kroki z celów okresu ({completedStepsCount}/{sprintStepsCount})
+                                      </div>
+                                      <div className="space-y-1">
+                                        {sprintSteps.map((step) => (
+                                          <div
+                                            key={step.id}
+                                            className={`flex items-center justify-between p-2 rounded text-xs ${
+                                              step.isCompleted ? "bg-green-50 dark:bg-green-950/20" : "bg-background"
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-2 flex-1">
+                                              <button
+                                                onClick={() => handleToggleStepComplete(step)}
+                                                className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
+                                                  step.isCompleted ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                                                }`}
+                                              >
+                                                {step.isCompleted && <Check className="h-3 w-3" />}
+                                              </button>
+                                              <div className="flex flex-col">
+                                                <span className={step.isCompleted ? "line-through text-muted-foreground" : ""}>
+                                                  {step.title}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground">
+                                                  z: {step.parentGoalTitle}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-5 w-5"
+                                                onClick={() => handleEditStep(step)}
+                                              >
+                                                <Pencil className="h-2.5 w-2.5" />
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Sprint goals by category */}
                                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                                     {strategicCategories.map((category) => (
                                       <CategoryTemplate
