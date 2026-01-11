@@ -124,6 +124,13 @@ function GoalCard({
   steps?: Step[]
   onToggleStepComplete?: (step: Step) => void
   onPromoteToSprint?: (stepId: string, sprintId: string) => void
+  onEditStep?: (step: Step) => void
+  onSaveStepEdit?: (stepId: string) => void
+  onCancelStepEdit?: () => void
+  onDeleteStep?: (stepId: string) => void
+  editingStepId?: string | null
+  editingStepTitle?: string
+  setEditingStepTitle?: (title: string) => void
   sprints?: { id: string; name: string }[]
   isSprintGoal?: boolean
 }) {
@@ -255,54 +262,111 @@ function GoalCard({
           <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
             <ListTodo className="h-3 w-3" /> Kroki realizacji
           </div>
-          {steps.map((step) => (
-            <div
-              key={step.id}
-              className={`flex items-center justify-between p-1.5 rounded text-xs ${
-                step.isCompleted ? "bg-green-50 dark:bg-green-950/20" : "bg-muted/50"
-              }`}
-            >
-              <div className="flex items-center gap-2 flex-1">
-                <button
-                  onClick={() => onToggleStepComplete?.(step)}
-                  className={`h-4 w-4 rounded border flex items-center justify-center ${
-                    step.isCompleted ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
-                  }`}
-                >
-                  {step.isCompleted && <Check className="h-3 w-3" />}
-                </button>
-                <span className={step.isCompleted ? "line-through text-muted-foreground" : ""}>
-                  {step.title}
-                </span>
-                {step.sprint && (
-                  <Badge variant="outline" className="text-[9px]">
-                    {step.sprint.name}
-                  </Badge>
-                )}
-                {step.taskProgress && step.taskProgress.total > 0 && (
-                  <Badge variant="secondary" className="text-[9px]">
-                    {step.taskProgress.completed}/{step.taskProgress.total} zadań
-                  </Badge>
+          {steps.map((step) => {
+            const isStepEditing = editingStepId === step.id
+            return (
+              <div
+                key={step.id}
+                className={`flex items-center justify-between p-1.5 rounded text-xs ${
+                  step.isCompleted ? "bg-green-50 dark:bg-green-950/20" : "bg-muted/50"
+                }`}
+              >
+                {isStepEditing ? (
+                  <div className="flex-1 flex gap-1">
+                    <Input
+                      value={editingStepTitle}
+                      onChange={(e) => setEditingStepTitle?.(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          onSaveStepEdit?.(step.id)
+                        } else if (e.key === "Escape") {
+                          onCancelStepEdit?.()
+                        }
+                      }}
+                      className="h-6 text-xs"
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => onSaveStepEdit?.(step.id)}
+                    >
+                      <Save className="h-3 w-3 text-green-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={onCancelStepEdit}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 flex-1">
+                      <button
+                        onClick={() => onToggleStepComplete?.(step)}
+                        className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
+                          step.isCompleted ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                        }`}
+                      >
+                        {step.isCompleted && <Check className="h-3 w-3" />}
+                      </button>
+                      <span className={step.isCompleted ? "line-through text-muted-foreground" : ""}>
+                        {step.title}
+                      </span>
+                      {step.sprint && (
+                        <Badge variant="outline" className="text-[9px]">
+                          {step.sprint.name}
+                        </Badge>
+                      )}
+                      {step.taskProgress && step.taskProgress.total > 0 && (
+                        <Badge variant="secondary" className="text-[9px]">
+                          {step.taskProgress.completed}/{step.taskProgress.total} zadań
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => onEditStep?.(step)}
+                      >
+                        <Pencil className="h-2.5 w-2.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => onDeleteStep?.(step.id)}
+                      >
+                        <Trash2 className="h-2.5 w-2.5 text-destructive" />
+                      </Button>
+                      {!step.sprintId && sprints && sprints.length > 0 && (
+                        <select
+                          className="text-[10px] border rounded px-1 py-0.5 bg-background"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              onPromoteToSprint?.(step.id, e.target.value)
+                            }
+                          }}
+                        >
+                          <option value="">Sprint</option>
+                          {sprints.map((sprint) => (
+                            <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
-              {!step.sprintId && sprints && sprints.length > 0 && (
-                <select
-                  className="text-[10px] border rounded px-1 py-0.5 bg-background"
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      onPromoteToSprint?.(step.id, e.target.value)
-                    }
-                  }}
-                >
-                  <option value="">Przypisz do sprintu</option>
-                  {sprints.map((sprint) => (
-                    <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -351,6 +415,13 @@ function CategoryTemplate({
   stepsMap: Record<string, Step[]>
   onToggleStepComplete: (step: Step) => void
   onPromoteToSprint: (stepId: string, sprintId: string) => void
+  onEditStep: (step: Step) => void
+  onSaveStepEdit: (stepId: string) => void
+  onCancelStepEdit: () => void
+  onDeleteStep: (stepId: string) => void
+  editingStepId: string | null
+  editingStepTitle: string
+  setEditingStepTitle: (title: string) => void
   sprints: { id: string; name: string }[]
 }) {
   const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
@@ -387,6 +458,13 @@ function CategoryTemplate({
               steps={stepsMap[goal.id]}
               onToggleStepComplete={onToggleStepComplete}
               onPromoteToSprint={onPromoteToSprint}
+              onEditStep={onEditStep}
+              onSaveStepEdit={onSaveStepEdit}
+              onCancelStepEdit={onCancelStepEdit}
+              onDeleteStep={onDeleteStep}
+              editingStepId={editingStepId}
+              editingStepTitle={editingStepTitle}
+              setEditingStepTitle={setEditingStepTitle}
               sprints={sprints}
               isSprintGoal={!!sprintId}
             />
@@ -460,6 +538,8 @@ export default function GoalsPage() {
   // Editing state
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
+  const [editingStepId, setEditingStepId] = useState<string | null>(null)
+  const [editingStepTitle, setEditingStepTitle] = useState("")
 
   // AI Planning dialog state
   const [aiPlanningGoal, setAiPlanningGoal] = useState<{
@@ -690,6 +770,77 @@ export default function GoalsPage() {
     setKnowledgeForm({ content: "", categoryId: "" })
   }
 
+  // Edit step
+  const handleEditStep = (step: Step) => {
+    setEditingStepId(step.id)
+    setEditingStepTitle(step.title)
+  }
+
+  const handleCancelStepEdit = () => {
+    setEditingStepId(null)
+    setEditingStepTitle("")
+  }
+
+  const handleSaveStepEdit = async (stepId: string) => {
+    if (!editingStepTitle.trim()) return
+    try {
+      const res = await fetch(`/api/goals/${stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editingStepTitle.trim() }),
+      })
+      if (res.ok) {
+        // Find parent goal and refresh its steps
+        const parentGoalId = Object.keys(stepsMap).find(key =>
+          stepsMap[key].some(s => s.id === stepId)
+        )
+        if (parentGoalId) {
+          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
+          if (stepsRes.ok) {
+            const steps = await stepsRes.json()
+            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
+          }
+        }
+        setEditingStepId(null)
+        setEditingStepTitle("")
+        toast.success("Krok zaktualizowany")
+      } else {
+        toast.error("Nie udało się zaktualizować kroku")
+      }
+    } catch (error) {
+      console.error("Error updating step:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Delete step
+  const handleDeleteStep = async (stepId: string) => {
+    if (!confirm("Czy na pewno chcesz usunąć ten krok?")) return
+    try {
+      const res = await fetch(`/api/goals/${stepId}`, { method: "DELETE" })
+      if (res.ok) {
+        // Find parent goal and refresh its steps
+        const parentGoalId = Object.keys(stepsMap).find(key =>
+          stepsMap[key].some(s => s.id === stepId)
+        )
+        if (parentGoalId) {
+          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
+          if (stepsRes.ok) {
+            const steps = await stepsRes.json()
+            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
+          }
+        }
+        mutateGoals()
+        toast.success("Krok usunięty")
+      } else {
+        toast.error("Nie udało się usunąć kroku")
+      }
+    } catch (error) {
+      console.error("Error deleting step:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
   // Toggle step complete
   const handleToggleStepComplete = async (step: Step) => {
     try {
@@ -728,6 +879,17 @@ export default function GoalsPage() {
         body: JSON.stringify({ sprintId }),
       })
       if (res.ok) {
+        // Find parent goal and refresh its steps
+        const parentGoalId = Object.keys(stepsMap).find(key =>
+          stepsMap[key].some(s => s.id === stepId)
+        )
+        if (parentGoalId) {
+          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
+          if (stepsRes.ok) {
+            const steps = await stepsRes.json()
+            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
+          }
+        }
         mutateGoals()
         toast.success("Krok przypisany do sprintu")
       }
@@ -873,6 +1035,8 @@ export default function GoalsPage() {
   // Now includes completed goals too!
   const getGoalsForCategory = (categoryId: string, periodId?: string, sprintId?: string) => {
     return goals.filter((g) => {
+      // Exclude steps - they are shown under their parent goal
+      if (g.isStep) return false
       if (g.category?.id !== categoryId) return false
       if (sprintId) {
         return g.sprint?.id === sprintId
@@ -914,13 +1078,13 @@ export default function GoalsPage() {
     )
   }
 
-  // Count total goals for a period (period goals + all sprint goals) - now includes completed
+  // Count total goals for a period (period goals + all sprint goals) - excludes steps
   const countPeriodGoals = (periodId: string, sprints: Sprint[]) => {
     const periodGoals = goals.filter(
-      (g) => g.period?.id === periodId && !g.sprint
+      (g) => !g.isStep && g.period?.id === periodId && !g.sprint
     ).length
     const sprintGoals = sprints.reduce((acc, s) => {
-      return acc + goals.filter((g) => g.sprint?.id === s.id).length
+      return acc + goals.filter((g) => !g.isStep && g.sprint?.id === s.id).length
     }, 0)
     return periodGoals + sprintGoals
   }
@@ -1021,6 +1185,13 @@ export default function GoalsPage() {
                           stepsMap={stepsMap}
                           onToggleStepComplete={handleToggleStepComplete}
                           onPromoteToSprint={handlePromoteToSprint}
+                          onEditStep={handleEditStep}
+                          onSaveStepEdit={handleSaveStepEdit}
+                          onCancelStepEdit={handleCancelStepEdit}
+                          onDeleteStep={handleDeleteStep}
+                          editingStepId={editingStepId}
+                          editingStepTitle={editingStepTitle}
+                          setEditingStepTitle={setEditingStepTitle}
                           sprints={allSprints}
                         />
                       ))}
@@ -1039,7 +1210,7 @@ export default function GoalsPage() {
                         const isCurrentSprint =
                           new Date(sprint.startDate) <= today && today <= new Date(sprint.endDate)
                         const sprintGoalsCount = goals.filter(
-                          (g) => g.sprint?.id === sprint.id
+                          (g) => !g.isStep && g.sprint?.id === sprint.id
                         ).length
 
                         return (
@@ -1100,6 +1271,13 @@ export default function GoalsPage() {
                                         stepsMap={stepsMap}
                                         onToggleStepComplete={handleToggleStepComplete}
                                         onPromoteToSprint={handlePromoteToSprint}
+                                        onEditStep={handleEditStep}
+                                        onSaveStepEdit={handleSaveStepEdit}
+                                        onCancelStepEdit={handleCancelStepEdit}
+                                        onDeleteStep={handleDeleteStep}
+                                        editingStepId={editingStepId}
+                                        editingStepTitle={editingStepTitle}
+                                        setEditingStepTitle={setEditingStepTitle}
                                         sprints={allSprints}
                                       />
                                     ))}
