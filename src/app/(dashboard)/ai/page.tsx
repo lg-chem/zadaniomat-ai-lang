@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useChat } from "ai/react"
 import { toast } from "sonner"
 import useSWR, { mutate } from "swr"
@@ -197,8 +197,8 @@ export default function AIPage() {
   // Use global employee sidebar config for non-owners
   const sidebarConfig = !isTeamOwner ? employeeSidebarData?.config : null
 
-  // Filter visible AI modes based on config
-  const getVisibleModes = (): ChatMode[] => {
+  // Filter visible AI modes based on config - memoized to prevent re-renders
+  const visibleModes = useMemo((): ChatMode[] => {
     const allModes: ChatMode[] = ["general", "daily_tasks", "sprint_goals", "period_goals"]
 
     // Admins/owners see all tabs
@@ -211,9 +211,7 @@ export default function AIPage() {
       const configItem = sidebarConfig.find((c) => c.id === `ai-tab-${modeKey}`)
       return !configItem || configItem.enabled // Show if no config or if enabled
     })
-  }
-
-  const visibleModes = getVisibleModes()
+  }, [isTeamOwner, sidebarConfig])
 
   // If current mode is not visible, switch to first visible mode
   useEffect(() => {
@@ -271,30 +269,31 @@ export default function AIPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const initialLoadDoneRef = useRef(false)
 
+  // Memoize body to prevent re-renders
+  const chatBody = useMemo(() => ({ mode }), [mode])
+
   // Vercel AI SDK useChat hook
   const {
     messages,
     input,
     setInput,
-    handleSubmit,
+    handleSubmit: originalHandleSubmit,
     isLoading,
     setMessages,
-    append,
   } = useChat({
     api: "/api/ai/chat",
-    body: { mode },
-    onFinish: (message) => {
-      // Save to conversation after each response
-      saveToConversation([...messages, message])
-    },
+    body: chatBody,
     onError: (error) => {
       console.error("Chat error:", error)
       toast.error("Wystąpił błąd podczas komunikacji z AI")
     },
   })
 
-  // Extract proposals from messages
-  const proposals = extractProposals(messages as Array<{ role: string; content: string; toolInvocations?: Array<{ toolName: string; state: string; result?: unknown }> }>)
+  // Extract proposals from messages - memoized
+  const proposals = useMemo(() =>
+    extractProposals(messages as Array<{ role: string; content: string; toolInvocations?: Array<{ toolName: string; state: string; result?: unknown }> }>),
+    [messages]
+  )
 
   useEffect(() => {
     fetchCategories()
@@ -500,20 +499,24 @@ export default function AIPage() {
     }
   }
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isLoading) return
-    handleSubmit(e)
-  }
+    originalHandleSubmit(e)
+    // Save conversation after submit
+    setTimeout(() => {
+      saveToConversation(messages)
+    }, 100)
+  }, [input, isLoading, originalHandleSubmit, messages])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       if (input.trim() && !isLoading) {
-        handleSubmit(e as unknown as React.FormEvent)
+        originalHandleSubmit(e as unknown as React.FormEvent)
       }
     }
-  }
+  }, [input, isLoading, originalHandleSubmit])
 
   const handleStartAddGoal = (goal: GoalProposal) => {
     setAddingGoal(goal)
@@ -702,17 +705,17 @@ export default function AIPage() {
     }
   }
 
-  const getQuickPrompts = () => {
+  const quickPrompts = useMemo(() => {
     if (mode === "period_goals") return ["Zaproponuj cele na okres", "Jakie strategiczne cele powinienem postawić?"]
     if (mode === "sprint_goals") return ["Zaproponuj cele na sprint", "Co powinienem osiągnąć w najbliższych 2 tygodniach?"]
     if (mode === "general") return ["Co mam teraz na tapecie?", "Pomóż mi przemyśleć...", "Mam problem z..."]
     return ["Zaproponuj zadania na dziś", "Co powinienem dziś zrobić?"]
-  }
+  }, [mode])
 
-  // Find proposals for a specific message
-  const getProposalsForMessage = (messageIndex: number) => {
+  // Find proposals for a specific message - memoized
+  const getProposalsForMessage = useCallback((messageIndex: number) => {
     return proposals.filter((p) => p.messageIndex === messageIndex)
-  }
+  }, [proposals])
 
   return (
     <div className="flex flex-col h-[calc(100dvh-6rem)] md:h-[calc(100dvh-8rem)]">
@@ -825,7 +828,7 @@ export default function AIPage() {
                 : "Powiedz mi co chcesz osiągnąć, a pomogę Ci to zaplanować."}
             </p>
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">
-              {getQuickPrompts().map((prompt) => (
+              {quickPrompts.map((prompt) => (
                 <Button
                   key={prompt}
                   variant="outline"
