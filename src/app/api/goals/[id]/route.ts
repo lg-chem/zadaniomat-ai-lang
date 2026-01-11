@@ -32,6 +32,7 @@ export async function PATCH(
       unit,
       isCompleted,
       categoryId,
+      sprintId,
     } = body
 
     const updateData: Record<string, unknown> = {}
@@ -43,6 +44,7 @@ export async function PATCH(
     if (unit !== undefined) updateData.unit = unit
     if (isCompleted !== undefined) updateData.isCompleted = isCompleted
     if (categoryId !== undefined) updateData.categoryId = categoryId
+    if (sprintId !== undefined) updateData.sprintId = sprintId
 
     const goal = await prisma.goal.update({
       where: { id },
