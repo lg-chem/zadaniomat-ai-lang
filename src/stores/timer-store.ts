@@ -233,7 +233,7 @@ export const useTimerStore = create<TimerState>()(
       },
 
       extendTimer: (minutes) => {
-        const { remainingSeconds, isTimeUp } = get()
+        const { remainingSeconds, elapsedSeconds } = get()
         const additionalSeconds = minutes * 60
 
         set({
@@ -243,6 +243,7 @@ export const useTimerStore = create<TimerState>()(
           showNotification: false,
           isPaused: false,
           sessionStartTime: new Date(),
+          accumulatedSeconds: elapsedSeconds, // Sync accumulated with elapsed before resuming
         })
       },
 
