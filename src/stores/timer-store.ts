@@ -173,6 +173,14 @@ export const useTimerStore = create<TimerState>()(
         const previousElapsed = savedState?.elapsedSeconds || 0
         const additionalSeconds = additionalMinutes * 60
 
+        console.log('[confirmPendingStart] State:', {
+          taskId: pendingStart.taskId,
+          savedState,
+          previousElapsed,
+          additionalMinutes,
+          allTaskTimeStates: taskTimeStates
+        })
+
         // Clear saved state since we're resuming
         const newTaskTimeStates = { ...taskTimeStates }
         delete newTaskTimeStates[pendingStart.taskId]
@@ -237,8 +245,16 @@ export const useTimerStore = create<TimerState>()(
       },
 
       extendTimer: (minutes) => {
-        const { remainingSeconds, elapsedSeconds } = get()
+        const { remainingSeconds, elapsedSeconds, accumulatedSeconds: oldAccumulated } = get()
         const additionalSeconds = minutes * 60
+
+        console.log('[extendTimer] Before:', {
+          elapsedSeconds,
+          remainingSeconds,
+          oldAccumulated,
+          minutes,
+          additionalSeconds
+        })
 
         set({
           remainingSeconds: remainingSeconds + additionalSeconds,
@@ -249,6 +265,11 @@ export const useTimerStore = create<TimerState>()(
           sessionStartTime: new Date(),
           accumulatedSeconds: elapsedSeconds, // Sync accumulated with elapsed before resuming
         })
+
+        console.log('[extendTimer] After:', {
+          newAccumulated: elapsedSeconds,
+          newRemaining: remainingSeconds + additionalSeconds
+        })
       },
 
       stopTimer: () => {
@@ -257,6 +278,13 @@ export const useTimerStore = create<TimerState>()(
 
         // Return seconds - rounding should happen only once at final save
         const durationSeconds = elapsedSeconds
+
+        console.log('[stopTimer] Saving state:', {
+          taskId,
+          elapsedSeconds,
+          remainingSeconds,
+          durationSeconds
+        })
 
         // Save state for this task so we can resume later
         const newTaskTimeStates = {
@@ -322,12 +350,23 @@ export const useTimerStore = create<TimerState>()(
               `Zadanie "${taskTitle}" - czas się skończył. Przedłuż lub zakończ.`
             )
 
+            // Save state to taskTimeStates so it can be recovered if user closes dialog
+            const { taskId, taskTimeStates } = get()
+            const newTaskTimeStates = taskId ? {
+              ...taskTimeStates,
+              [taskId]: {
+                elapsedSeconds: newElapsedSeconds,
+                remainingSeconds: 0,
+              }
+            } : taskTimeStates
+
             set({
               elapsedSeconds: newElapsedSeconds,
               remainingSeconds: 0,
               isTimeUp: true,
               showNotification: true,
               isPaused: true, // Auto-pauza po zakończeniu czasu
+              taskTimeStates: newTaskTimeStates,
             })
           } else {
             set({
