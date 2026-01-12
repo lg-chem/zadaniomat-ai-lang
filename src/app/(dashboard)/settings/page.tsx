@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
 import { toast } from "sonner"
-import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ChevronRight, GripVertical, Eye, EyeOff, Menu } from "lucide-react"
+import { Plus, Trash2, Star, Check, Brain, Save, Bug, Lightbulb, MessageSquare, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ChevronRight, GripVertical, Eye, EyeOff, Menu, Lock, Loader2 } from "lucide-react"
 import Link from "next/link"
 import {
   DndContext,
@@ -160,6 +160,14 @@ export default function SettingsPage() {
   const [sidebarConfig, setSidebarConfig] = useState<SidebarConfigItem[]>([])
   const [isSavingSidebar, setIsSavingSidebar] = useState(false)
   const [sidebarConfigDirty, setSidebarConfigDirty] = useState(false)
+
+  // Password change
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
 
   // DnD sensors
   const sensors = useSensors(
@@ -507,6 +515,49 @@ export default function SettingsPage() {
     }
   }
 
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      toast.error("Wypełnij wszystkie pola")
+      return
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      toast.error("Nowe hasło musi mieć minimum 6 znaków")
+      return
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("Nowe hasła nie są identyczne")
+      return
+    }
+
+    setIsChangingPassword(true)
+    try {
+      const res = await fetch("/api/auth/password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        toast.success("Hasło zostało zmienione")
+        setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
+      } else {
+        toast.error(data.error || "Nie udało się zmienić hasła")
+      }
+    } catch (error) {
+      console.error("Error changing password:", error)
+      toast.error("Błąd podczas zmiany hasła")
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
   // Sort: strategic first, then by name
   const sortedCategories = [...categories].sort((a, b) => {
     if (a.isStrategic !== b.isStrategic) return b.isStrategic ? 1 : -1
@@ -795,6 +846,67 @@ export default function SettingsPage() {
           >
             <Save className="h-4 w-4 mr-2" />
             {isSavingKnowledge ? "Zapisywanie..." : "Zapisz bazę wiedzy"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Password Change */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Lock className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle>Zmiana hasła</CardTitle>
+              <CardDescription>
+                Zmień hasło do swojego konta
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="currentPassword">Obecne hasło</Label>
+            <Input
+              id="currentPassword"
+              type="password"
+              placeholder="Wpisz obecne hasło..."
+              value={passwordForm.currentPassword}
+              onChange={(e) =>
+                setPasswordForm({ ...passwordForm, currentPassword: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">Nowe hasło</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              placeholder="Wpisz nowe hasło (min. 6 znaków)..."
+              value={passwordForm.newPassword}
+              onChange={(e) =>
+                setPasswordForm({ ...passwordForm, newPassword: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Powtórz nowe hasło</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="Powtórz nowe hasło..."
+              value={passwordForm.confirmPassword}
+              onChange={(e) =>
+                setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })
+              }
+            />
+          </div>
+          <Button
+            onClick={handleChangePassword}
+            disabled={isChangingPassword || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}
+            className="w-full sm:w-auto"
+          >
+            {isChangingPassword && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {isChangingPassword ? "Zmieniam..." : "Zmień hasło"}
           </Button>
         </CardContent>
       </Card>

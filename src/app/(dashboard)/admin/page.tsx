@@ -20,11 +20,23 @@ import {
   XCircle,
   AlertCircle,
   Briefcase,
+  Key,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -83,6 +95,12 @@ export default function AdminPage() {
   // Admin Reports
   const [adminReports, setAdminReports] = useState<AdminReport[]>([])
   const [isLoadingReports, setIsLoadingReports] = useState(true)
+
+  // Password reset
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmNewPassword, setConfirmNewPassword] = useState("")
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
 
   const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN"
   const isSuperAdmin = session?.user?.role === "SUPER_ADMIN"
@@ -226,6 +244,50 @@ export default function AdminPage() {
       console.error("Error toggling restrictedToWork:", error)
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  const resetUserPassword = async () => {
+    if (!resetPasswordUser) return
+
+    if (!newPassword) {
+      toast.error("Wpisz nowe hasło")
+      return
+    }
+
+    if (newPassword.length < 6) {
+      toast.error("Hasło musi mieć minimum 6 znaków")
+      return
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      toast.error("Hasła nie są identyczne")
+      return
+    }
+
+    setIsResettingPassword(true)
+    try {
+      const res = await fetch(`/api/admin/users/${resetPasswordUser.id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        toast.success(`Hasło użytkownika ${resetPasswordUser.email} zostało zmienione`)
+        setResetPasswordUser(null)
+        setNewPassword("")
+        setConfirmNewPassword("")
+      } else {
+        toast.error(data.error || "Nie udało się zresetować hasła")
+      }
+    } catch (error) {
+      console.error("Error resetting password:", error)
+      toast.error("Błąd podczas resetowania hasła")
+    } finally {
+      setIsResettingPassword(false)
     }
   }
 
@@ -425,6 +487,15 @@ export default function AdminPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => setResetPasswordUser(user)}
+                          disabled={actionLoading === user.id}
+                          title="Resetuj hasło"
+                        >
+                          <Key className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => toggleApproval(user.id, user.isApproved)}
                           disabled={actionLoading === user.id}
                         >
@@ -612,6 +683,71 @@ export default function AdminPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog
+        open={!!resetPasswordUser}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResetPasswordUser(null)
+            setNewPassword("")
+            setConfirmNewPassword("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Resetuj hasło
+            </DialogTitle>
+            <DialogDescription>
+              Ustaw nowe hasło dla użytkownika: <strong>{resetPasswordUser?.email}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-new-password">Nowe hasło</Label>
+              <Input
+                id="admin-new-password"
+                type="password"
+                placeholder="Wpisz nowe hasło (min. 6 znaków)..."
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="admin-confirm-password">Powtórz nowe hasło</Label>
+              <Input
+                id="admin-confirm-password"
+                type="password"
+                placeholder="Powtórz nowe hasło..."
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setResetPasswordUser(null)
+                setNewPassword("")
+                setConfirmNewPassword("")
+              }}
+            >
+              Anuluj
+            </Button>
+            <Button
+              onClick={resetUserPassword}
+              disabled={isResettingPassword || !newPassword || !confirmNewPassword}
+            >
+              {isResettingPassword && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isResettingPassword ? "Zapisuję..." : "Zapisz hasło"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
