@@ -168,9 +168,12 @@ export const useTimerStore = create<TimerState>()(
 
         requestNotificationPermission()
 
-        const totalPlannedSeconds = additionalMinutes * 60
+        // Check if there's saved state from a previous session (user stopped but didn't complete)
+        const savedState = taskTimeStates[pendingStart.taskId]
+        const previousElapsed = savedState?.elapsedSeconds || 0
+        const additionalSeconds = additionalMinutes * 60
 
-        // Clear any saved state for this task since we're starting fresh with new time
+        // Clear saved state since we're resuming
         const newTaskTimeStates = { ...taskTimeStates }
         delete newTaskTimeStates[pendingStart.taskId]
 
@@ -180,11 +183,12 @@ export const useTimerStore = create<TimerState>()(
           taskId: pendingStart.taskId,
           taskTitle: pendingStart.taskTitle,
           mode: 'countdown',
-          plannedSeconds: totalPlannedSeconds,
-          elapsedSeconds: 0,
-          remainingSeconds: totalPlannedSeconds,
+          // plannedSeconds = previous elapsed + new time, so tick() calculates remaining correctly
+          plannedSeconds: previousElapsed + additionalSeconds,
+          elapsedSeconds: previousElapsed,
+          remainingSeconds: additionalSeconds,
           sessionStartTime: new Date(),
-          accumulatedSeconds: 0,
+          accumulatedSeconds: previousElapsed,
           isTimeUp: false,
           showNotification: false,
           pendingStart: null,
