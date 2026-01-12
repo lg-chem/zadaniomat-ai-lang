@@ -286,6 +286,9 @@ export default function AIPage() {
     toast.error("Wystąpił błąd podczas komunikacji z AI")
   }, [])
 
+  // Ref to track conversation ID for onFinish callback
+  const conversationIdRef = useRef<string | null>(null)
+
   // Vercel AI SDK useChat hook
   const {
     messages,
@@ -299,6 +302,49 @@ export default function AIPage() {
     api: "/api/ai/chat",
     body: chatBody,
     onError: handleChatError,
+    onFinish: async (message: { role: string; content: string }) => {
+      // Save conversation when AI finishes responding
+      // Use setTimeout 0 to ensure messages state is updated
+      setTimeout(async () => {
+        try {
+          const currentMessages = [...messages, message].map((m) => ({
+            role: m.role,
+            content: m.content,
+          }))
+
+          if (conversationIdRef.current) {
+            await fetch(`/api/ai/conversations/${conversationIdRef.current}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ messages: currentMessages }),
+            })
+          } else if (currentMessages.length > 0) {
+            const createRes = await fetch("/api/ai/conversations", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: MODE_TO_API_TYPE[mode], workspace: "WORK" }),
+            })
+            if (createRes.ok) {
+              const createData = await createRes.json()
+              const convId = createData.conversation.id
+              conversationIdRef.current = convId
+              setCurrentConversationId(convId)
+              await fetch(`/api/ai/conversations/${convId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  messages: currentMessages,
+                  summary: currentMessages[0]?.content?.slice(0, 50),
+                }),
+              })
+              fetchConversations()
+            }
+          }
+        } catch (error) {
+          console.error("Error saving conversation:", error)
+        }
+      }, 0)
+    },
   })
 
   // Extract proposals from messages - memoized
@@ -403,6 +449,7 @@ export default function AIPage() {
         const data = await res.json()
         const conv = data.conversation
         setCurrentConversationId(conv.id)
+        conversationIdRef.current = conv.id // Sync ref for onFinish callback
         // Convert to useChat format
         setMessages(
           conv.messages.map((m: { role: string; content: string }, i: number) => ({
@@ -449,6 +496,7 @@ export default function AIPage() {
   const startNewConversation = useCallback(() => {
     setMessages([])
     setCurrentConversationId(null)
+    conversationIdRef.current = null // Reset ref for new conversation
     setShowHistory(false)
   }, [setMessages])
 
@@ -472,42 +520,6 @@ export default function AIPage() {
       toast.error("Błąd podczas zapisywania ustawień")
     } finally {
       setSavingSettings(false)
-    }
-  }
-
-  const saveToConversation = async (newMessages: Array<{ role: string; content: string }>) => {
-    try {
-      if (currentConversationId) {
-        await fetch(`/api/ai/conversations/${currentConversationId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-          }),
-        })
-      } else if (newMessages.length > 0) {
-        const createRes = await fetch("/api/ai/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: MODE_TO_API_TYPE[mode], workspace: "WORK" }),
-        })
-        if (createRes.ok) {
-          const createData = await createRes.json()
-          const convId = createData.conversation.id
-          setCurrentConversationId(convId)
-          await fetch(`/api/ai/conversations/${convId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-              summary: newMessages[0]?.content?.slice(0, 50),
-            }),
-          })
-          fetchConversations()
-        }
-      }
-    } catch (error) {
-      console.error("Error saving conversation:", error)
     }
   }
 
@@ -584,12 +596,8 @@ export default function AIPage() {
 
     // Clear attachments after submit
     setAttachments([])
-
-    // Save conversation after submit
-    setTimeout(() => {
-      saveToConversation(messages)
-    }, 100)
-  }, [input, attachments, isLoading, originalHandleSubmit, messages, fileToDataUrl])
+    // Note: Conversation is saved in onFinish callback
+  }, [input, attachments, isLoading, originalHandleSubmit, fileToDataUrl])
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
