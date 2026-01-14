@@ -217,6 +217,7 @@ export default function SchedulePage() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   // Sprint goals expansion and tasks state
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null)
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null)
   const [goalTasksMap, setGoalTasksMap] = useState<Record<string, GoalTask[]>>({})
   const [expandedGoalTaskId, setExpandedGoalTaskId] = useState<string | null>(null)
@@ -846,6 +847,13 @@ export default function SchedulePage() {
 
   // === SPRINT GOAL TASK HANDLERS ===
 
+  // Toggle category expansion
+  const handleToggleCategoryExpand = (categoryId: string) => {
+    setExpandedCategoryId(prev => prev === categoryId ? null : categoryId)
+    setExpandedGoalId(null) // Close any expanded goal when switching categories
+    setExpandedGoalTaskId(null)
+  }
+
   // Toggle goal expansion
   const handleToggleGoalExpand = (goalId: string) => {
     setExpandedGoalId(prev => prev === goalId ? null : goalId)
@@ -1363,267 +1371,297 @@ export default function SchedulePage() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {Object.entries(goalsByCategory).map(([categoryId, { name, color, goals }]) => (
-                <div key={categoryId}>
-                  <div className="flex items-center gap-2 mb-2">
+            <CardContent className="space-y-2">
+              {Object.entries(goalsByCategory).map(([categoryId, { name, color, goals }]) => {
+                const isCategoryExpanded = expandedCategoryId === categoryId
+                const completedGoals = goals.filter(g => g.isCompleted).length
+
+                return (
+                  <div key={categoryId} className="rounded-lg border bg-muted/20">
+                    {/* Category header - clickable to expand */}
                     <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="text-sm font-medium">{name}</span>
-                    <span className="text-xs text-muted-foreground">({goals.length})</span>
-                  </div>
-                  <div className="space-y-2 pl-5">
-                    {goals.map((goal) => {
-                      const progress = goal.targetValue
-                        ? Math.min(100, (goal.currentValue / goal.targetValue) * 100)
-                        : 0
-                      const isExpanded = expandedGoalId === goal.id
-                      const goalTasks = goalTasksMap[goal.id] || []
-                      const completedTasksCount = goalTasks.filter(t => t.status === "COMPLETED").length
-
-                      return (
-                        <div
-                          key={goal.id}
-                          className={`rounded-lg border ${
-                            goal.isCompleted ? "bg-green-50 border-green-200 dark:bg-green-950/20" : "bg-muted/30"
-                          }`}
+                      className="p-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                      onClick={() => handleToggleCategoryExpand(categoryId)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleToggleCategoryExpand(categoryId)
+                          }}
                         >
-                          {/* Goal header - clickable to expand */}
-                          <div
-                            className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => handleToggleGoalExpand(goal.id)}
-                          >
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5 shrink-0"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleToggleGoalExpand(goal.id)
-                                }}
+                          {isCategoryExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        </Button>
+                        <div
+                          className="h-3 w-3 rounded-full shrink-0"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-sm font-medium flex-1">{name}</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {completedGoals}/{goals.length} celów
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Expanded goals section */}
+                    {isCategoryExpanded && (
+                      <div className="px-3 pb-3 pt-0 border-t border-border/50">
+                        <div className="space-y-2 mt-2 pl-5">
+                          {goals.map((goal) => {
+                            const progress = goal.targetValue
+                              ? Math.min(100, (goal.currentValue / goal.targetValue) * 100)
+                              : 0
+                            const isGoalExpanded = expandedGoalId === goal.id
+                            const goalTasks = goalTasksMap[goal.id] || []
+                            const completedTasksCount = goalTasks.filter(t => t.status === "COMPLETED").length
+
+                            return (
+                              <div
+                                key={goal.id}
+                                className={`rounded-lg border ${
+                                  goal.isCompleted ? "bg-green-50 border-green-200 dark:bg-green-950/20" : "bg-background"
+                                }`}
                               >
-                                {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                              </Button>
-                              <span className={`font-medium text-sm flex-1 ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-                                {goal.title}
-                              </span>
-                              {goalTasks.length > 0 && (
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {completedTasksCount}/{goalTasks.length} zadań
-                                </Badge>
-                              )}
-                              {goal.isCompleted && (
-                                <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                              )}
-                            </div>
-                            {goal.targetValue && (
-                              <div className="mt-2 pl-7">
-                                <Progress value={progress} className="h-1.5 mb-1" />
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                  <span>{goal.currentValue} / {goal.targetValue} {goal.unit}</span>
-                                  <span>{Math.round(progress)}%</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Expanded tasks section */}
-                          {isExpanded && (
-                            <div className="px-3 pb-3 pt-0 border-t border-border/50">
-                              <div className="pl-7 space-y-2 mt-2">
-                                <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
-                                  <ListTodo className="h-3 w-3" /> Zadania do wykonania
-                                </div>
-
-                                {/* Task list */}
-                                {goalTasks.map((task) => {
-                                  const isTaskExpanded = expandedGoalTaskId === task.id
-                                  const isTaskEditing = editingGoalTaskId === task.id
-                                  const hasSubtasks = task.subtasks && task.subtasks.length > 0
-                                  const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0
-                                  const isScheduled = !!task.scheduledDate
-
-                                  return (
-                                    <div
-                                      key={task.id}
-                                      className={`rounded border bg-background ${
-                                        task.status === "COMPLETED" ? "bg-green-50 dark:bg-green-950/20" : ""
-                                      } ${isScheduled ? "border-blue-200" : ""}`}
+                                {/* Goal header - clickable to expand */}
+                                <div
+                                  className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                                  onClick={() => handleToggleGoalExpand(goal.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleToggleGoalExpand(goal.id)
+                                      }}
                                     >
-                                      <div className="flex items-center justify-between p-2">
-                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                          <button
-                                            onClick={() => handleCompleteGoalTask(task.id, goal.id)}
-                                            className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
-                                              task.status === "COMPLETED" ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
-                                            }`}
-                                          >
-                                            {task.status === "COMPLETED" && <Check className="h-3 w-3" />}
-                                          </button>
-                                          {isTaskEditing ? (
-                                            <div className="flex-1 flex gap-1">
-                                              <Input
-                                                value={editingGoalTaskTitle}
-                                                onChange={(e) => setEditingGoalTaskTitle(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter") {
-                                                    handleSaveGoalTaskEdit(task.id, goal.id)
-                                                  } else if (e.key === "Escape") {
-                                                    handleCancelGoalTaskEdit()
-                                                  }
-                                                }}
-                                                className="h-6 text-xs"
-                                                autoFocus
-                                              />
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6"
-                                                onClick={() => handleSaveGoalTaskEdit(task.id, goal.id)}
-                                              >
-                                                <Save className="h-3 w-3 text-green-500" />
-                                              </Button>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6"
-                                                onClick={handleCancelGoalTaskEdit}
-                                              >
-                                                <X className="h-3 w-3" />
-                                              </Button>
-                                            </div>
-                                          ) : (
-                                            <>
-                                              <span className={`text-xs truncate ${task.status === "COMPLETED" ? "line-through text-muted-foreground" : ""}`}>
-                                                {task.title}
-                                              </span>
-                                              {isScheduled && (
-                                                <Badge variant="secondary" className="text-[9px] bg-blue-100 text-blue-700 shrink-0">
-                                                  <Calendar className="h-2 w-2 mr-0.5" />
-                                                  {format(new Date(task.scheduledDate!), "d MMM", { locale: pl })}
-                                                </Badge>
-                                              )}
-                                              {hasSubtasks && (
-                                                <Badge variant="outline" className="text-[9px] shrink-0">
-                                                  {completedSubtasks}/{task.subtasks!.length}
-                                                </Badge>
-                                              )}
-                                              {task.plannedMinutes && (
-                                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5 shrink-0">
-                                                  <Clock className="h-2.5 w-2.5" />
-                                                  {task.plannedMinutes}min
-                                                </span>
-                                              )}
-                                            </>
-                                          )}
-                                        </div>
-                                        {!isTaskEditing && (
-                                          <div className="flex items-center gap-1 shrink-0">
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-5 w-5"
-                                              onClick={() => handleEditGoalTask(task)}
-                                            >
-                                              <Pencil className="h-2.5 w-2.5" />
-                                            </Button>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-5 w-5"
-                                              onClick={() => setExpandedGoalTaskId(isTaskExpanded ? null : task.id)}
-                                            >
-                                              {isTaskExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
-                                            </Button>
-                                            <Popover
-                                              open={schedulingGoalTask?.task.id === task.id}
-                                              onOpenChange={(open) => setSchedulingGoalTask(open ? { task, goalId: goal.id } : null)}
-                                            >
-                                              <PopoverTrigger asChild>
-                                                {!isScheduled ? (
-                                                  <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-5 text-[10px] px-1.5"
-                                                  >
-                                                    <Calendar className="h-2.5 w-2.5 mr-0.5" />
-                                                    Zaplanuj
-                                                  </Button>
-                                                ) : (
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-5 text-[10px] px-1.5 text-blue-600"
-                                                  >
-                                                    <Calendar className="h-2.5 w-2.5 mr-0.5" />
-                                                    Zmień
-                                                  </Button>
-                                                )}
-                                              </PopoverTrigger>
-                                              <PopoverContent className="w-auto p-0" align="end">
-                                                <CalendarComponent
-                                                  mode="single"
-                                                  selected={task.scheduledDate ? new Date(task.scheduledDate) : undefined}
-                                                  onSelect={(date) => date && handleScheduleGoalTask(task.id, goal.id, date)}
-                                                  initialFocus
-                                                />
-                                              </PopoverContent>
-                                            </Popover>
-                                          </div>
-                                        )}
+                                      {isGoalExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                    </Button>
+                                    <span className={`font-medium text-sm flex-1 ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                                      {goal.title}
+                                    </span>
+                                    {goalTasks.length > 0 && (
+                                      <Badge variant="secondary" className="text-[10px]">
+                                        {completedTasksCount}/{goalTasks.length} zadań
+                                      </Badge>
+                                    )}
+                                    {goal.isCompleted && (
+                                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                                    )}
+                                  </div>
+                                  {goal.targetValue && (
+                                    <div className="mt-2 pl-7">
+                                      <Progress value={progress} className="h-1.5 mb-1" />
+                                      <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>{goal.currentValue} / {goal.targetValue} {goal.unit}</span>
+                                        <span>{Math.round(progress)}%</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Expanded tasks section */}
+                                {isGoalExpanded && (
+                                  <div className="px-3 pb-3 pt-0 border-t border-border/50">
+                                    <div className="pl-7 space-y-2 mt-2">
+                                      <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                                        <ListTodo className="h-3 w-3" /> Zadania do wykonania
                                       </div>
 
-                                      {/* Expanded task content - subtasks */}
-                                      {isTaskExpanded && (
-                                        <div className="px-2 pb-2 space-y-2 border-t pt-2 bg-muted/30">
-                                          <div>
-                                            <div className="text-[10px] font-medium mb-1">Lista kontrolna</div>
-                                            <SubtaskList
-                                              taskId={task.id}
-                                              subtasks={task.subtasks || []}
-                                              onSubtasksChange={(newSubtasks) => handleGoalTaskSubtasksChange(task.id, goal.id, newSubtasks)}
-                                            />
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )
-                                })}
+                                      {/* Task list */}
+                                      {goalTasks.map((task) => {
+                                        const isTaskExpanded = expandedGoalTaskId === task.id
+                                        const isTaskEditing = editingGoalTaskId === task.id
+                                        const hasSubtasks = task.subtasks && task.subtasks.length > 0
+                                        const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0
+                                        const isScheduled = !!task.scheduledDate
 
-                                {/* Add new task input */}
-                                <div className="flex gap-1 mt-2">
-                                  <Input
-                                    value={newGoalTaskTitles[goal.id] || ""}
-                                    onChange={(e) => setNewGoalTaskTitles(prev => ({ ...prev, [goal.id]: e.target.value }))}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter" && newGoalTaskTitles[goal.id]?.trim()) {
-                                        handleAddGoalTask(goal.id)
-                                      }
-                                    }}
-                                    placeholder="Dodaj zadanie..."
-                                    className="h-6 text-xs"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={() => handleAddGoalTask(goal.id)}
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                </div>
+                                        return (
+                                          <div
+                                            key={task.id}
+                                            className={`rounded border bg-background ${
+                                              task.status === "COMPLETED" ? "bg-green-50 dark:bg-green-950/20" : ""
+                                            } ${isScheduled ? "border-blue-200" : ""}`}
+                                          >
+                                            <div className="flex items-center justify-between p-2">
+                                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                <button
+                                                  onClick={() => handleCompleteGoalTask(task.id, goal.id)}
+                                                  className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
+                                                    task.status === "COMPLETED" ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                                                  }`}
+                                                >
+                                                  {task.status === "COMPLETED" && <Check className="h-3 w-3" />}
+                                                </button>
+                                                {isTaskEditing ? (
+                                                  <div className="flex-1 flex gap-1">
+                                                    <Input
+                                                      value={editingGoalTaskTitle}
+                                                      onChange={(e) => setEditingGoalTaskTitle(e.target.value)}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === "Enter") {
+                                                          handleSaveGoalTaskEdit(task.id, goal.id)
+                                                        } else if (e.key === "Escape") {
+                                                          handleCancelGoalTaskEdit()
+                                                        }
+                                                      }}
+                                                      className="h-6 text-xs"
+                                                      autoFocus
+                                                    />
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      className="h-6 w-6"
+                                                      onClick={() => handleSaveGoalTaskEdit(task.id, goal.id)}
+                                                    >
+                                                      <Save className="h-3 w-3 text-green-500" />
+                                                    </Button>
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      className="h-6 w-6"
+                                                      onClick={handleCancelGoalTaskEdit}
+                                                    >
+                                                      <X className="h-3 w-3" />
+                                                    </Button>
+                                                  </div>
+                                                ) : (
+                                                  <>
+                                                    <span className={`text-xs truncate ${task.status === "COMPLETED" ? "line-through text-muted-foreground" : ""}`}>
+                                                      {task.title}
+                                                    </span>
+                                                    {isScheduled && (
+                                                      <Badge variant="secondary" className="text-[9px] bg-blue-100 text-blue-700 shrink-0">
+                                                        <Calendar className="h-2 w-2 mr-0.5" />
+                                                        {format(new Date(task.scheduledDate!), "d MMM", { locale: pl })}
+                                                      </Badge>
+                                                    )}
+                                                    {hasSubtasks && (
+                                                      <Badge variant="outline" className="text-[9px] shrink-0">
+                                                        {completedSubtasks}/{task.subtasks!.length}
+                                                      </Badge>
+                                                    )}
+                                                    {task.plannedMinutes && (
+                                                      <span className="text-[9px] text-muted-foreground flex items-center gap-0.5 shrink-0">
+                                                        <Clock className="h-2.5 w-2.5" />
+                                                        {task.plannedMinutes}min
+                                                      </span>
+                                                    )}
+                                                  </>
+                                                )}
+                                              </div>
+                                              {!isTaskEditing && (
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-5 w-5"
+                                                    onClick={() => handleEditGoalTask(task)}
+                                                  >
+                                                    <Pencil className="h-2.5 w-2.5" />
+                                                  </Button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-5 w-5"
+                                                    onClick={() => setExpandedGoalTaskId(isTaskExpanded ? null : task.id)}
+                                                  >
+                                                    {isTaskExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                                                  </Button>
+                                                  <Popover
+                                                    open={schedulingGoalTask?.task.id === task.id}
+                                                    onOpenChange={(open) => setSchedulingGoalTask(open ? { task, goalId: goal.id } : null)}
+                                                  >
+                                                    <PopoverTrigger asChild>
+                                                      {!isScheduled ? (
+                                                        <Button
+                                                          variant="outline"
+                                                          size="sm"
+                                                          className="h-5 text-[10px] px-1.5"
+                                                        >
+                                                          <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                                                          Zaplanuj
+                                                        </Button>
+                                                      ) : (
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          className="h-5 text-[10px] px-1.5 text-blue-600"
+                                                        >
+                                                          <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                                                          Zmień
+                                                        </Button>
+                                                      )}
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0" align="end">
+                                                      <CalendarComponent
+                                                        mode="single"
+                                                        selected={task.scheduledDate ? new Date(task.scheduledDate) : undefined}
+                                                        onSelect={(date) => date && handleScheduleGoalTask(task.id, goal.id, date)}
+                                                        initialFocus
+                                                      />
+                                                    </PopoverContent>
+                                                  </Popover>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Expanded task content - subtasks */}
+                                            {isTaskExpanded && (
+                                              <div className="px-2 pb-2 space-y-2 border-t pt-2 bg-muted/30">
+                                                <div>
+                                                  <div className="text-[10px] font-medium mb-1">Lista kontrolna</div>
+                                                  <SubtaskList
+                                                    taskId={task.id}
+                                                    subtasks={task.subtasks || []}
+                                                    onSubtasksChange={(newSubtasks) => handleGoalTaskSubtasksChange(task.id, goal.id, newSubtasks)}
+                                                  />
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )
+                                      })}
+
+                                      {/* Add new task input */}
+                                      <div className="flex gap-1 mt-2">
+                                        <Input
+                                          value={newGoalTaskTitles[goal.id] || ""}
+                                          onChange={(e) => setNewGoalTaskTitles(prev => ({ ...prev, [goal.id]: e.target.value }))}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && newGoalTaskTitles[goal.id]?.trim()) {
+                                              handleAddGoalTask(goal.id)
+                                            }
+                                          }}
+                                          placeholder="Dodaj zadanie..."
+                                          className="h-6 text-xs"
+                                        />
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => handleAddGoalTask(goal.id)}
+                                        >
+                                          <Plus className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          )}
+                            )
+                          })}
                         </div>
-                      )
-                    })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </CardContent>
           </Card>
         )
