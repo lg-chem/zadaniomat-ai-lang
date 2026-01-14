@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useTimerStore, formatTime, useTimerHydration, usePreloadVoices } from "@/stores/timer-store"
+import { useTimerStore, formatTime, useTimerHydration } from "@/stores/timer-store"
 
 interface FloatingTimerProps {
   onComplete?: (taskId: string, durationSeconds: number) => void
@@ -23,9 +23,6 @@ interface FloatingTimerProps {
 export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   // Wait for hydration to prevent timer flash on page load
   const isHydrated = useTimerHydration()
-
-  // Preload speech synthesis voices for TTS notifications
-  usePreloadVoices()
 
   const {
     isRunning,

@@ -148,36 +148,6 @@ const playNotificationSound = () => {
   }
 }
 
-// Helper to speak notification using Text-to-Speech
-const speakNotification = (taskTitle: string) => {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-
-  try {
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel()
-
-    const utterance = new SpeechSynthesisUtterance(
-      `Czas minął dla zadania: ${taskTitle}. Przedłuż lub zakończ.`
-    )
-
-    // Try to use Polish voice
-    const voices = window.speechSynthesis.getVoices()
-    const polishVoice = voices.find(v => v.lang.startsWith('pl'))
-    if (polishVoice) {
-      utterance.voice = polishVoice
-    }
-
-    utterance.lang = 'pl-PL'
-    utterance.rate = 1.0
-    utterance.pitch = 1.0
-    utterance.volume = 1.0
-
-    window.speechSynthesis.speak(utterance)
-  } catch (e) {
-    console.warn('Could not speak notification:', e)
-  }
-}
-
 // Helper to show browser notification
 const showBrowserNotification = (title: string, body: string) => {
   if ('Notification' in window && Notification.permission === 'granted') {
@@ -201,11 +171,6 @@ const notifyTimeUp = (taskTitle: string) => {
 
   // 2. Sound notification
   playNotificationSound()
-
-  // 3. Voice notification (after sound)
-  setTimeout(() => {
-    speakNotification(taskTitle)
-  }, 1500)
 }
 
 export const useTimerStore = create<TimerState>()(
@@ -646,17 +611,3 @@ export const useTimerHydration = () => {
   return isHydrated
 }
 
-// Hook to preload speech synthesis voices (for better TTS)
-export const usePreloadVoices = () => {
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      // Trigger voice loading
-      window.speechSynthesis.getVoices()
-
-      // Some browsers need this event
-      window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices()
-      }
-    }
-  }, [])
-}
