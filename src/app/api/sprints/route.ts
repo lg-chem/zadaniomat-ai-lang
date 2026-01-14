@@ -36,12 +36,32 @@ export async function GET(req: Request) {
         workspaceType: workspace,
       }
     } else {
-      // Personal sprints
-      where.period = {
-        userId: session.user.id,
-        workspaceType: workspace,
+      // Check if user is MEMBER of any team (not owner) - if so, show team owner's sprints
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          userId: session.user.id,
+          role: "MEMBER",
+        },
+        include: {
+          organization: {
+            select: { ownerId: true },
+          },
+        },
+      })
+
+      if (membership) {
+        // User is employee - show team owner's sprints
+        where.period = {
+          userId: membership.organization.ownerId,
+          workspaceType: workspace,
+        }
+      } else {
+        // Personal sprints (user is not member of any team, or is owner)
+        where.period = {
+          userId: session.user.id,
+          workspaceType: workspace,
+        }
       }
-      where.organizationId = null
     }
 
     if (periodId) {

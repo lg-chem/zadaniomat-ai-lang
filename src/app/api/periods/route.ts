@@ -34,9 +34,26 @@ export async function GET(req: Request) {
 
       where.organizationId = organizationId
     } else {
-      // Personal periods
-      where.userId = session.user.id
-      where.organizationId = null
+      // Check if user is MEMBER of any team (not owner) - if so, show team owner's periods
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          userId: session.user.id,
+          role: "MEMBER",
+        },
+        include: {
+          organization: {
+            select: { ownerId: true },
+          },
+        },
+      })
+
+      if (membership) {
+        // User is employee - show team owner's periods
+        where.userId = membership.organization.ownerId
+      } else {
+        // Personal periods (user is not member of any team, or is owner)
+        where.userId = session.user.id
+      }
     }
 
     const periods = await prisma.period.findMany({
