@@ -48,27 +48,12 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Użytkownik nie jest członkiem zespołu" }, { status: 403 })
       }
 
+      // Show employee's goals (not filtered by organizationId - goals are personal)
       where.userId = targetUserId
-      where.organizationId = organizationId
-    } else if (organizationId) {
-      // User viewing their own goals in team context
-      const membership = await prisma.organizationMember.findFirst({
-        where: {
-          organizationId,
-          userId: session.user.id,
-        },
-      })
-
-      if (!membership) {
-        return NextResponse.json({ error: "Brak dostępu do zespołu" }, { status: 403 })
-      }
-
-      where.userId = session.user.id
-      where.organizationId = organizationId
+      // Don't filter by organizationId - employee's goals don't have it set
     } else {
-      // Personal goals (no org context)
+      // Personal goals
       where.userId = session.user.id
-      where.organizationId = null
     }
 
     if (periodId) where.periodId = periodId
@@ -148,19 +133,9 @@ export async function POST(req: Request) {
       }
 
       goalUserId = targetUserId
-    } else if (organizationId) {
-      // User creating their own goal in team context
-      const membership = await prisma.organizationMember.findFirst({
-        where: {
-          organizationId,
-          userId: session.user.id,
-        },
-      })
-
-      if (!membership) {
-        return NextResponse.json({ error: "Brak dostępu do zespołu" }, { status: 403 })
-      }
     }
+    // Note: organizationId is only used for authorization, not stored on goals
+    // Goals are personal to the user (employee), admin just has permission to view/create them
 
     const goal = await prisma.goal.create({
       data: {
@@ -173,7 +148,7 @@ export async function POST(req: Request) {
         sprintId,
         workspaceType,
         userId: goalUserId,
-        organizationId: organizationId || null,
+        // Don't set organizationId - goals are personal, not team-owned
       },
       include: {
         category: true,

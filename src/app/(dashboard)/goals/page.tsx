@@ -864,8 +864,9 @@ export default function GoalsPage() {
   if (selectedOrgId) goalsApiParams.set("organizationId", selectedOrgId)
   if (selectedEmployeeId) goalsApiParams.set("targetUserId", selectedEmployeeId)
 
+  // Periods are always admin's own - employees see goals within admin's period/sprint structure
   const periodsApiParams = new URLSearchParams({ workspace })
-  if (selectedOrgId) periodsApiParams.set("organizationId", selectedOrgId)
+  // Don't filter periods by organizationId - always show admin's periods
 
   // Use SWR hooks for data fetching with cache
   const { data: goals = [], isLoading: goalsLoading, mutate: mutateGoals } = useSWR<Goal[]>(
@@ -878,7 +879,7 @@ export default function GoalsPage() {
   )
   const { categories, isLoading: categoriesLoading } = useCategories()
 
-  // Fetch periods with sprints
+  // Fetch periods with sprints - always admin's own periods
   const { data: periods = [], isLoading: periodsLoading } = useSWR<Period[]>(
     `/api/periods?${periodsApiParams.toString()}`
   )
