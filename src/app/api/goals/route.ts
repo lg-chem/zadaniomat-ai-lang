@@ -14,10 +14,61 @@ export async function GET(req: Request) {
     const workspace = searchParams.get("workspace") || "WORK"
     const periodId = searchParams.get("periodId")
     const sprintId = searchParams.get("sprintId")
+    const organizationId = searchParams.get("organizationId")
+    const targetUserId = searchParams.get("targetUserId") // Admin viewing employee's goals
 
     const where: Record<string, unknown> = {
-      userId: session.user.id,
       workspaceType: workspace,
+    }
+
+    if (organizationId && targetUserId) {
+      // Admin viewing employee's goals in team context
+      // Verify admin is owner of org
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+          role: "OWNER",
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json({ error: "Brak uprawnień administratora" }, { status: 403 })
+      }
+
+      // Verify target user is member of org
+      const targetMembership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: targetUserId,
+        },
+      })
+
+      if (!targetMembership) {
+        return NextResponse.json({ error: "Użytkownik nie jest członkiem zespołu" }, { status: 403 })
+      }
+
+      where.userId = targetUserId
+      where.organizationId = organizationId
+    } else if (organizationId) {
+      // User viewing their own goals in team context
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json({ error: "Brak dostępu do zespołu" }, { status: 403 })
+      }
+
+      where.userId = session.user.id
+      where.organizationId = organizationId
+    } else {
+      // Personal goals (no org context)
+      where.userId = session.user.id
+      where.organizationId = null
     }
 
     if (periodId) where.periodId = periodId
@@ -29,6 +80,7 @@ export async function GET(req: Request) {
         category: true,
         period: { select: { id: true, name: true } },
         sprint: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true, email: true } },
         _count: { select: { tasks: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -58,10 +110,56 @@ export async function POST(req: Request) {
       periodId,
       sprintId,
       workspaceType = "WORK",
+      organizationId,
+      targetUserId, // Admin creating goal for employee
     } = body
 
     if (!title) {
       return NextResponse.json({ error: "Tytuł jest wymagany" }, { status: 400 })
+    }
+
+    let goalUserId = session.user.id
+
+    // If creating goal for another user (admin feature)
+    if (organizationId && targetUserId) {
+      // Verify admin is owner of org
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+          role: "OWNER",
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json({ error: "Brak uprawnień administratora" }, { status: 403 })
+      }
+
+      // Verify target user is member of org
+      const targetMembership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: targetUserId,
+        },
+      })
+
+      if (!targetMembership) {
+        return NextResponse.json({ error: "Użytkownik nie jest członkiem zespołu" }, { status: 403 })
+      }
+
+      goalUserId = targetUserId
+    } else if (organizationId) {
+      // User creating their own goal in team context
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json({ error: "Brak dostępu do zespołu" }, { status: 403 })
+      }
     }
 
     const goal = await prisma.goal.create({
@@ -74,12 +172,14 @@ export async function POST(req: Request) {
         periodId,
         sprintId,
         workspaceType,
-        userId: session.user.id,
+        userId: goalUserId,
+        organizationId: organizationId || null,
       },
       include: {
         category: true,
         period: { select: { id: true, name: true } },
         sprint: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true, email: true } },
       },
     })
 

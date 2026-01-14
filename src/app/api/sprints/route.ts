@@ -14,12 +14,34 @@ export async function GET(req: Request) {
     const periodId = searchParams.get("periodId")
     const workspace = searchParams.get("workspace") || "WORK"
     const active = searchParams.get("active")
+    const organizationId = searchParams.get("organizationId")
 
-    const where: Record<string, unknown> = {
-      period: {
+    const where: Record<string, unknown> = {}
+
+    if (organizationId) {
+      // Team sprints - check if user is member of org
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json({ error: "Brak dostępu do zespołu" }, { status: 403 })
+      }
+
+      where.organizationId = organizationId
+      where.period = {
+        workspaceType: workspace,
+      }
+    } else {
+      // Personal sprints
+      where.period = {
         userId: session.user.id,
         workspaceType: workspace,
-      },
+      }
+      where.organizationId = null
     }
 
     if (periodId) {
@@ -87,7 +109,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, startDate, endDate, periodId } = body
+    const { name, startDate, endDate, periodId, organizationId } = body
 
     if (!name || !startDate || !endDate || !periodId) {
       return NextResponse.json(
@@ -96,13 +118,36 @@ export async function POST(req: Request) {
       )
     }
 
-    // Verify period ownership
+    // Verify period access
     const period = await prisma.period.findFirst({
-      where: { id: periodId, userId: session.user.id },
+      where: { id: periodId },
     })
 
     if (!period) {
       return NextResponse.json({ error: "Period not found" }, { status: 404 })
+    }
+
+    // If organizationId provided, verify user is OWNER
+    if (organizationId) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+          role: "OWNER",
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json(
+          { error: "Tylko właściciel zespołu może tworzyć sprinty" },
+          { status: 403 }
+        )
+      }
+    } else {
+      // Personal sprint - verify period ownership
+      if (period.userId !== session.user.id) {
+        return NextResponse.json({ error: "Brak dostępu do okresu" }, { status: 403 })
+      }
     }
 
     const sprint = await prisma.sprint.create({
@@ -111,6 +156,7 @@ export async function POST(req: Request) {
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         periodId,
+        organizationId: organizationId || null,
       },
       include: {
         period: {

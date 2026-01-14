@@ -159,7 +159,12 @@ model Period {
   goals         Goal[]        @relation("PeriodGoals")
   fitnessGoals  FitnessGoal[]
 
+  // Organization (team) period - null means personal period
+  organizationId String?
+  organization   Organization? @relation("OrganizationPeriods", fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([userId, workspaceType])
+  @@index([organizationId])
 }
 
 model Sprint {
@@ -178,7 +183,12 @@ model Sprint {
   tasks         Task[]
   retrospective Retrospective?
 
+  // Organization (team) sprint - null means personal sprint (inherits from period)
+  organizationId String?
+  organization   Organization? @relation("OrganizationSprints", fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([periodId])
+  @@index([organizationId])
 }
 
 model Retrospective {
@@ -278,10 +288,15 @@ model Goal {
   parentGoal    Goal?         @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: Cascade)
   childGoals    Goal[]        @relation("GoalHierarchy")
 
+  // Organization (team) goal - null means personal goal
+  organizationId String?
+  organization   Organization? @relation("OrganizationGoals", fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([userId, workspaceType])
   @@index([periodId])
   @@index([sprintId])
   @@index([parentGoalId])
+  @@index([organizationId])
 }
 
 // ==================== TASKS ====================
@@ -1042,6 +1057,11 @@ model Organization {
   tasks       Task[]     @relation("OrganizationTasks")
   messages    TeamMessage[]
   ideaCategories IdeaCategory[]
+
+  // Team periods, sprints, goals
+  periods     Period[]   @relation("OrganizationPeriods")
+  sprints     Sprint[]   @relation("OrganizationSprints")
+  goals       Goal[]     @relation("OrganizationGoals")
 
   @@index([ownerId])
 }

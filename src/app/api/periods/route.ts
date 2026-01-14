@@ -12,12 +12,35 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
+    const organizationId = searchParams.get("organizationId")
+
+    // Build where clause
+    let where: Record<string, unknown> = {
+      workspaceType: workspace as "WORK" | "PRIVATE",
+    }
+
+    if (organizationId) {
+      // Team periods - check if user is member of org
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json({ error: "Brak dostępu do zespołu" }, { status: 403 })
+      }
+
+      where.organizationId = organizationId
+    } else {
+      // Personal periods
+      where.userId = session.user.id
+      where.organizationId = null
+    }
 
     const periods = await prisma.period.findMany({
-      where: {
-        userId: session.user.id,
-        workspaceType: workspace as "WORK" | "PRIVATE",
-      },
+      where,
       include: {
         sprints: {
           orderBy: { startDate: "asc" },
@@ -97,13 +120,31 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, startDate, endDate, workspaceType = "WORK" } = body
+    const { name, startDate, endDate, workspaceType = "WORK", organizationId } = body
 
     if (!name || !startDate || !endDate) {
       return NextResponse.json(
         { error: "Nazwa, data rozpoczęcia i zakończenia są wymagane" },
         { status: 400 }
       )
+    }
+
+    // If organizationId provided, verify user is OWNER
+    if (organizationId) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId: session.user.id,
+          role: "OWNER",
+        },
+      })
+
+      if (!membership) {
+        return NextResponse.json(
+          { error: "Tylko właściciel zespołu może tworzyć okresy" },
+          { status: 403 }
+        )
+      }
     }
 
     const period = await prisma.period.create({
@@ -113,6 +154,7 @@ export async function POST(req: Request) {
         endDate: new Date(endDate),
         workspaceType,
         userId: session.user.id,
+        organizationId: organizationId || null,
       },
       include: {
         sprints: true,

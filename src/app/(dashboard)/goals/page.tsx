@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight, BookmarkPlus, Clock } from "lucide-react"
+import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight, BookmarkPlus, Clock, Users } from "lucide-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
@@ -835,13 +835,52 @@ function CategoryTemplate({
 export default function GoalsPage() {
   const { workspace } = useWorkspaceStore()
 
+  // Team context - for admin viewing employee goals
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+
+  // Fetch organizations where user is OWNER
+  const { data: ownedOrgs = [] } = useSWR<{
+    id: string
+    name: string
+    members: { id: string; userId: string; user: { id: string; name: string | null; email: string } }[]
+  }[]>(
+    `/api/organizations?role=owner`,
+    async (url: string) => {
+      const res = await fetch(url)
+      if (!res.ok) return []
+      const data = await res.json()
+      return data.owned || []
+    }
+  )
+
+  // Get members for selected org (excluding owner)
+  const selectedOrgMembers = selectedOrgId
+    ? ownedOrgs.find(o => o.id === selectedOrgId)?.members.filter(m => m.user.id !== selectedEmployeeId) || []
+    : []
+
+  // Build API params based on context
+  const goalsApiParams = new URLSearchParams({ workspace })
+  if (selectedOrgId) goalsApiParams.set("organizationId", selectedOrgId)
+  if (selectedEmployeeId) goalsApiParams.set("targetUserId", selectedEmployeeId)
+
+  const periodsApiParams = new URLSearchParams({ workspace })
+  if (selectedOrgId) periodsApiParams.set("organizationId", selectedOrgId)
+
   // Use SWR hooks for data fetching with cache
-  const { goals, isLoading: goalsLoading, mutate: mutateGoals } = useGoals()
+  const { data: goals = [], isLoading: goalsLoading, mutate: mutateGoals } = useSWR<Goal[]>(
+    `/api/goals?${goalsApiParams.toString()}`,
+    async (url: string) => {
+      const res = await fetch(url)
+      if (!res.ok) return []
+      return res.json()
+    }
+  )
   const { categories, isLoading: categoriesLoading } = useCategories()
 
   // Fetch periods with sprints
   const { data: periods = [], isLoading: periodsLoading } = useSWR<Period[]>(
-    `/api/periods?workspace=${workspace}`
+    `/api/periods?${periodsApiParams.toString()}`
   )
 
   const isLoading = goalsLoading || categoriesLoading || periodsLoading
@@ -1585,6 +1624,9 @@ export default function GoalsPage() {
           periodId: periodId || undefined,
           sprintId: sprintId || undefined,
           workspaceType: workspace,
+          // Pass team context if viewing employee goals
+          organizationId: selectedOrgId || undefined,
+          targetUserId: selectedEmployeeId || undefined,
         }),
       })
       if (res.ok) {
@@ -1695,11 +1737,54 @@ export default function GoalsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Cele</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">
+            Cele
+            {selectedEmployeeId && (
+              <span className="text-lg font-normal text-muted-foreground ml-2">
+                — {ownedOrgs.find(o => o.id === selectedOrgId)?.members.find(m => m.user.id === selectedEmployeeId)?.user.name || "Pracownik"}
+              </span>
+            )}
+          </h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            Zarządzaj celami okresowymi i sprintowymi
+            {selectedEmployeeId
+              ? "Zarządzaj celami pracownika"
+              : "Zarządzaj celami okresowymi i sprintowymi"}
           </p>
         </div>
+
+        {/* Employee selector (admin only) */}
+        {ownedOrgs.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <select
+              className="border rounded px-3 py-1.5 text-sm bg-background min-w-[200px]"
+              value={selectedEmployeeId ? `${selectedOrgId}:${selectedEmployeeId}` : ""}
+              onChange={(e) => {
+                if (e.target.value === "") {
+                  setSelectedOrgId(null)
+                  setSelectedEmployeeId(null)
+                } else {
+                  const [orgId, empId] = e.target.value.split(":")
+                  setSelectedOrgId(orgId)
+                  setSelectedEmployeeId(empId)
+                }
+              }}
+            >
+              <option value="">Moje cele</option>
+              {ownedOrgs.map(org => (
+                <optgroup key={org.id} label={org.name}>
+                  {org.members
+                    .filter(m => m.user.id !== org.members.find(mm => mm.id === mm.id)?.userId) // Filter out owner
+                    .map(member => (
+                      <option key={member.id} value={`${org.id}:${member.user.id}`}>
+                        {member.user.name || member.user.email}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Info about strategic categories */}
