@@ -63,6 +63,9 @@ export async function GET(req: Request) {
           orderBy: { startDate: "asc" },
           include: {
             goals: {
+              where: {
+                userId: session.user.id,
+              },
               include: {
                 category: {
                   select: { id: true, name: true, color: true },
@@ -75,6 +78,9 @@ export async function GET(req: Request) {
           },
         },
         goals: {
+          where: {
+            userId: session.user.id,
+          },
           include: {
             category: {
               select: { id: true, name: true, color: true },

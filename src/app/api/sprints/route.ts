@@ -79,6 +79,9 @@ export async function GET(req: Request) {
           select: { id: true, name: true },
         },
         goals: {
+          where: {
+            userId: session.user.id,
+          },
           include: {
             category: true,
           },
