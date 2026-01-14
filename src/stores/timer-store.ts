@@ -43,6 +43,9 @@ interface TimerState {
     alreadyWorkedMinutes: number
   } | null
 
+  // Race condition protection
+  isStopping: boolean
+
   // Actions
   startTimer: (taskId: string, taskTitle: string, plannedMinutes?: number, alreadyWorkedMinutes?: number) => void
   pauseTimer: () => void
@@ -60,12 +63,118 @@ interface TimerState {
   clearTaskTimeState: (taskId: string) => void
   toggleMinimize: () => void
   setPosition: (position: { x: number; y: number } | null) => void
+  // Cross-tab sync
+  syncFromBroadcast: (state: Partial<TimerState>) => void
+}
+
+// BroadcastChannel for cross-tab synchronization
+let broadcastChannel: BroadcastChannel | null = null
+
+const getBroadcastChannel = () => {
+  if (typeof window === 'undefined') return null
+  if (!broadcastChannel) {
+    broadcastChannel = new BroadcastChannel('timer-sync')
+  }
+  return broadcastChannel
+}
+
+const broadcastState = (state: Partial<TimerState>) => {
+  const channel = getBroadcastChannel()
+  if (channel) {
+    channel.postMessage({ type: 'TIMER_STATE_UPDATE', state })
+  }
 }
 
 // Helper to request notification permission
 const requestNotificationPermission = async () => {
   if ('Notification' in window && Notification.permission === 'default') {
     await Notification.requestPermission()
+  }
+}
+
+// Helper to play notification sound
+const playNotificationSound = () => {
+  if (typeof window === 'undefined') return
+
+  try {
+    // Create audio context for notification sound
+    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+
+    // Create oscillator for beep sound
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    // Configure sound - pleasant alert tone
+    oscillator.frequency.value = 880 // A5 note
+    oscillator.type = 'sine'
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+
+    oscillator.start(audioContext.currentTime)
+    oscillator.stop(audioContext.currentTime + 0.5)
+
+    // Play 3 beeps
+    setTimeout(() => {
+      const osc2 = audioContext.createOscillator()
+      const gain2 = audioContext.createGain()
+      osc2.connect(gain2)
+      gain2.connect(audioContext.destination)
+      osc2.frequency.value = 880
+      osc2.type = 'sine'
+      gain2.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+      osc2.start(audioContext.currentTime)
+      osc2.stop(audioContext.currentTime + 0.5)
+    }, 600)
+
+    setTimeout(() => {
+      const osc3 = audioContext.createOscillator()
+      const gain3 = audioContext.createGain()
+      osc3.connect(gain3)
+      gain3.connect(audioContext.destination)
+      osc3.frequency.value = 1047 // C6 note - higher for attention
+      osc3.type = 'sine'
+      gain3.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.7)
+      osc3.start(audioContext.currentTime)
+      osc3.stop(audioContext.currentTime + 0.7)
+    }, 1200)
+  } catch (e) {
+    console.warn('Could not play notification sound:', e)
+  }
+}
+
+// Helper to speak notification using Text-to-Speech
+const speakNotification = (taskTitle: string) => {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+
+  try {
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(
+      `Czas minął dla zadania: ${taskTitle}. Przedłuż lub zakończ.`
+    )
+
+    // Try to use Polish voice
+    const voices = window.speechSynthesis.getVoices()
+    const polishVoice = voices.find(v => v.lang.startsWith('pl'))
+    if (polishVoice) {
+      utterance.voice = polishVoice
+    }
+
+    utterance.lang = 'pl-PL'
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+    utterance.volume = 1.0
+
+    window.speechSynthesis.speak(utterance)
+  } catch (e) {
+    console.warn('Could not speak notification:', e)
   }
 }
 
@@ -80,6 +189,23 @@ const showBrowserNotification = (title: string, body: string) => {
       requireInteraction: true,
     })
   }
+}
+
+// Combined notification function
+const notifyTimeUp = (taskTitle: string) => {
+  // 1. Browser notification
+  showBrowserNotification(
+    '⏰ Czas minął!',
+    `Zadanie "${taskTitle}" - czas się skończył. Przedłuż lub zakończ.`
+  )
+
+  // 2. Sound notification
+  playNotificationSound()
+
+  // 3. Voice notification (after sound)
+  setTimeout(() => {
+    speakNotification(taskTitle)
+  }, 1500)
 }
 
 export const useTimerStore = create<TimerState>()(
@@ -102,6 +228,7 @@ export const useTimerStore = create<TimerState>()(
       showNotification: false,
       taskTimeStates: {},
       pendingStart: null,
+      isStopping: false,
 
       startTimer: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes = 0) => {
         requestNotificationPermission()
@@ -134,7 +261,7 @@ export const useTimerStore = create<TimerState>()(
 
         const mode: TimerMode = plannedMinutes ? 'countdown' : 'stopwatch'
 
-        set({
+        const newState = {
           isRunning: true,
           isPaused: false,
           taskId,
@@ -148,7 +275,10 @@ export const useTimerStore = create<TimerState>()(
           isTimeUp: false,
           showNotification: false,
           pendingStart: null,
-        })
+          isStopping: false,
+        }
+        set(newState)
+        broadcastState(newState)
       },
 
       setPendingStart: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes) => {
@@ -185,12 +315,12 @@ export const useTimerStore = create<TimerState>()(
         const newTaskTimeStates = { ...taskTimeStates }
         delete newTaskTimeStates[pendingStart.taskId]
 
-        set({
+        const newState = {
           isRunning: true,
           isPaused: false,
           taskId: pendingStart.taskId,
           taskTitle: pendingStart.taskTitle,
-          mode: 'countdown',
+          mode: 'countdown' as TimerMode,
           // plannedSeconds = previous elapsed + new time, so tick() calculates remaining correctly
           plannedSeconds: previousElapsed + additionalSeconds,
           elapsedSeconds: previousElapsed,
@@ -201,7 +331,10 @@ export const useTimerStore = create<TimerState>()(
           showNotification: false,
           pendingStart: null,
           taskTimeStates: newTaskTimeStates,
-        })
+          isStopping: false,
+        }
+        set(newState)
+        broadcastState(newState)
       },
 
       cancelPendingStart: () => {
@@ -226,26 +359,30 @@ export const useTimerStore = create<TimerState>()(
       pauseTimer: () => {
         const { isRunning, isPaused, elapsedSeconds, accumulatedSeconds } = get()
         if (isRunning && !isPaused) {
-          set({
+          const newState = {
             isPaused: true,
             accumulatedSeconds: accumulatedSeconds + (elapsedSeconds - accumulatedSeconds),
             sessionStartTime: null,
-          })
+          }
+          set(newState)
+          broadcastState(newState)
         }
       },
 
       resumeTimer: () => {
         const { isRunning, isPaused, isTimeUp } = get()
         if (isRunning && isPaused && !isTimeUp) {
-          set({
+          const newState = {
             isPaused: false,
             sessionStartTime: new Date(),
-          })
+          }
+          set(newState)
+          broadcastState(newState)
         }
       },
 
       extendTimer: (minutes) => {
-        const { remainingSeconds, elapsedSeconds, accumulatedSeconds: oldAccumulated } = get()
+        const { remainingSeconds, elapsedSeconds, accumulatedSeconds: oldAccumulated, plannedSeconds } = get()
         const additionalSeconds = minutes * 60
 
         console.log('[extendTimer] Before:', {
@@ -256,15 +393,17 @@ export const useTimerStore = create<TimerState>()(
           additionalSeconds
         })
 
-        set({
+        const newState = {
           remainingSeconds: remainingSeconds + additionalSeconds,
-          plannedSeconds: get().plannedSeconds + additionalSeconds,
+          plannedSeconds: plannedSeconds + additionalSeconds,
           isTimeUp: false,
           showNotification: false,
           isPaused: false,
           sessionStartTime: new Date(),
           accumulatedSeconds: elapsedSeconds, // Sync accumulated with elapsed before resuming
-        })
+        }
+        set(newState)
+        broadcastState(newState)
 
         console.log('[extendTimer] After:', {
           newAccumulated: elapsedSeconds,
@@ -273,11 +412,17 @@ export const useTimerStore = create<TimerState>()(
       },
 
       stopTimer: () => {
-        const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates } = get()
-        if (!isRunning || !taskId) return null
+        const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates, isStopping } = get()
+
+        // Race condition protection - prevent multiple simultaneous stops
+        if (!isRunning || !taskId || isStopping) return null
+
+        // Set flag immediately to prevent race conditions
+        set({ isStopping: true })
 
         // Return seconds - rounding should happen only once at final save
         const durationSeconds = elapsedSeconds
+        const stoppedTaskId = taskId
 
         console.log('[stopTimer] Saving state:', {
           taskId,
@@ -295,12 +440,12 @@ export const useTimerStore = create<TimerState>()(
           }
         }
 
-        set({
+        const newState = {
           isRunning: false,
           isPaused: false,
           taskId: null,
           taskTitle: null,
-          mode: 'countdown',
+          mode: 'countdown' as TimerMode,
           plannedSeconds: 0,
           elapsedSeconds: 0,
           remainingSeconds: 0,
@@ -309,20 +454,29 @@ export const useTimerStore = create<TimerState>()(
           isTimeUp: false,
           showNotification: false,
           taskTimeStates: newTaskTimeStates,
-        })
+          isStopping: false, // Reset flag
+        }
 
-        return { taskId, durationSeconds }
+        set(newState)
+        broadcastState(newState)
+
+        return { taskId: stoppedTaskId, durationSeconds }
       },
 
       completeTask: () => {
-        const { taskId, taskTimeStates } = get()
+        const { taskId, taskTimeStates, isStopping } = get()
+
+        // Race condition protection
+        if (isStopping) return null
+
         const result = get().stopTimer()
 
         // Clear saved state for completed task (no need to resume)
         if (taskId) {
-          const newTaskTimeStates = { ...taskTimeStates }
+          const newTaskTimeStates = { ...get().taskTimeStates }
           delete newTaskTimeStates[taskId]
           set({ taskTimeStates: newTaskTimeStates })
+          broadcastState({ taskTimeStates: newTaskTimeStates })
         }
 
         return result
@@ -345,10 +499,8 @@ export const useTimerStore = create<TimerState>()(
 
           // Sprawdź czy czas się skończył
           if (newRemainingSeconds === 0 && !isTimeUp) {
-            showBrowserNotification(
-              '⏰ Czas minął!',
-              `Zadanie "${taskTitle}" - czas się skończył. Przedłuż lub zakończ.`
-            )
+            // Combined notification: browser + sound + voice
+            notifyTimeUp(taskTitle || 'Zadanie')
 
             // Save state to taskTimeStates so it can be recovered if user closes dialog
             const { taskId, taskTimeStates } = get()
@@ -360,14 +512,16 @@ export const useTimerStore = create<TimerState>()(
               }
             } : taskTimeStates
 
-            set({
+            const newState = {
               elapsedSeconds: newElapsedSeconds,
               remainingSeconds: 0,
               isTimeUp: true,
               showNotification: true,
               isPaused: true, // Auto-pauza po zakończeniu czasu
               taskTimeStates: newTaskTimeStates,
-            })
+            }
+            set(newState)
+            broadcastState(newState)
           } else {
             set({
               elapsedSeconds: newElapsedSeconds,
@@ -398,7 +552,14 @@ export const useTimerStore = create<TimerState>()(
           accumulatedSeconds: 0,
           isTimeUp: false,
           showNotification: false,
+          isStopping: false,
         }),
+
+      // Cross-tab synchronization
+      syncFromBroadcast: (state) => {
+        console.log('[syncFromBroadcast] Received state update:', state)
+        set(state)
+      },
     }),
     {
       name: 'timer-storage',
@@ -445,8 +606,10 @@ export const formatMinutes = (minutes: number): string => {
 }
 
 // Hook to check if timer store is hydrated (prevents SSR mismatch)
+// Also sets up cross-tab synchronization
 export const useTimerHydration = () => {
   const [isHydrated, setIsHydrated] = useState(false)
+  const syncFromBroadcast = useTimerStore((state) => state.syncFromBroadcast)
 
   useEffect(() => {
     // Zustand persist rehydrates synchronously after mount
@@ -460,10 +623,40 @@ export const useTimerHydration = () => {
       setIsHydrated(true)
     }
 
+    // Set up BroadcastChannel listener for cross-tab sync
+    const channel = getBroadcastChannel()
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'TIMER_STATE_UPDATE' && event.data?.state) {
+        syncFromBroadcast(event.data.state)
+      }
+    }
+
+    if (channel) {
+      channel.addEventListener('message', handleMessage)
+    }
+
     return () => {
       unsubFinishHydration()
+      if (channel) {
+        channel.removeEventListener('message', handleMessage)
+      }
     }
-  }, [])
+  }, [syncFromBroadcast])
 
   return isHydrated
+}
+
+// Hook to preload speech synthesis voices (for better TTS)
+export const usePreloadVoices = () => {
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      // Trigger voice loading
+      window.speechSynthesis.getVoices()
+
+      // Some browsers need this event
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices()
+      }
+    }
+  }, [])
 }
