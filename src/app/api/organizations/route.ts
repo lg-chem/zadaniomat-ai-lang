@@ -90,12 +90,25 @@ export async function GET() {
   }
 }
 
-// POST - Create a new organization
+// POST - Create a new organization (ADMIN or SUPER_ADMIN only)
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Check if user has ADMIN or SUPER_ADMIN role
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true },
+    })
+
+    if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+      return NextResponse.json(
+        { error: "Tylko administratorzy mogą tworzyć zespoły" },
+        { status: 403 }
+      )
     }
 
     const body = await req.json()
