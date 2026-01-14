@@ -8,6 +8,37 @@ interface StepInput {
   description?: string
 }
 
+// Helper function to check if user can access a goal (owner or team admin)
+async function canAccessGoal(goalId: string, userId: string) {
+  // First check if user owns the goal
+  const ownGoal = await prisma.goal.findFirst({
+    where: { id: goalId, userId },
+    include: { period: true },
+  })
+  if (ownGoal) return ownGoal
+
+  // Check if user is team owner and goal belongs to their team member
+  const goal = await prisma.goal.findFirst({
+    where: { id: goalId },
+    include: { period: true },
+  })
+  if (!goal) return null
+
+  // Check if goal owner is a member of a team where current user is OWNER
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: goal.userId,
+      role: "MEMBER",
+      organization: {
+        ownerId: userId,
+      },
+    },
+  })
+
+  if (membership) return goal
+  return null
+}
+
 // POST - Create implementation steps for a goal
 export async function POST(
   req: Request,
@@ -27,11 +58,8 @@ export async function POST(
       return NextResponse.json({ error: "Steps array is required" }, { status: 400 })
     }
 
-    // Verify parent goal exists and belongs to user
-    const parentGoal = await prisma.goal.findFirst({
-      where: { id: parentGoalId, userId: session.user.id },
-      include: { period: true },
-    })
+    // Verify parent goal exists and user has access (owner or team admin)
+    const parentGoal = await canAccessGoal(parentGoalId, session.user.id)
 
     if (!parentGoal) {
       return NextResponse.json({ error: "Goal not found" }, { status: 404 })
@@ -54,7 +82,7 @@ export async function POST(
             isStep: true,
             order: startOrder + index,
             workspaceType: parentGoal.workspaceType,
-            userId: session.user.id,
+            userId: parentGoal.userId,
             categoryId: parentGoal.categoryId,
             periodId: parentGoal.periodId,
             parentGoalId: parentGoalId,
@@ -102,10 +130,8 @@ export async function GET(
 
     const { id: parentGoalId } = params
 
-    // Verify parent goal exists and belongs to user
-    const parentGoal = await prisma.goal.findFirst({
-      where: { id: parentGoalId, userId: session.user.id },
-    })
+    // Verify parent goal exists and user has access (owner or team admin)
+    const parentGoal = await canAccessGoal(parentGoalId, session.user.id)
 
     if (!parentGoal) {
       return NextResponse.json({ error: "Goal not found" }, { status: 404 })

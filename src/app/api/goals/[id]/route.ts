@@ -3,6 +3,35 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+// Helper function to check if user can access a goal (owner or team admin)
+async function canAccessGoal(goalId: string, userId: string) {
+  // First check if user owns the goal
+  const ownGoal = await prisma.goal.findFirst({
+    where: { id: goalId, userId },
+  })
+  if (ownGoal) return ownGoal
+
+  // Check if user is team owner and goal belongs to their team member
+  const goal = await prisma.goal.findFirst({
+    where: { id: goalId },
+  })
+  if (!goal) return null
+
+  // Check if goal owner is a member of a team where current user is OWNER
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: goal.userId,
+      role: "MEMBER",
+      organization: {
+        ownerId: userId,
+      },
+    },
+  })
+
+  if (membership) return goal
+  return null
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
@@ -16,9 +45,7 @@ export async function PATCH(
     const { id } = params
     const body = await req.json()
 
-    const existingGoal = await prisma.goal.findFirst({
-      where: { id, userId: session.user.id },
-    })
+    const existingGoal = await canAccessGoal(id, session.user.id)
 
     if (!existingGoal) {
       return NextResponse.json({ error: "Goal not found" }, { status: 404 })
@@ -75,9 +102,7 @@ export async function DELETE(
 
     const { id } = params
 
-    const existingGoal = await prisma.goal.findFirst({
-      where: { id, userId: session.user.id },
-    })
+    const existingGoal = await canAccessGoal(id, session.user.id)
 
     if (!existingGoal) {
       return NextResponse.json({ error: "Goal not found" }, { status: 404 })

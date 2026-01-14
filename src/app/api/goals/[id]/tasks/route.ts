@@ -3,6 +3,37 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+// Helper function to check if user can access a goal (owner or team admin)
+async function canAccessGoal(goalId: string, userId: string) {
+  // First check if user owns the goal
+  const ownGoal = await prisma.goal.findFirst({
+    where: { id: goalId, userId },
+    include: { category: true },
+  })
+  if (ownGoal) return ownGoal
+
+  // Check if user is team owner and goal belongs to their team member
+  const goal = await prisma.goal.findFirst({
+    where: { id: goalId },
+    include: { category: true },
+  })
+  if (!goal) return null
+
+  // Check if goal owner is a member of a team where current user is OWNER
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: goal.userId,
+      role: "MEMBER",
+      organization: {
+        ownerId: userId,
+      },
+    },
+  })
+
+  if (membership) return goal
+  return null
+}
+
 // Get tasks for a specific goal (unscheduled tasks)
 export async function GET(
   req: Request,
@@ -16,13 +47,8 @@ export async function GET(
 
     const { id: goalId } = await params
 
-    // Verify goal belongs to user
-    const goal = await prisma.goal.findFirst({
-      where: {
-        id: goalId,
-        userId: session.user.id,
-      },
-    })
+    // Verify goal exists and user has access (owner or team admin)
+    const goal = await canAccessGoal(goalId, session.user.id)
 
     if (!goal) {
       return NextResponse.json({ error: "Cel nie znaleziony" }, { status: 404 })
@@ -32,7 +58,7 @@ export async function GET(
     const tasks = await prisma.task.findMany({
       where: {
         goalId,
-        userId: session.user.id,
+        userId: goal.userId,
       },
       include: {
         category: true,
@@ -68,22 +94,14 @@ export async function POST(
       return NextResponse.json({ error: "Tytuł jest wymagany" }, { status: 400 })
     }
 
-    // Verify goal belongs to user and get its category
-    const goal = await prisma.goal.findFirst({
-      where: {
-        id: goalId,
-        userId: session.user.id,
-      },
-      include: {
-        category: true,
-      },
-    })
+    // Verify goal exists and user has access (owner or team admin)
+    const goal = await canAccessGoal(goalId, session.user.id)
 
     if (!goal) {
       return NextResponse.json({ error: "Cel nie znaleziony" }, { status: 404 })
     }
 
-    // Create task linked to the goal
+    // Create task linked to the goal (owned by goal owner)
     const task = await prisma.task.create({
       data: {
         title: title.trim(),
@@ -91,7 +109,7 @@ export async function POST(
         plannedMinutes: plannedMinutes || null,
         status: "NEW",
         priority: 0,
-        userId: session.user.id,
+        userId: goal.userId,
         goalId,
         categoryId: goal.categoryId,
         workspaceType: goal.category?.workspaceType || "WORK",
