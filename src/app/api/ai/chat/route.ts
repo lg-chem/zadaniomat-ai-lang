@@ -438,11 +438,14 @@ export async function POST(req: Request) {
 
     // Define tools for AI to use
     const result = await streamText({
-      model: google("gemini-3-flash-preview", { useSearchGrounding: true }),
+      model: google("gemini-2.5-flash"),
       system: systemPrompt,
       messages,
       maxSteps: 5,
       tools: {
+        // Google Search - real-time web search
+        google_search: google.tools.googleSearch(),
+
         // Context fetching tools
         getTodayTasks: tool({
           description: "Pobierz listę zadań zaplanowanych na dzisiaj",
