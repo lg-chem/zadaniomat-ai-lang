@@ -438,9 +438,7 @@ export async function POST(req: Request) {
 
     // Define tools for AI to use
     const result = await streamText({
-      model: google("gemini-3-flash-preview", {
-        useSearchGrounding: true,
-      }),
+      model: google("gemini-3-flash-preview"),
       system: systemPrompt,
       messages,
       maxSteps: 5,
