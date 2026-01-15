@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
-import { useChat } from "ai/react"
+import { useChat } from "@ai-sdk/react"
 import { toast } from "sonner"
 import useSWR, { mutate } from "swr"
 import { format, formatDistanceToNow } from "date-fns"
