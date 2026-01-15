@@ -466,12 +466,12 @@ export default function AIPage() {
         const conv = data.conversation
         setCurrentConversationId(conv.id)
         conversationIdRef.current = conv.id // Sync ref for onFinish callback
-        // Convert to useChat format
+        // Convert to SDK 6.x UIMessage format with parts array
         setMessages(
           conv.messages.map((m: { role: string; content: string }, i: number) => ({
             id: `loaded-${i}`,
             role: m.role as "user" | "assistant",
-            content: m.content,
+            parts: [{ type: 'text', text: m.content || '' }],
           }))
         )
         if (conv.type === "GENERAL") setMode("general")
