@@ -90,7 +90,7 @@ ${existingEntries.map((e: { id: string; title: string; content: string }) => `- 
 Odpowiedz TYLKO JSON, bez markdown.`
 
         const { text } = await generateText({
-          model: google("gemini-2.0-flash"),
+          model: google("gemini-3-flash-preview"),
           prompt,
         })
 

@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma"
 import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
+import { searchKnowledge, searchConversations } from "@/lib/embeddings"
 
 type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
@@ -437,7 +438,9 @@ export async function POST(req: Request) {
 
     // Define tools for AI to use
     const result = await streamText({
-      model: google("gemini-2.0-flash"),
+      model: google("gemini-3-flash-preview", {
+        useSearchGrounding: true,
+      }),
       system: systemPrompt,
       messages,
       maxSteps: 5,
@@ -497,6 +500,50 @@ export async function POST(req: Request) {
           execute: async ({ url }) => {
             const content = await fetchWebPage(url)
             return content || { error: "Nie udało się pobrać strony" }
+          },
+        }),
+
+        // Semantic search tools (pgvector)
+        semanticSearchKnowledge: tool({
+          description: "Wyszukaj semantycznie w bazie wiedzy użytkownika (używa AI embeddings do znalezienia podobnych treści)",
+          parameters: z.object({
+            query: z.string().describe("Pytanie lub fraza do wyszukania"),
+            limit: z.number().optional().describe("Maksymalna liczba wyników (domyślnie 10)"),
+          }),
+          execute: async ({ query, limit }) => {
+            const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
+            const results = await searchKnowledge(query, userId, {
+              limit: limit || 10,
+              workspaceType: "WORK",
+              includeTeamKnowledge: true,
+              teamCategoryIds,
+            })
+            return {
+              results: results.map(r => ({
+                title: r.title,
+                content: r.content.substring(0, 500),
+                similarity: Math.round(r.similarity * 100) + "%",
+              })),
+              count: results.length,
+            }
+          },
+        }),
+        searchPastConversations: tool({
+          description: "Wyszukaj w poprzednich rozmowach z AI (znajduje podobne tematy z historii chatów)",
+          parameters: z.object({
+            query: z.string().describe("Temat lub pytanie do wyszukania"),
+            limit: z.number().optional().describe("Maksymalna liczba wyników (domyślnie 5)"),
+          }),
+          execute: async ({ query, limit }) => {
+            const results = await searchConversations(query, userId, { limit: limit || 5 })
+            return {
+              conversations: results.map(r => ({
+                title: r.title,
+                summary: r.summary?.substring(0, 300),
+                similarity: Math.round(r.similarity * 100) + "%",
+              })),
+              count: results.length,
+            }
           },
         }),
 

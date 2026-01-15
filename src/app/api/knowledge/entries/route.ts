@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { updateKnowledgeEmbedding } from "@/lib/embeddings"
 
 export async function GET(req: Request) {
   try {
@@ -192,6 +193,11 @@ export async function POST(req: Request) {
           },
         },
       },
+    })
+
+    // Generate embedding asynchronously (don't block response)
+    updateKnowledgeEmbedding(entry.id, `${title}\n\n${content}`).catch(err => {
+      console.error("Error generating embedding for new entry:", err)
     })
 
     return NextResponse.json(entry, { status: 201 })

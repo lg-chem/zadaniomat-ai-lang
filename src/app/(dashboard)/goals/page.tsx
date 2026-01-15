@@ -1003,13 +1003,18 @@ export default function GoalsPage() {
     setAiLoading(true)
 
     try {
+      // Build messages array in correct format for API
+      const messages = [
+        ...aiHistory.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user" as const, content: userMessage }
+      ]
+
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: userMessage,
+          messages,
           mode: aiPlanningGoal.stage === "planning_steps" ? "period_goals" : "sprint_goals",
-          history: aiHistory,
           goalContext: {
             goalId: aiPlanningGoal.goal.id,
             goalTitle: aiPlanningGoal.goal.title,
@@ -1020,17 +1025,56 @@ export default function GoalsPage() {
       })
 
       if (res.ok) {
-        const data = await res.json()
+        // Parse streaming response
+        const reader = res.body?.getReader()
+        const decoder = new TextDecoder()
+        let fullText = ""
+        let toolResult: { type?: string; steps?: unknown[]; tasks?: unknown[]; message?: string } | null = null
 
-        if (data.type === "steps_proposal") {
-          setProposedSteps(data.steps || [])
-          setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
-        } else if (data.type === "tasks_proposal") {
-          // Handle tasks proposal - show tasks for acceptance
-          setProposedTasks(data.tasks || [])
-          setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
-        } else {
-          setAiHistory(prev => [...prev, { role: "assistant", content: data.message }])
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            const chunk = decoder.decode(value)
+            const lines = chunk.split("\n")
+            for (const line of lines) {
+              // Parse text content (format: 0:"text")
+              if (line.startsWith("0:")) {
+                try {
+                  const text = JSON.parse(line.slice(2))
+                  fullText += text
+                } catch {
+                  // Skip malformed lines
+                }
+              }
+              // Parse tool results (format: a:{...} or 9:{...})
+              if (line.startsWith("a:") || line.startsWith("9:")) {
+                try {
+                  const data = JSON.parse(line.slice(2))
+                  if (data && Array.isArray(data)) {
+                    for (const item of data) {
+                      if (item?.result?.type === "steps_proposal" || item?.result?.type === "tasks_proposal") {
+                        toolResult = item.result
+                      }
+                    }
+                  }
+                } catch {
+                  // Skip malformed lines
+                }
+              }
+            }
+          }
+        }
+
+        // Handle tool results (steps or tasks proposals)
+        if (toolResult?.type === "steps_proposal" && toolResult.steps) {
+          setProposedSteps(toolResult.steps as { title: string; description?: string }[])
+          setAiHistory(prev => [...prev, { role: "assistant", content: toolResult?.message || fullText || "Oto proponowane kroki:" }])
+        } else if (toolResult?.type === "tasks_proposal" && toolResult.tasks) {
+          setProposedTasks(toolResult.tasks as { title: string; category?: string; plannedMinutes?: number }[])
+          setAiHistory(prev => [...prev, { role: "assistant", content: toolResult?.message || fullText || "Oto proponowane zadania:" }])
+        } else if (fullText) {
+          setAiHistory(prev => [...prev, { role: "assistant", content: fullText }])
         }
       } else {
         toast.error("Błąd komunikacji z AI")
@@ -1278,16 +1322,43 @@ export default function GoalsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `Stwórz zwięzłe podsumowanie poniższej rozmowy. Wyciągnij kluczowe informacje, ustalenia i wnioski. Pisz konkretnie, bez zbędnych wstępów.\n\nRozmowa:\n${conversationText}`,
+          messages: [{ role: "user", content: `Stwórz zwięzłe podsumowanie poniższej rozmowy. Wyciągnij kluczowe informacje, ustalenia i wnioski. Pisz konkretnie, bez zbędnych wstępów.\n\nRozmowa:\n${conversationText}` }],
           mode: "general",
-          history: [],
         }),
       })
 
       if (res.ok) {
-        const data = await res.json()
-        setKnowledgeForm(prev => ({ ...prev, content: data.message }))
-        setKnowledgeStep("review")
+        // Parse streaming response
+        const reader = res.body?.getReader()
+        const decoder = new TextDecoder()
+        let fullText = ""
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            const chunk = decoder.decode(value)
+            const lines = chunk.split("\n")
+            for (const line of lines) {
+              if (line.startsWith("0:")) {
+                try {
+                  const text = JSON.parse(line.slice(2))
+                  fullText += text
+                } catch {
+                  // Skip malformed lines
+                }
+              }
+            }
+          }
+        }
+
+        if (fullText) {
+          setKnowledgeForm(prev => ({ ...prev, content: fullText }))
+          setKnowledgeStep("review")
+        } else {
+          toast.error("Nie udało się wygenerować podsumowania")
+          setKnowledgeStep("idle")
+        }
       } else {
         toast.error("Nie udało się wygenerować podsumowania")
         setKnowledgeStep("idle")

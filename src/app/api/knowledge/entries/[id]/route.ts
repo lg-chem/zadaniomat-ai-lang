@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { updateKnowledgeEmbedding } from "@/lib/embeddings"
 
 export async function GET(
   req: Request,
@@ -78,6 +79,13 @@ export async function PATCH(
         },
       },
     })
+
+    // Update embedding if title or content changed
+    if (title !== undefined || content !== undefined) {
+      updateKnowledgeEmbedding(entry.id, `${entry.title}\n\n${entry.content}`).catch(err => {
+        console.error("Error updating embedding:", err)
+      })
+    }
 
     return NextResponse.json(entry)
   } catch (error) {
