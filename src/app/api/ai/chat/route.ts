@@ -1,4 +1,4 @@
-import { streamText, tool, stepCountIs } from "ai"
+import { streamText, tool, stepCountIs, convertToModelMessages } from "ai"
 import { google } from "@ai-sdk/google"
 import { z } from "zod"
 import { getServerSession } from "next-auth"
@@ -436,11 +436,14 @@ export async function POST(req: Request) {
     // Get system prompt
     const systemPrompt = getSystemPrompt(mode as ChatMode, context, goalContext) + webpageContext
 
+    // Convert UIMessages from client to ModelMessages for streamText (SDK 6.x)
+    const modelMessages = await convertToModelMessages(messages)
+
     // Define tools for AI to use
     const result = await streamText({
       model: google("gemini-3-flash-preview"),
       system: systemPrompt,
-      messages,
+      messages: modelMessages,
       stopWhen: stepCountIs(5),
       tools: {
         // Google Search - real-time web search (grounding)
