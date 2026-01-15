@@ -1,4 +1,4 @@
-import { streamText, tool } from "ai"
+import { streamText, tool, stepCountIs } from "ai"
 import { google } from "@ai-sdk/google"
 import { z } from "zod"
 import { getServerSession } from "next-auth"
@@ -70,7 +70,7 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
     select: { id: true },
   })
 
-  return teamKnowledgeCategories.map(c => c.id)
+  return teamKnowledgeCategories.map((c: { id: string }) => c.id)
 }
 
 // Minimal context - just essentials
@@ -163,7 +163,7 @@ async function getTodayTasks(userId: string) {
     include: { category: true },
     orderBy: { orderInDay: "asc" },
   })
-  return tasks.map((t) => ({
+  return tasks.map((t: { title: string; status: string; category?: { name: string } | null; plannedMinutes?: number | null }) => ({
     title: t.title,
     status: t.status,
     category: t.category?.name,
@@ -183,7 +183,7 @@ async function getRecentTasks(userId: string, days: number = 7) {
     orderBy: { completedAt: "desc" },
     take: 15,
   })
-  return tasks.map((t) => ({
+  return tasks.map((t: { title: string; category?: { name: string } | null; completedAt?: Date | null }) => ({
     title: t.title,
     category: t.category?.name,
     date: t.completedAt ? format(t.completedAt, "d.MM", { locale: pl }) : null,
@@ -196,7 +196,7 @@ async function getBacklog(userId: string) {
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     take: 10,
   })
-  return items.map((i) => ({ content: i.content, priority: i.priority }))
+  return items.map((i: { content: string; priority: number }) => ({ content: i.content, priority: i.priority }))
 }
 
 async function getKnowledgeEntries(userId: string, query?: string) {
@@ -224,7 +224,7 @@ async function getKnowledgeEntries(userId: string, query?: string) {
     include: { category: true, user: { select: { name: true } } },
     take: 15,
   })
-  return items.map((e) => ({
+  return items.map((e: { title: string; content?: string | null; category?: { name: string } | null; userId: string; user?: { name: string | null } }) => ({
     title: e.title,
     content: e.content?.substring(0, 800),
     category: e.category?.name,
@@ -248,7 +248,7 @@ async function getUpcomingTasks(userId: string, days: number = 7) {
     orderBy: { scheduledDate: "asc" },
     take: 20,
   })
-  return tasks.map((t) => ({
+  return tasks.map((t: { title: string; scheduledDate?: Date | null; category?: { name: string } | null }) => ({
     title: t.title,
     date: t.scheduledDate ? format(t.scheduledDate, "EEEE d.MM", { locale: pl }) : null,
     category: t.category?.name,
@@ -441,15 +441,15 @@ export async function POST(req: Request) {
       model: google("gemini-3-flash-preview"),
       system: systemPrompt,
       messages,
-      maxSteps: 5,
+      stopWhen: stepCountIs(5),
       tools: {
-        // Google Search - real-time web search
-        google_search: google.tools.googleSearch(),
+        // Google Search - real-time web search (grounding)
+        google_search: google.tools.googleSearch({}),
 
         // Context fetching tools
         getTodayTasks: tool({
           description: "Pobierz listę zadań zaplanowanych na dzisiaj",
-          parameters: z.object({}),
+          inputSchema: z.object({}),
           execute: async () => {
             const tasks = await getTodayTasks(userId)
             return { tasks }
@@ -457,17 +457,17 @@ export async function POST(req: Request) {
         }),
         getRecentTasks: tool({
           description: "Pobierz ostatnio ukończone zadania",
-          parameters: z.object({
+          inputSchema: z.object({
             days: z.number().optional().describe("Liczba dni wstecz (domyślnie 7)"),
           }),
-          execute: async ({ days }) => {
+          execute: async ({ days }: { days?: number }) => {
             const tasks = await getRecentTasks(userId, days || 7)
             return { tasks }
           },
         }),
         getBacklog: tool({
           description: "Pobierz listę pozycji z backlogu",
-          parameters: z.object({}),
+          inputSchema: z.object({}),
           execute: async () => {
             const items = await getBacklog(userId)
             return { items }
@@ -475,30 +475,30 @@ export async function POST(req: Request) {
         }),
         getKnowledge: tool({
           description: "Przeszukaj bazę wiedzy użytkownika",
-          parameters: z.object({
+          inputSchema: z.object({
             query: z.string().optional().describe("Fraza do wyszukania (opcjonalnie)"),
           }),
-          execute: async ({ query }) => {
+          execute: async ({ query }: { query?: string }) => {
             const entries = await getKnowledgeEntries(userId, query)
             return { entries }
           },
         }),
         getUpcomingTasks: tool({
           description: "Pobierz zaplanowane zadania na najbliższe dni",
-          parameters: z.object({
+          inputSchema: z.object({
             days: z.number().optional().describe("Liczba dni (domyślnie 7)"),
           }),
-          execute: async ({ days }) => {
+          execute: async ({ days }: { days?: number }) => {
             const tasks = await getUpcomingTasks(userId, days || 7)
             return { tasks }
           },
         }),
         fetchWebpage: tool({
           description: "Pobierz i przeanalizuj zawartość strony internetowej",
-          parameters: z.object({
+          inputSchema: z.object({
             url: z.string().url().describe("URL strony do pobrania"),
           }),
-          execute: async ({ url }) => {
+          execute: async ({ url }: { url: string }) => {
             const content = await fetchWebPage(url)
             return content || { error: "Nie udało się pobrać strony" }
           },
@@ -507,11 +507,11 @@ export async function POST(req: Request) {
         // Semantic search tools (pgvector)
         semanticSearchKnowledge: tool({
           description: "Wyszukaj semantycznie w bazie wiedzy użytkownika (używa AI embeddings do znalezienia podobnych treści)",
-          parameters: z.object({
+          inputSchema: z.object({
             query: z.string().describe("Pytanie lub fraza do wyszukania"),
             limit: z.number().optional().describe("Maksymalna liczba wyników (domyślnie 10)"),
           }),
-          execute: async ({ query, limit }) => {
+          execute: async ({ query, limit }: { query: string; limit?: number }) => {
             const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
             const results = await searchKnowledge(query, userId, {
               limit: limit || 10,
@@ -520,7 +520,7 @@ export async function POST(req: Request) {
               teamCategoryIds,
             })
             return {
-              results: results.map(r => ({
+              results: results.map((r: { title: string; content: string; similarity: number }) => ({
                 title: r.title,
                 content: r.content.substring(0, 500),
                 similarity: Math.round(r.similarity * 100) + "%",
@@ -531,14 +531,14 @@ export async function POST(req: Request) {
         }),
         searchPastConversations: tool({
           description: "Wyszukaj w poprzednich rozmowach z AI (znajduje podobne tematy z historii chatów)",
-          parameters: z.object({
+          inputSchema: z.object({
             query: z.string().describe("Temat lub pytanie do wyszukania"),
             limit: z.number().optional().describe("Maksymalna liczba wyników (domyślnie 5)"),
           }),
-          execute: async ({ query, limit }) => {
+          execute: async ({ query, limit }: { query: string; limit?: number }) => {
             const results = await searchConversations(query, userId, { limit: limit || 5 })
             return {
-              conversations: results.map(r => ({
+              conversations: results.map((r: { title: string; summary?: string | null; similarity: number }) => ({
                 title: r.title,
                 summary: r.summary?.substring(0, 300),
                 similarity: Math.round(r.similarity * 100) + "%",
@@ -551,7 +551,7 @@ export async function POST(req: Request) {
         // Proposal tools - these return structured data
         proposeGoals: tool({
           description: "Zaproponuj listę celów do dodania (dla sprintu lub okresu)",
-          parameters: z.object({
+          inputSchema: z.object({
             goals: z.array(z.object({
               title: z.string().describe("Tytuł celu"),
               targetValue: z.number().optional().describe("Wartość docelowa"),
@@ -560,13 +560,13 @@ export async function POST(req: Request) {
             })).describe("Lista proponowanych celów"),
             message: z.string().describe("Wiadomość towarzysząca propozycji"),
           }),
-          execute: async ({ goals, message }) => {
+          execute: async ({ goals, message }: { goals: Array<{ title: string; targetValue?: number; unit?: string; category?: string | null }>; message: string }) => {
             return { type: "goals_proposal", goals, message }
           },
         }),
         proposeTasks: tool({
           description: "Zaproponuj listę zadań do dodania",
-          parameters: z.object({
+          inputSchema: z.object({
             tasks: z.array(z.object({
               title: z.string().describe("Tytuł zadania"),
               category: z.string().nullable().optional().describe("Nazwa kategorii lub null"),
@@ -575,13 +575,13 @@ export async function POST(req: Request) {
             })).describe("Lista proponowanych zadań"),
             message: z.string().describe("Wiadomość towarzysząca propozycji"),
           }),
-          execute: async ({ tasks, message }) => {
+          execute: async ({ tasks, message }: { tasks: Array<{ title: string; category?: string | null; plannedMinutes?: number; goalId?: string }>; message: string }) => {
             return { type: "tasks_proposal", tasks, message }
           },
         }),
         proposeSteps: tool({
           description: "Zaproponuj kroki realizacji celu (dla celów okresu)",
-          parameters: z.object({
+          inputSchema: z.object({
             steps: z.array(z.object({
               title: z.string().describe("Tytuł kroku"),
               description: z.string().optional().describe("Opis kroku"),
@@ -589,7 +589,7 @@ export async function POST(req: Request) {
             parentGoalId: z.string().describe("ID celu nadrzędnego"),
             message: z.string().describe("Wiadomość towarzysząca propozycji"),
           }),
-          execute: async ({ steps, parentGoalId, message }) => {
+          execute: async ({ steps, parentGoalId, message }: { steps: Array<{ title: string; description?: string }>; parentGoalId: string; message: string }) => {
             return { type: "steps_proposal", steps, parentGoalId, message }
           },
         }),

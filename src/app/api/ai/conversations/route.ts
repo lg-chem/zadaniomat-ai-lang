@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     })
 
     return NextResponse.json({
-      conversations: conversations.map((c) => ({
+      conversations: conversations.map((c: { id: string; type: string; summary?: string | null; messages: Array<{ content?: string | null }>; _count: { messages: number }; createdAt: Date; updatedAt: Date; expiresAt?: Date | null }) => ({
         id: c.id,
         type: c.type,
         summary: c.summary || c.messages[0]?.content?.slice(0, 50) + "..." || "Nowa rozmowa",

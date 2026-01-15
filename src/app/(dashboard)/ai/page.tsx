@@ -123,6 +123,15 @@ interface OrganizationsResponse {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
+// Helper to extract text content from UIMessage parts (SDK 6.x)
+function getMessageContent(message: { parts?: Array<{ type: string; text?: string }> }): string {
+  if (!message.parts) return ''
+  return message.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && typeof p.text === 'string')
+    .map(p => p.text)
+    .join('')
+}
+
 const MODE_CONFIG: Record<ChatMode, { label: string; icon: React.ReactNode; description: string; color: string }> = {
   general: {
     label: "Ogólny",
@@ -157,15 +166,15 @@ const MODE_TO_API_TYPE: Record<ChatMode, string> = {
   general: "GENERAL",
 }
 
-// Extract proposals from tool invocations in messages
-function extractProposals(messages: Array<{ role: string; content: string; toolInvocations?: Array<{ toolName: string; state: string; result?: unknown }> }>) {
+// Extract proposals from tool invocations in messages (SDK 6.x uses parts array)
+function extractProposals(messages: Array<{ role: string; parts?: Array<{ type: string; toolName?: string; state?: string; result?: unknown }> }>) {
   const proposals: Array<{ type: string; data: unknown; messageIndex: number }> = []
 
   messages.forEach((msg, index) => {
-    if (msg.role === "assistant" && msg.toolInvocations) {
-      msg.toolInvocations.forEach((tool) => {
-        if (tool.state === "result" && tool.result) {
-          const result = tool.result as { type?: string; goals?: GoalProposal[]; tasks?: TaskProposal[]; steps?: Array<{ title: string; description?: string }> }
+    if (msg.role === "assistant" && msg.parts) {
+      msg.parts.forEach((part) => {
+        if (part.type === "tool-result" && part.state === "result" && part.result) {
+          const result = part.result as { type?: string; goals?: GoalProposal[]; tasks?: TaskProposal[]; steps?: Array<{ title: string; description?: string }> }
           if (result.type === "goals_proposal" && result.goals) {
             proposals.push({ type: "goals", data: result.goals, messageIndex: index })
           } else if (result.type === "tasks_proposal" && result.tasks) {
@@ -313,7 +322,7 @@ export default function AIPage() {
         try {
           const currentMessages = finishedMessages.map((m) => ({
             role: m.role,
-            content: typeof m.content === 'string' ? m.content : '',
+            content: getMessageContent(m),
           }))
 
           if (conversationIdRef.current) {
@@ -338,7 +347,7 @@ export default function AIPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   messages: currentMessages,
-                  summary: currentMessages[0]?.content?.slice(0, 50),
+                  summary: currentMessages[0]?.content.slice(0, 50),
                 }),
               })
               fetchConversations()
@@ -356,7 +365,7 @@ export default function AIPage() {
 
   // Extract proposals from messages - memoized
   const proposals = useMemo(() =>
-    extractProposals(messages as Array<{ role: string; content: string; toolInvocations?: Array<{ toolName: string; state: string; result?: unknown }> }>),
+    extractProposals(messages as Array<{ role: string; parts?: Array<{ type: string; toolName?: string; state?: string; result?: unknown }> }>),
     [messages]
   )
 
@@ -584,33 +593,57 @@ export default function AIPage() {
     e.preventDefault()
     if ((!input.trim() && attachments.length === 0) || isLoading) return
 
+    // Convert File[] to FileUIPart[] for SDK 6.x
+    let files: Array<{ type: 'file'; mediaType: string; url: string }> | undefined
+    if (attachments.length > 0) {
+      files = await Promise.all(
+        attachments.map(async (file) => ({
+          type: 'file' as const,
+          mediaType: file.type,
+          url: await fileToDataUrl(file),
+        }))
+      )
+    }
+
     // Send message with new API
     await sendMessage({
       text: input,
-      files: attachments.length > 0 ? attachments : undefined,
+      files,
     })
 
     // Clear input and attachments after submit
     setInput("")
     setAttachments([])
     // Note: Conversation is saved in onFinish callback
-  }, [input, attachments, isLoading, sendMessage])
+  }, [input, attachments, isLoading, sendMessage, fileToDataUrl])
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       if ((input.trim() || attachments.length > 0) && !isLoading) {
+        // Convert File[] to FileUIPart[] for SDK 6.x
+        let files: Array<{ type: 'file'; mediaType: string; url: string }> | undefined
+        if (attachments.length > 0) {
+          files = await Promise.all(
+            attachments.map(async (file) => ({
+              type: 'file' as const,
+              mediaType: file.type,
+              url: await fileToDataUrl(file),
+            }))
+          )
+        }
+
         // Send message with new API
         await sendMessage({
           text: input,
-          files: attachments.length > 0 ? attachments : undefined,
+          files,
         })
 
         setInput("")
         setAttachments([])
       }
     }
-  }, [input, attachments, isLoading, sendMessage])
+  }, [input, attachments, isLoading, sendMessage, fileToDataUrl])
 
   const handleStartAddGoal = (goal: GoalProposal) => {
     setAddingGoal(goal)
@@ -703,7 +736,7 @@ export default function AIPage() {
     setKnowledgeStep("generating")
     setKnowledgeForm({ title: "", content: "", categoryId: "" })
 
-    const conversationText = messages.map((m) => `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${m.content}`).join("\n\n")
+    const conversationText = messages.map((m) => `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${getMessageContent(m)}`).join("\n\n")
 
     try {
       // Use append to get AI summary
@@ -970,7 +1003,7 @@ export default function AIPage() {
                       : "bg-muted rounded-tl-sm"
                   )}>
                     {message.role === "user" ? (
-                      <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                      <p className="whitespace-pre-wrap text-sm">{getMessageContent(message)}</p>
                     ) : (
                       <div className="prose prose-sm dark:prose-invert max-w-none">
                         <ReactMarkdown
@@ -988,7 +1021,7 @@ export default function AIPage() {
                             blockquote: ({ children }) => <blockquote className="border-l-2 border-primary pl-3 italic my-2">{children}</blockquote>,
                           }}
                         >
-                          {message.content}
+                          {getMessageContent(message)}
                         </ReactMarkdown>
                       </div>
                     )}
