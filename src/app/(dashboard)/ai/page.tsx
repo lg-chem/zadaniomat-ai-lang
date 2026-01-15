@@ -289,13 +289,14 @@ export default function AIPage() {
   // Ref to track conversation ID for onFinish callback
   const conversationIdRef = useRef<string | null>(null)
 
-  // Vercel AI SDK useChat hook
+  // Local input state (new API doesn't provide input)
+  const [input, setInput] = useState("")
+
+  // Vercel AI SDK useChat hook (new API)
   const {
     messages,
-    input,
-    setInput,
-    handleSubmit: originalHandleSubmit,
-    isLoading,
+    sendMessage,
+    status,
     setMessages,
   } = useChat({
     id: `chat-${mode}`, // Stable ID prevents re-initialization
@@ -346,6 +347,9 @@ export default function AIPage() {
       }, 0)
     },
   })
+
+  // Compute isLoading from status (compatibility with old API)
+  const isLoading = status === "streaming" || status === "submitted"
 
   // Extract proposals from messages - memoized
   const proposals = useMemo(() =>
@@ -577,51 +581,33 @@ export default function AIPage() {
     e.preventDefault()
     if ((!input.trim() && attachments.length === 0) || isLoading) return
 
-    // Convert files to Attachment format with data URLs
-    let formattedAttachments: { name: string; contentType: string; url: string }[] | undefined
-    if (attachments.length > 0) {
-      formattedAttachments = await Promise.all(
-        attachments.map(async (file) => ({
-          name: file.name,
-          contentType: file.type,
-          url: await fileToDataUrl(file),
-        }))
-      )
-    }
-
-    // Submit with attachments
-    originalHandleSubmit(e, {
-      experimental_attachments: formattedAttachments,
+    // Send message with new API
+    await sendMessage({
+      text: input,
+      files: attachments.length > 0 ? attachments : undefined,
     })
 
-    // Clear attachments after submit
+    // Clear input and attachments after submit
+    setInput("")
     setAttachments([])
     // Note: Conversation is saved in onFinish callback
-  }, [input, attachments, isLoading, originalHandleSubmit, fileToDataUrl])
+  }, [input, attachments, isLoading, sendMessage])
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       if ((input.trim() || attachments.length > 0) && !isLoading) {
-        // Convert files to Attachment format
-        let formattedAttachments: { name: string; contentType: string; url: string }[] | undefined
-        if (attachments.length > 0) {
-          formattedAttachments = await Promise.all(
-            attachments.map(async (file) => ({
-              name: file.name,
-              contentType: file.type,
-              url: await fileToDataUrl(file),
-            }))
-          )
-        }
-
-        originalHandleSubmit(e as unknown as React.FormEvent, {
-          experimental_attachments: formattedAttachments,
+        // Send message with new API
+        await sendMessage({
+          text: input,
+          files: attachments.length > 0 ? attachments : undefined,
         })
+
+        setInput("")
         setAttachments([])
       }
     }
-  }, [input, attachments, isLoading, originalHandleSubmit, fileToDataUrl])
+  }, [input, attachments, isLoading, sendMessage])
 
   const handleStartAddGoal = (goal: GoalProposal) => {
     setAddingGoal(goal)
