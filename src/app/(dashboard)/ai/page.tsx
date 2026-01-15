@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 import { toast } from "sonner"
 import useSWR, { mutate } from "swr"
 import { format, formatDistanceToNow } from "date-fns"
@@ -292,7 +293,7 @@ export default function AIPage() {
   // Local input state (new API doesn't provide input)
   const [input, setInput] = useState("")
 
-  // Vercel AI SDK useChat hook (new API)
+  // Vercel AI SDK useChat hook (new API with transport)
   const {
     messages,
     sendMessage,
@@ -300,8 +301,10 @@ export default function AIPage() {
     setMessages,
   } = useChat({
     id: `chat-${mode}`, // Stable ID prevents re-initialization
-    api: "/api/ai/chat",
-    body: chatBody,
+    transport: new DefaultChatTransport({
+      api: "/api/ai/chat",
+      body: chatBody,
+    }),
     onError: handleChatError,
     onFinish: async ({ message, messages: finishedMessages }) => {
       // Save conversation when AI finishes responding

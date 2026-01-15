@@ -596,7 +596,7 @@ export async function POST(req: Request) {
       },
     })
 
-    return result.toDataStreamResponse()
+    return result.toUIMessageStreamResponse()
   } catch (error) {
     console.error("Error in AI chat:", error)
     return new Response("Server error", { status: 500 })
