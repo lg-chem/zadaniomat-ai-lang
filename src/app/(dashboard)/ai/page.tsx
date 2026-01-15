@@ -303,14 +303,14 @@ export default function AIPage() {
     api: "/api/ai/chat",
     body: chatBody,
     onError: handleChatError,
-    onFinish: async (message: { role: string; content: string }) => {
+    onFinish: async ({ message, messages: finishedMessages }) => {
       // Save conversation when AI finishes responding
       // Use setTimeout 0 to ensure messages state is updated
       setTimeout(async () => {
         try {
-          const currentMessages = [...messages, message].map((m) => ({
+          const currentMessages = finishedMessages.map((m) => ({
             role: m.role,
-            content: m.content,
+            content: typeof m.content === 'string' ? m.content : '',
           }))
 
           if (conversationIdRef.current) {
