@@ -163,6 +163,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Tytuł jest wymagany" }, { status: 400 })
     }
 
+    // If goalId is provided, verify access and get goal owner
+    let taskOwnerId = session.user.id
+    if (goalId) {
+      const goal = await prisma.goal.findUnique({
+        where: { id: goalId },
+        select: { userId: true }
+      })
+
+      if (!goal) {
+        return NextResponse.json({ error: "Cel nie znaleziony" }, { status: 404 })
+      }
+
+      // Check if current user owns the goal
+      if (goal.userId === session.user.id) {
+        taskOwnerId = session.user.id
+      } else {
+        // Check if current user is team owner and goal belongs to their team member
+        const membership = await prisma.organizationMember.findFirst({
+          where: {
+            userId: goal.userId,
+            role: "MEMBER",
+            organization: {
+              ownerId: session.user.id,
+            },
+          },
+        })
+
+        if (!membership) {
+          return NextResponse.json({ error: "Brak dostępu do tego celu" }, { status: 403 })
+        }
+
+        // Task should be owned by the goal owner (team member), not the manager
+        taskOwnerId = goal.userId
+      }
+    }
+
     // If assigning to someone, verify organization membership
     if (assignedToId && organizationId) {
       const organization = await prisma.organization.findUnique({
@@ -209,7 +245,7 @@ export async function POST(req: Request) {
         status: status || "NEW",
         isRecurring: isRecurring || false,
         recurrenceRule: recurrenceRule || null,
-        userId: session.user.id,
+        userId: taskOwnerId,
         assignedToId: assignedToId || null,
         organizationId: organizationId || null,
       },
