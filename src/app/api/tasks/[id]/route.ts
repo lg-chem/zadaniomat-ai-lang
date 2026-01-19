@@ -4,6 +4,47 @@ import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { updateGoalProgressFromTasks } from "@/lib/goal-progress"
 
+// Helper function to check if user can access a task (owner, assigned, or team admin)
+async function canAccessTask(taskId: string, userId: string) {
+  // First check if user owns or is assigned to the task
+  const ownTask = await prisma.task.findFirst({
+    where: {
+      id: taskId,
+      OR: [
+        { userId },
+        { assignedToId: userId }
+      ]
+    },
+    include: {
+      organization: { select: { ownerId: true } }
+    }
+  })
+  if (ownTask) return { task: ownTask, isOwner: ownTask.userId === userId, isAssignee: ownTask.assignedToId === userId, isTeamAdmin: false }
+
+  // Check if user is team owner and task belongs to their team member
+  const task = await prisma.task.findFirst({
+    where: { id: taskId },
+    include: {
+      organization: { select: { ownerId: true } }
+    }
+  })
+  if (!task) return null
+
+  // Check if task owner is a member of a team where current user is OWNER
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: task.userId,
+      role: "MEMBER",
+      organization: {
+        ownerId: userId,
+      },
+    },
+  })
+
+  if (membership) return { task, isOwner: false, isAssignee: false, isTeamAdmin: true }
+  return null
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -16,15 +57,16 @@ export async function GET(
 
     const { id } = await params
 
-    // Find task - user can view if owner OR assigned to them
-    const task = await prisma.task.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: session.user.id },
-          { assignedToId: session.user.id }
-        ]
-      },
+    // Check access (owner, assigned, or team admin)
+    const access = await canAccessTask(id, session.user.id)
+
+    if (!access) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    // Get full task details
+    const task = await prisma.task.findUnique({
+      where: { id },
       include: {
         category: true,
         timeEntries: true,
@@ -50,8 +92,8 @@ export async function GET(
 
     return NextResponse.json({
       ...task,
-      isOwner: task.userId === session.user.id,
-      isAssignee: task.assignedToId === session.user.id
+      isOwner: access.isOwner || access.isTeamAdmin,
+      isAssignee: access.isAssignee
     })
   } catch (error) {
     console.error("Error fetching task:", error)
@@ -72,26 +114,16 @@ export async function PATCH(
     const { id } = await params
     const body = await req.json()
 
-    // Find task - can be updated by owner OR assignee
-    const existingTask = await prisma.task.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: session.user.id },
-          { assignedToId: session.user.id }
-        ]
-      },
-      include: {
-        organization: { select: { ownerId: true } }
-      }
-    })
+    // Check access (owner, assigned, or team admin)
+    const access = await canAccessTask(id, session.user.id)
 
-    if (!existingTask) {
+    if (!access) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    const isOwner = existingTask.userId === session.user.id
-    const isAssignee = existingTask.assignedToId === session.user.id
+    const existingTask = access.task
+    const isOwner = access.isOwner || access.isTeamAdmin
+    const isAssignee = access.isAssignee
 
     const {
       title,
@@ -222,25 +254,18 @@ export async function DELETE(
 
     const { id } = await params
 
-    // Find task - can be deleted by owner OR assignee
-    const existingTask = await prisma.task.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: session.user.id },
-          { assignedToId: session.user.id }
-        ]
-      },
-    })
+    // Check access (owner, assigned, or team admin)
+    const access = await canAccessTask(id, session.user.id)
 
-    if (!existingTask) {
+    if (!access) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    const isOwner = existingTask.userId === session.user.id
-    const isAssignee = existingTask.assignedToId === session.user.id
+    const existingTask = access.task
+    const isOwner = access.isOwner || access.isTeamAdmin
+    const isAssignee = access.isAssignee
 
-    // If assignee (not owner) is deleting, notify the owner
+    // If assignee (not owner/team admin) is deleting, notify the owner
     if (isAssignee && !isOwner) {
       await prisma.notification.create({
         data: {
