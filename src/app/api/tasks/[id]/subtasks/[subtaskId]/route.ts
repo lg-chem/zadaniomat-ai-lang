@@ -3,6 +3,41 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+// Helper function to check if user can access a task (owner, assigned, or team admin)
+async function canAccessTask(taskId: string, userId: string) {
+  // First check if user owns or is assigned to the task
+  const ownTask = await prisma.task.findFirst({
+    where: {
+      id: taskId,
+      OR: [
+        { userId },
+        { assignedToId: userId }
+      ]
+    }
+  })
+  if (ownTask) return ownTask
+
+  // Check if user is team owner and task belongs to their team member
+  const task = await prisma.task.findFirst({
+    where: { id: taskId }
+  })
+  if (!task) return null
+
+  // Check if task owner is a member of a team where current user is OWNER
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: task.userId,
+      role: "MEMBER",
+      organization: {
+        ownerId: userId,
+      },
+    },
+  })
+
+  if (membership) return task
+  return null
+}
+
 // PATCH update a subtask (toggle completion, rename)
 export async function PATCH(
   req: Request,
@@ -18,16 +53,8 @@ export async function PATCH(
     const body = await req.json()
     const { title, isCompleted } = body
 
-    // Verify user has access to the task
-    const task = await prisma.task.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: session.user.id },
-          { assignedToId: session.user.id }
-        ]
-      }
-    })
+    // Verify user has access to the task (owner, assigned, or team admin)
+    const task = await canAccessTask(id, session.user.id)
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
@@ -74,16 +101,8 @@ export async function DELETE(
 
     const { id, subtaskId } = await params
 
-    // Verify user has access to the task
-    const task = await prisma.task.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: session.user.id },
-          { assignedToId: session.user.id }
-        ]
-      }
-    })
+    // Verify user has access to the task (owner, assigned, or team admin)
+    const task = await canAccessTask(id, session.user.id)
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })

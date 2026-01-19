@@ -78,10 +78,14 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
         )
         setLocalSubtasks(finalSubtasks)
         onSubtasksChange(finalSubtasks)
+      } else {
+        // Revert on API error (4xx, 5xx)
+        console.error("Error adding subtask: API returned", res.status)
+        setLocalSubtasks(localSubtasks)
       }
     } catch (error) {
       console.error("Error adding subtask:", error)
-      // Revert on error
+      // Revert on network error
       setLocalSubtasks(localSubtasks)
     }
   }
@@ -94,16 +98,22 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
     setLocalSubtasks(updatedSubtasks)
 
     try {
-      await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isCompleted }),
       })
-      // Notify parent after successful save
-      onSubtasksChange(updatedSubtasks)
+      if (res.ok) {
+        // Notify parent after successful save
+        onSubtasksChange(updatedSubtasks)
+      } else {
+        // Revert on API error
+        console.error("Error toggling subtask: API returned", res.status)
+        setLocalSubtasks(localSubtasks)
+      }
     } catch (error) {
       console.error("Error toggling subtask:", error)
-      // Revert on error
+      // Revert on network error
       setLocalSubtasks(localSubtasks)
     }
   }
@@ -114,13 +124,19 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
     setLocalSubtasks(updatedSubtasks)
 
     try {
-      await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, {
         method: "DELETE",
       })
-      onSubtasksChange(updatedSubtasks)
+      if (res.ok) {
+        onSubtasksChange(updatedSubtasks)
+      } else {
+        // Revert on API error
+        console.error("Error deleting subtask: API returned", res.status)
+        setLocalSubtasks(localSubtasks)
+      }
     } catch (error) {
       console.error("Error deleting subtask:", error)
-      // Revert on error
+      // Revert on network error
       setLocalSubtasks(localSubtasks)
     }
   }
@@ -144,15 +160,21 @@ export function SubtaskList({ taskId, subtasks, onSubtasksChange, readOnly = fal
     setEditingId(null)
 
     try {
-      await fetch(`/api/tasks/${taskId}/subtasks/${editingId}`, {
+      const res = await fetch(`/api/tasks/${taskId}/subtasks/${editingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: editingTitle.trim() }),
       })
-      onSubtasksChange(updatedSubtasks)
+      if (res.ok) {
+        onSubtasksChange(updatedSubtasks)
+      } else {
+        // Revert on API error
+        console.error("Error updating subtask: API returned", res.status)
+        setLocalSubtasks(localSubtasks)
+      }
     } catch (error) {
       console.error("Error updating subtask:", error)
-      // Revert on error
+      // Revert on network error
       setLocalSubtasks(localSubtasks)
     }
   }
