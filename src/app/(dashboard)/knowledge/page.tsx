@@ -47,6 +47,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -1148,24 +1153,51 @@ export default function KnowledgePage() {
                       <p className="text-xs font-medium text-muted-foreground mb-2">
                         Kroki procedury ({entry.steps.length})
                       </p>
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         {entry.steps.map((step, index) => (
-                          <div key={step.id || index} className="flex items-start gap-2 text-sm">
-                            <span className="font-medium text-muted-foreground">{index + 1}.</span>
-                            <div>
-                              <span className="font-medium">{step.title}</span>
-                              {step.estimatedTime && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  ~{step.estimatedTime} min
-                                </span>
-                              )}
-                              {step.assignedRole && (
-                                <Badge variant="outline" className="text-xs ml-2">
-                                  {step.assignedRole}
-                                </Badge>
+                          <Collapsible key={step.id || index}>
+                            <div className="border rounded-lg bg-background">
+                              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-muted/50 transition-colors text-left">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="font-bold text-primary">{index + 1}.</span>
+                                  <span className="font-medium">{step.title}</span>
+                                  {step.estimatedTime && (
+                                    <span className="text-xs text-muted-foreground">
+                                      ~{step.estimatedTime} min
+                                    </span>
+                                  )}
+                                  {step.assignedRole && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {step.assignedRole}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                              </CollapsibleTrigger>
+                              {step.description && (
+                                <CollapsibleContent>
+                                  <div className="px-3 pb-3 pt-0 border-t">
+                                    <div className="pt-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                                      {step.description}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="mt-2 h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        navigator.clipboard.writeText(step.description || "")
+                                        toast.success("Skopiowano do schowka")
+                                      }}
+                                    >
+                                      <Copy className="h-3 w-3 mr-1" />
+                                      Kopiuj instrukcję
+                                    </Button>
+                                  </div>
+                                </CollapsibleContent>
                               )}
                             </div>
-                          </div>
+                          </Collapsible>
                         ))}
                       </div>
                     </div>
