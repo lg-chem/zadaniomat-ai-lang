@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { updateKnowledgeEmbedding } from "@/lib/embeddings"
+import { updateKnowledgeEmbedding, searchKnowledge } from "@/lib/embeddings"
+import { stripHtml } from "@/components/ui/rich-editor"
 
 export async function GET(req: Request) {
   try {
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
     const workspace = searchParams.get("workspace") || "WORK"
     const categoryId = searchParams.get("categoryId")
     const search = searchParams.get("search")
+    const semantic = searchParams.get("semantic") === "true"
 
     // Get team categories assigned to this user via OrganizationMemberCategory (legacy)
     const teamMemberships = await prisma.organizationMember.findMany({
@@ -78,6 +80,52 @@ export async function GET(req: Request) {
     })
     const teamKnowledgeCategoryIds = teamKnowledgeCategories.map(c => c.id)
 
+    // Semantic search mode - use AI embeddings
+    if (semantic && search) {
+      try {
+        const semanticResults = await searchKnowledge(search, session.user.id, {
+          limit: 50,
+          workspaceType: workspace as "WORK" | "PRIVATE",
+          includeTeamKnowledge: true,
+          teamCategoryIds: teamKnowledgeCategoryIds,
+        })
+
+        // Get full entry data for the results
+        const entryIds = semanticResults.map(r => r.id)
+        const entries = await prisma.knowledgeEntry.findMany({
+          where: {
+            id: { in: entryIds },
+          },
+          include: {
+            category: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        })
+
+        // Sort by similarity (maintain order from semantic search)
+        const entryMap = new Map(entries.map(e => [e.id, e]))
+        const sortedEntries = semanticResults
+          .map(r => {
+            const entry = entryMap.get(r.id)
+            if (entry) {
+              return { ...entry, similarity: r.similarity }
+            }
+            return null
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null)
+
+        return NextResponse.json(sortedEntries)
+      } catch (error) {
+        console.error("Semantic search failed, falling back to text search:", error)
+        // Fall through to regular search
+      }
+    }
+
     // Build the where clause
     const baseSearch = search ? {
       OR: [
@@ -134,6 +182,9 @@ export async function GET(req: Request) {
             name: true,
           },
         },
+        steps: {
+          orderBy: { order: "asc" },
+        },
       },
       orderBy: [{ isImportant: "desc" }, { updatedAt: "desc" }],
     })
@@ -153,7 +204,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { title, content, categoryId, workspace, isImportant, visibility } = body
+    const { title, content, categoryId, workspace, isImportant, visibility, type, tags, steps } = body
 
     if (!title || !content || !categoryId) {
       return NextResponse.json(
@@ -183,6 +234,20 @@ export async function POST(req: Request) {
         userId: session.user.id,
         isImportant: isImportant || false,
         visibility: visibility || "PRIVATE",
+        type: type || "ARTICLE",
+        tags: tags || [],
+        // Create steps if provided (for SOP type)
+        ...(steps && steps.length > 0 ? {
+          steps: {
+            create: steps.map((step: { title: string; description?: string; estimatedTime?: number; assignedRole?: string }, index: number) => ({
+              order: index,
+              title: step.title,
+              description: step.description || null,
+              estimatedTime: step.estimatedTime || null,
+              assignedRole: step.assignedRole || null,
+            })),
+          },
+        } : {}),
       },
       include: {
         category: true,
@@ -192,11 +257,15 @@ export async function POST(req: Request) {
             name: true,
           },
         },
+        steps: {
+          orderBy: { order: "asc" },
+        },
       },
     })
 
     // Generate embedding asynchronously (don't block response)
-    updateKnowledgeEmbedding(entry.id, `${title}\n\n${content}`).catch(err => {
+    // Strip HTML for cleaner embeddings
+    updateKnowledgeEmbedding(entry.id, `${stripHtml(title)}\n\n${stripHtml(content)}`).catch(err => {
       console.error("Error generating embedding for new entry:", err)
     })
 

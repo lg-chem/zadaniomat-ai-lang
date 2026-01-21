@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { updateKnowledgeEmbedding } from "@/lib/embeddings"
+import { stripHtml } from "@/components/ui/rich-editor"
 
 export async function GET(
   req: Request,
@@ -21,6 +22,9 @@ export async function GET(
       },
       include: {
         category: true,
+        steps: {
+          orderBy: { order: "asc" },
+        },
       },
     })
 
@@ -46,7 +50,7 @@ export async function PATCH(
     }
 
     const body = await req.json()
-    const { title, content, categoryId, isImportant, visibility } = body
+    const { title, content, categoryId, isImportant, visibility, type, tags, steps } = body
 
     // Verify entry belongs to user
     const existing = await prisma.knowledgeEntry.findFirst({
@@ -60,6 +64,44 @@ export async function PATCH(
       return NextResponse.json({ error: "Wpis nie znaleziony" }, { status: 404 })
     }
 
+    // Save current version to history if title or content is changing
+    const isContentChange = (title !== undefined && title !== existing.title) ||
+                           (content !== undefined && content !== existing.content)
+
+    if (isContentChange) {
+      await prisma.knowledgeEntryVersion.create({
+        data: {
+          entryId: params.id,
+          version: existing.currentVersion,
+          title: existing.title,
+          content: existing.content,
+          tags: existing.tags,
+          changeType: "updated",
+          changedById: session.user.id,
+        },
+      })
+    }
+
+    // If steps are provided, delete existing and create new ones
+    if (steps !== undefined) {
+      await prisma.knowledgeStep.deleteMany({
+        where: { entryId: params.id },
+      })
+
+      if (steps.length > 0) {
+        await prisma.knowledgeStep.createMany({
+          data: steps.map((step: { title: string; description?: string; estimatedTime?: number; assignedRole?: string }, index: number) => ({
+            entryId: params.id,
+            order: index,
+            title: step.title,
+            description: step.description || null,
+            estimatedTime: step.estimatedTime || null,
+            assignedRole: step.assignedRole || null,
+          })),
+        })
+      }
+    }
+
     const entry = await prisma.knowledgeEntry.update({
       where: { id: params.id },
       data: {
@@ -68,6 +110,10 @@ export async function PATCH(
         ...(categoryId !== undefined && { categoryId }),
         ...(isImportant !== undefined && { isImportant }),
         ...(visibility !== undefined && { visibility }),
+        ...(type !== undefined && { type }),
+        ...(tags !== undefined && { tags }),
+        // Increment version if content changed
+        ...(isContentChange && { currentVersion: { increment: 1 } }),
       },
       include: {
         category: true,
@@ -77,12 +123,16 @@ export async function PATCH(
             name: true,
           },
         },
+        steps: {
+          orderBy: { order: "asc" },
+        },
       },
     })
 
     // Update embedding if title or content changed
+    // Strip HTML for cleaner embeddings
     if (title !== undefined || content !== undefined) {
-      updateKnowledgeEmbedding(entry.id, `${entry.title}\n\n${entry.content}`).catch(err => {
+      updateKnowledgeEmbedding(entry.id, `${stripHtml(entry.title)}\n\n${stripHtml(entry.content)}`).catch(err => {
         console.error("Error updating embedding:", err)
       })
     }

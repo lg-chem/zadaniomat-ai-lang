@@ -41,6 +41,7 @@ model User {
   aiKnowledgeBases AIKnowledgeBase[]
   knowledgeCategories KnowledgeCategory[]
   knowledgeEntries KnowledgeEntry[]
+  knowledgeEntryVersions KnowledgeEntryVersion[]
   settings      UserSettings?
   sportActivityTypes SportActivityType[]
   sportActivities SportActivity[]
@@ -130,6 +131,15 @@ enum WorkspaceType {
 enum KnowledgeVisibility {
   PRIVATE   // Only visible to owner
   TEAM      // Visible to team members (if category is linked to team category)
+}
+
+enum KnowledgeEntryType {
+  ARTICLE     // Standard knowledge entry
+  SOP         // Standard Operating Procedure with steps
+  HOWTO       // How-to guide / instructions
+  FAQ         // Question and answer
+  CHECKLIST   // Checklist items
+  TEMPLATE    // Template for creating new entries
 }
 
 enum TaskStatus {
@@ -816,21 +826,66 @@ model KnowledgeEntry {
   title         String
   content       String        @db.Text
   workspaceType WorkspaceType
+  type          KnowledgeEntryType @default(ARTICLE) // Entry type for different formats
   visibility    KnowledgeVisibility @default(PRIVATE) // PRIVATE = only me, TEAM = shared with team
   isImportant   Boolean       @default(false) // Highlighted entries
+  tags          String[]      @default([]) // Tags for cross-category organization
   lastUsedAt    DateTime?     // Track when AI last used this
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  // Versioning
+  currentVersion Int @default(1)
 
   // Relations
   userId        String
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId    String
   category      KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  steps         KnowledgeStep[]  // Steps for SOP type entries
+  versions      KnowledgeEntryVersion[] // Version history
 
   @@index([userId, workspaceType])
   @@index([categoryId])
   @@index([visibility])
+  @@index([type])
+}
+
+// Steps for SOP/Process type entries
+model KnowledgeStep {
+  id            String   @id @default(cuid())
+  order         Int
+  title         String
+  description   String?  @db.Text
+  estimatedTime Int?     // Estimated time in minutes
+  assignedRole  String?  // Role responsible (e.g., "HR", "IT", "Manager")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  entryId       String
+  entry         KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+}
+
+// Version history for knowledge entries
+model KnowledgeEntryVersion {
+  id            String   @id @default(cuid())
+  version       Int      // Version number (1, 2, 3, ...)
+  title         String
+  content       String   @db.Text
+  tags          String[] @default([])
+  changeType    String   // "created" | "updated" | "restored"
+  createdAt     DateTime @default(now())
+
+  // Relations
+  entryId       String
+  entry         KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  changedById   String
+  changedBy     User     @relation(fields: [changedById], references: [id])
+
+  @@index([entryId, version])
 }
 
 // ==================== IDEAS (Rozkminki) ====================

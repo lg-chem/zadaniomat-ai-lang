@@ -195,15 +195,17 @@ export async function GET(req: Request) {
     }
 
     // Helper function to build category tree (typed, no any)
+    // IMPORTANT: Build tree from ALL categories first, then filter top-level
+    // This ensures subcategories appear under their parents regardless of linkedCategoryId
     const buildCategoryTree = (
-      categories: KnowledgeCategoryBase[],
+      allCats: KnowledgeCategoryBase[],
       parentId: string | null = null
     ): KnowledgeCategoryWithChildren[] => {
-      return categories
+      return allCats
         .filter(cat => cat.parentId === parentId)
         .map(cat => ({
           ...cat,
-          children: buildCategoryTree(categories, cat.id),
+          children: buildCategoryTree(allCats, cat.id),
         }))
     }
 
@@ -222,13 +224,14 @@ export async function GET(req: Request) {
       orderBy: [{ order: "asc" }, { name: "asc" }],
     })
 
-    // Build trees
-    const strategicCats = buildCategoryTree(
-      allCategories.filter(c => c.linkedCategoryId !== null)
-    )
-    const customCats = buildCategoryTree(
-      allCategories.filter(c => c.linkedCategoryId === null)
-    )
+    // Build FULL tree first (with all categories)
+    const fullTree = buildCategoryTree(allCategories)
+
+    // Now split TOP-LEVEL categories only (subcategories stay with their parents)
+    // Strategic = top-level categories linked to strategic Category
+    // Custom = top-level categories without linkedCategoryId
+    const strategicCats = fullTree.filter(c => c.linkedCategoryId !== null)
+    const customCats = fullTree.filter(c => c.linkedCategoryId === null)
 
     return NextResponse.json({
       strategicCategories: strategicCats,
@@ -249,7 +252,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, color, workspace, parentId } = body
+    const { name, description, color, icon, workspace, parentId } = body
 
     if (!name) {
       return NextResponse.json({ error: "Nazwa jest wymagana" }, { status: 400 })
@@ -284,6 +287,7 @@ export async function POST(req: Request) {
         name,
         description,
         color: color || "#6366f1",
+        icon: icon || null,
         workspaceType: workspace || "WORK",
         userId: session.user.id,
         parentId: parentId || null,

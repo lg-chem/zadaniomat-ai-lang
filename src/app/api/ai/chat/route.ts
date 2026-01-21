@@ -9,6 +9,12 @@ import { pl } from "date-fns/locale"
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
 import { searchKnowledge, searchConversations } from "@/lib/embeddings"
 
+// Helper to strip HTML tags from content (for AI context)
+function stripHtml(html: string): string {
+  if (!html) return ""
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+}
+
 type ChatMode = "sprint_goals" | "daily_tasks" | "period_goals" | "general"
 
 interface GoalContext {
@@ -135,7 +141,7 @@ async function getMinimalContext(userId: string) {
 
   const knowledgeSummary = importantKnowledge.length > 0
     ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null; user: { name: string | null }; userId: string }) =>
-        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}${k.userId !== userId ? ` (od: ${k.user?.name || "zespół"})` : ""}: ${k.content || ""}`
+        `• ${k.title}${k.category ? ` [${k.category.name}]` : ""}${k.userId !== userId ? ` (od: ${k.user?.name || "zespół"})` : ""}: ${stripHtml(k.content || "")}`
       ).join("\n")
     : null
 
