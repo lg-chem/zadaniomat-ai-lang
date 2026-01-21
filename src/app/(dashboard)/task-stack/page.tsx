@@ -20,6 +20,7 @@ import {
   History,
   Target,
   Zap,
+  PlayCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -63,6 +64,7 @@ interface Task {
   plannedMinutes?: number
   status: string
   createdAt: string
+  scheduledDate?: string
   category?: {
     id: string
     name: string
@@ -108,6 +110,11 @@ interface StackData {
   otherTasks: Task[]
 }
 
+interface HistoryData {
+  inProgress: Task[]
+  completed: Task[]
+}
+
 interface TeamMember {
   id: string
   role: "OWNER" | "MEMBER"
@@ -149,7 +156,7 @@ const priorityLabels: Record<number, { label: string; color: string }> = {
 export default function TaskStackPage() {
   const { data: session } = useSession()
   const { data: stackData, isLoading, mutate } = useSWR<StackData>("/api/tasks/stack")
-  const { data: historyTasks, isLoading: isLoadingHistory } = useSWR<Task[]>("/api/tasks/stack/history")
+  const { data: historyData, isLoading: isLoadingHistory, mutate: mutateHistory } = useSWR<HistoryData>("/api/tasks/stack/history")
   const { data: teamsData } = useSWR<TeamsResponse>("/api/organizations")
 
   // Combine owned and member teams
@@ -571,102 +578,210 @@ export default function TaskStackPage() {
 
         {/* History Tab */}
         <TabsContent value="history" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="h-5 w-5" />
-                Historia wykonanych zadań
-              </CardTitle>
-              <CardDescription>
-                Zadania przydzielone przez innych, które zostały ukończone
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingHistory ? (
+          {isLoadingHistory ? (
+            <Card>
+              <CardContent className="py-8">
                 <div className="space-y-4">
                   {[1, 2, 3].map((i) => (
                     <Skeleton key={i} className="h-20 w-full" />
                   ))}
                 </div>
-              ) : !historyTasks || historyTasks.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
+              </CardContent>
+            </Card>
+          ) : (!historyData?.inProgress?.length && !historyData?.completed?.length) ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center text-muted-foreground">
                   <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="font-medium">Brak historii</p>
-                  <p className="text-sm">Nie masz jeszcze żadnych ukończonych przydzielonych zadań</p>
+                  <p className="font-medium">Brak zaplanowanych zadań</p>
+                  <p className="text-sm">Zaplanuj zadania ze stosu, aby je tu zobaczyć</p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {historyTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="rounded-lg border bg-green-50/50 dark:bg-green-950/20 p-4"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            <span className="font-medium line-through text-muted-foreground">
-                              {task.title}
-                            </span>
-                            {task.category && (
-                              <Badge
-                                variant="outline"
-                                style={{
-                                  borderColor: task.category.color,
-                                  color: task.category.color,
-                                }}
-                              >
-                                {task.category.name}
-                              </Badge>
-                            )}
-                            {task.priority > 0 && (
-                              <Badge className={priorityLabels[task.priority].color}>
-                                {priorityLabels[task.priority].label}
-                              </Badge>
-                            )}
-                            {task.goal && (
-                              <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                                <Target className="h-3 w-3 mr-1" />
-                                {task.goal.title}
-                              </Badge>
-                            )}
-                          </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* In Progress Section */}
+              {historyData?.inProgress && historyData.inProgress.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <PlayCircle className="h-5 w-5 text-blue-500" />
+                      W trakcie
+                      <Badge variant="secondary" className="ml-2">
+                        {historyData.inProgress.length}
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription>
+                      Zaplanowane zadania, które są w trakcie realizacji
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {historyData.inProgress.map((task) => (
+                        <div
+                          key={task.id}
+                          className="rounded-lg border bg-blue-50/50 dark:bg-blue-950/20 p-4"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">{task.title}</span>
+                                {task.category && (
+                                  <Badge
+                                    variant="outline"
+                                    style={{
+                                      borderColor: task.category.color,
+                                      color: task.category.color,
+                                    }}
+                                  >
+                                    {task.category.name}
+                                  </Badge>
+                                )}
+                                {task.priority > 0 && (
+                                  <Badge className={priorityLabels[task.priority].color}>
+                                    {priorityLabels[task.priority].label}
+                                  </Badge>
+                                )}
+                                {task.goal && (
+                                  <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                    <Target className="h-3 w-3 mr-1" />
+                                    {task.goal.title}
+                                  </Badge>
+                                )}
+                                {task.scheduledDate && (
+                                  <Badge variant="outline" className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                    <Calendar className="h-3 w-3 mr-1" />
+                                    {format(new Date(task.scheduledDate), "d MMM", { locale: pl })}
+                                  </Badge>
+                                )}
+                              </div>
 
-                          {task.description && (
-                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                              {task.description}
-                            </p>
-                          )}
+                              {task.description && (
+                                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                                  {task.description}
+                                </p>
+                              )}
 
-                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              Od: {task.user.name || task.user.email}
-                            </span>
-                            {task.organization && (
-                              <span className="flex items-center gap-1">
-                                <Building2 className="h-3 w-3" />
-                                {task.organization.name}
-                              </span>
-                            )}
-                            {task.plannedMinutes && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {task.plannedMinutes} min
-                              </span>
-                            )}
-                            <span>
-                              {format(new Date(task.createdAt), "d MMM yyyy", { locale: pl })}
-                            </span>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  Od: {task.user.name || task.user.email}
+                                </span>
+                                {task.organization && (
+                                  <span className="flex items-center gap-1">
+                                    <Building2 className="h-3 w-3" />
+                                    {task.organization.name}
+                                  </span>
+                                )}
+                                {task.plannedMinutes && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {task.plannedMinutes} min
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </CardContent>
+                </Card>
               )}
-            </CardContent>
-          </Card>
+
+              {/* Completed Section */}
+              {historyData?.completed && historyData.completed.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      Ukończone
+                      <Badge variant="secondary" className="ml-2">
+                        {historyData.completed.length}
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription>
+                      Zadania przydzielone przez innych, które zostały ukończone
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {historyData.completed.map((task) => (
+                        <div
+                          key={task.id}
+                          className="rounded-lg border bg-green-50/50 dark:bg-green-950/20 p-4"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                <span className="font-medium line-through text-muted-foreground">
+                                  {task.title}
+                                </span>
+                                {task.category && (
+                                  <Badge
+                                    variant="outline"
+                                    style={{
+                                      borderColor: task.category.color,
+                                      color: task.category.color,
+                                    }}
+                                  >
+                                    {task.category.name}
+                                  </Badge>
+                                )}
+                                {task.priority > 0 && (
+                                  <Badge className={priorityLabels[task.priority].color}>
+                                    {priorityLabels[task.priority].label}
+                                  </Badge>
+                                )}
+                                {task.goal && (
+                                  <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                    <Target className="h-3 w-3 mr-1" />
+                                    {task.goal.title}
+                                  </Badge>
+                                )}
+                                {task.scheduledDate && (
+                                  <Badge variant="outline" className="text-muted-foreground">
+                                    <Calendar className="h-3 w-3 mr-1" />
+                                    {format(new Date(task.scheduledDate), "d MMM", { locale: pl })}
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {task.description && (
+                                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                                  {task.description}
+                                </p>
+                              )}
+
+                              <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  Od: {task.user.name || task.user.email}
+                                </span>
+                                {task.organization && (
+                                  <span className="flex items-center gap-1">
+                                    <Building2 className="h-3 w-3" />
+                                    {task.organization.name}
+                                  </span>
+                                )}
+                                {task.plannedMinutes && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {task.plannedMinutes} min
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
         </TabsContent>
 
         {/* Team Tasks Tab */}
