@@ -115,20 +115,16 @@ export async function GET(req: Request) {
     // Get goal IDs that are in active sprint
     const sprintGoalIds = goalGroups.map(g => g.goal.id)
 
-    // Get other tasks (without goal OR goal not in active sprint)
+    // Get other tasks (only tasks WITHOUT any goal - simple assigned tasks)
     const otherTasks = await prisma.task.findMany({
       where: {
         ...baseWhere,
-        OR: [
-          { goalId: null },
-          { goalId: { notIn: sprintGoalIds.length > 0 ? sprintGoalIds : ["none"] } }
-        ]
+        goalId: null
       },
       include: {
         category: { select: { id: true, name: true, color: true } },
         user: { select: { id: true, name: true, email: true } },
         organization: { select: { id: true, name: true } },
-        goal: { select: { id: true, title: true } },
         subtasks: { orderBy: { order: "asc" } }
       },
       orderBy: [

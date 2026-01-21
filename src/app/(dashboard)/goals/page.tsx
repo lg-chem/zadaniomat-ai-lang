@@ -784,7 +784,7 @@ function CategoryTemplate({
               editingStepTitle={editingStepTitle}
               setEditingStepTitle={setEditingStepTitle}
               sprints={sprints}
-              isSprintGoal={!!sprintId}
+              isSprintGoal={!!sprintId || !!goal.sprint}
               tasks={tasksMap[goal.id]}
               onScheduleTask={onScheduleTask}
               onCompleteTask={onCompleteTask}
