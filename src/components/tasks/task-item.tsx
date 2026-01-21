@@ -45,10 +45,10 @@ const priorityColors = {
 export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: TaskItemProps) {
   const [isHovered, setIsHovered] = useState(false)
 
-  const isDone = task.status === "DONE"
+  const isDone = task.status === "COMPLETED"
 
   const handleToggle = () => {
-    onStatusChange(task.id, isDone ? "TODO" : "DONE")
+    onStatusChange(task.id, isDone ? "NEW" : "COMPLETED")
   }
 
   const formatMinutes = (minutes: number) => {

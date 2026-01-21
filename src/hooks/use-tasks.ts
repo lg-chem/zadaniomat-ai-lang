@@ -120,15 +120,17 @@ export function useTasks(options: UseTasksOptions = {}) {
       const currentTasks = data ?? []
 
       // Create a temporary task with a temp ID
+      // IMPORTANT: spread tempTask FIRST, then apply defaults for missing fields
+      // This ensures that if tempTask has a value, it won't be overwritten by undefined from spread
       const tempId = `temp-${Date.now()}`
       const newTask: Task = {
+        ...tempTask,
         id: tempId,
         title: tempTask.title || '',
-        status: 'NEW',
-        priority: 0,
-        actualMinutes: 0,
-        orderInDay: currentTasks.length,
-        ...tempTask,
+        status: tempTask.status || 'NEW',
+        priority: tempTask.priority ?? 0,
+        actualMinutes: tempTask.actualMinutes ?? 0,
+        orderInDay: tempTask.orderInDay ?? currentTasks.length,
       } as Task
 
       // Optimistically add to UI
