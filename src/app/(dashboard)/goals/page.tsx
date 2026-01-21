@@ -2113,6 +2113,7 @@ export default function GoalsPage() {
                                         onCompleteTask={handleCompleteTask}
                                         onTaskSubtasksChange={handleTaskSubtasksChange}
                                         onRefreshTasks={refreshGoalTasks}
+                                        onDeleteTask={handleDeleteTask}
                                         expandedTaskId={expandedTaskId}
                                         onExpandTask={setExpandedTaskId}
                                         onEditTask={handleEditTask}
