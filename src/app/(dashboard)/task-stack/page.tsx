@@ -253,6 +253,7 @@ export default function TaskStackPage() {
 
       if (res.ok) {
         mutate()
+        mutateHistory()
       }
     } catch (error) {
       console.error("Error deleting task:", error)

@@ -136,6 +136,7 @@ function GoalCard({
   onCompleteTask,
   onTaskSubtasksChange,
   onRefreshTasks,
+  onDeleteTask,
   expandedTaskId,
   onExpandTask,
   onEditTask,
@@ -174,6 +175,7 @@ function GoalCard({
   onCompleteTask?: (taskId: string, goalId: string) => void
   onTaskSubtasksChange?: (taskId: string, goalId: string, subtasks: Subtask[]) => void
   onRefreshTasks?: (goalId: string) => void
+  onDeleteTask?: (taskId: string, goalId: string) => void
   expandedTaskId?: string | null
   onExpandTask?: (taskId: string | null) => void
   onEditTask?: (task: GoalTask) => void
@@ -587,6 +589,18 @@ function GoalCard({
                           Zmień
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (confirm("Czy na pewno chcesz usunąć to zadanie?")) {
+                            onDeleteTask?.(task.id, goal.id)
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-2.5 w-2.5" />
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -688,6 +702,7 @@ function CategoryTemplate({
   onCompleteTask,
   onTaskSubtasksChange,
   onRefreshTasks,
+  onDeleteTask,
   expandedTaskId,
   onExpandTask,
   onEditTask,
@@ -731,6 +746,7 @@ function CategoryTemplate({
   onCompleteTask: (taskId: string, goalId: string) => void
   onTaskSubtasksChange: (taskId: string, goalId: string, subtasks: Subtask[]) => void
   onRefreshTasks: (goalId: string) => void
+  onDeleteTask: (taskId: string, goalId: string) => void
   expandedTaskId: string | null
   onExpandTask: (taskId: string | null) => void
   onEditTask: (task: GoalTask) => void
@@ -790,6 +806,7 @@ function CategoryTemplate({
               onCompleteTask={onCompleteTask}
               onTaskSubtasksChange={onTaskSubtasksChange}
               onRefreshTasks={onRefreshTasks}
+              onDeleteTask={onDeleteTask}
               expandedTaskId={expandedTaskId}
               onExpandTask={onExpandTask}
               onEditTask={onEditTask}
@@ -1215,6 +1232,32 @@ export default function GoalsPage() {
       }
     } catch (error) {
       console.error("Error toggling task:", error)
+      toast.error("Wystąpił błąd")
+    }
+  }
+
+  // Delete task
+  const handleDeleteTask = async (taskId: string, goalId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "DELETE",
+      })
+
+      if (res.ok) {
+        // Remove task from tasksMap
+        setTasksMap(prev => ({
+          ...prev,
+          [goalId]: prev[goalId]?.filter(t => t.id !== taskId) || []
+        }))
+        // Invalidate task-stack cache so it refreshes if user navigates there
+        mutate("/api/tasks/stack")
+        mutate("/api/tasks/stack/history")
+        toast.success("Zadanie usunięte")
+      } else {
+        toast.error("Nie udało się usunąć zadania")
+      }
+    } catch (error) {
+      console.error("Error deleting task:", error)
       toast.error("Wystąpił błąd")
     }
   }
@@ -1960,6 +2003,7 @@ export default function GoalsPage() {
                           onCompleteTask={handleCompleteTask}
                           onTaskSubtasksChange={handleTaskSubtasksChange}
                           onRefreshTasks={refreshGoalTasks}
+                          onDeleteTask={handleDeleteTask}
                           expandedTaskId={expandedTaskId}
                           onExpandTask={setExpandedTaskId}
                           onEditTask={handleEditTask}
