@@ -15,6 +15,18 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") as "WORK" | "PRIVATE" | null
 
+    // Fix: Update any goal tasks that don't have assignedToId set (migration for old tasks)
+    await prisma.task.updateMany({
+      where: {
+        goalId: { not: null },
+        assignedToId: null,
+        userId: session.user.id
+      },
+      data: {
+        assignedToId: session.user.id
+      }
+    })
+
     // Get tasks assigned to current user that are not yet scheduled
     const where: Prisma.TaskWhereInput = {
       assignedToId: session.user.id,
