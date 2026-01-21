@@ -17,6 +17,7 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  History,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -118,6 +119,7 @@ const priorityLabels: Record<number, { label: string; color: string }> = {
 export default function TaskStackPage() {
   const { data: session } = useSession()
   const { data: tasks, isLoading, mutate } = useSWR<Task[]>("/api/tasks/stack")
+  const { data: historyTasks, isLoading: isLoadingHistory } = useSWR<Task[]>("/api/tasks/stack/history")
   const { data: teamsData } = useSWR<TeamsResponse>("/api/organizations")
 
   // Combine owned and member teams
@@ -268,6 +270,10 @@ export default function TaskStackPage() {
           <TabsTrigger value="my-tasks" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Moje zadania
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Historia
           </TabsTrigger>
           {allTeams.length > 0 && (
             <TabsTrigger value="team-tasks" className="flex items-center gap-2">
@@ -450,6 +456,100 @@ export default function TaskStackPage() {
               ))}
             </div>
           )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* History Tab */}
+        <TabsContent value="history" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Historia wykonanych zadań
+              </CardTitle>
+              <CardDescription>
+                Zadania przydzielone przez innych, które zostały ukończone
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingHistory ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : !historyTasks || historyTasks.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">Brak historii</p>
+                  <p className="text-sm">Nie masz jeszcze żadnych ukończonych przydzielonych zadań</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historyTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="rounded-lg border bg-green-50/50 dark:bg-green-950/20 p-4"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            <span className="font-medium line-through text-muted-foreground">
+                              {task.title}
+                            </span>
+                            {task.category && (
+                              <Badge
+                                variant="outline"
+                                style={{
+                                  borderColor: task.category.color,
+                                  color: task.category.color,
+                                }}
+                              >
+                                {task.category.name}
+                              </Badge>
+                            )}
+                            {task.priority > 0 && (
+                              <Badge className={priorityLabels[task.priority].color}>
+                                {priorityLabels[task.priority].label}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {task.description && (
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {task.description}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              Od: {task.user.name || task.user.email}
+                            </span>
+                            {task.organization && (
+                              <span className="flex items-center gap-1">
+                                <Building2 className="h-3 w-3" />
+                                {task.organization.name}
+                              </span>
+                            )}
+                            {task.plannedMinutes && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {task.plannedMinutes} min
+                              </span>
+                            )}
+                            <span>
+                              {format(new Date(task.createdAt), "d MMM yyyy", { locale: pl })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
