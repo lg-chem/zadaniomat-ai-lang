@@ -75,12 +75,15 @@ export async function GET(req: Request) {
         assignedToId: session.user.id,
       }
     } else if (includeAssigned) {
-      // User's own tasks OR tasks assigned to them
+      // User's own tasks (not assigned to someone else) OR tasks assigned to them
       where = {
         ...baseFilters,
         OR: [
-          { userId: session.user.id },
-          { assignedToId: session.user.id }
+          {
+            userId: session.user.id,
+            assignedToId: null  // My tasks that are NOT assigned to anyone else
+          },
+          { assignedToId: session.user.id }  // Tasks assigned TO ME (by anyone)
         ]
       }
     } else {
