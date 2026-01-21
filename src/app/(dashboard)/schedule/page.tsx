@@ -2064,7 +2064,7 @@ export default function SchedulePage() {
           {/* Desktop View - Table */}
           <div className="border rounded-lg overflow-hidden hidden md:block">
             {/* Table Header */}
-            <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
+            <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Kategoria</div>
               <div>Nazwa zadania</div>
               <div className="text-center flex items-center gap-1">
@@ -2081,7 +2081,7 @@ export default function SchedulePage() {
               return (
                 <div
                   key={`template-${category.id}`}
-                  className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
+                  className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 border-b items-center bg-amber-50/50 dark:bg-amber-950/20"
                 >
                   {/* Category - fixed */}
                   <div className="flex items-center gap-2">
@@ -2159,7 +2159,7 @@ export default function SchedulePage() {
                 </div>
                 {taskGroups.IN_PROGRESS.map((task) => (
                   <div key={task.id} className="border-b border-l-2 border-l-blue-500">
-                    <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
+                    <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
                       <div>
                         <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
                           <SelectTrigger className="h-8 text-xs">
@@ -2270,7 +2270,7 @@ export default function SchedulePage() {
                 </div>
                 {taskGroups.NEW.map((task) => (
                   <div key={task.id} className="border-b hover:bg-muted/20 transition-colors">
-                    <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 items-center">
+                    <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 items-center">
                       <div>
                         <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
                           <SelectTrigger className="h-8 text-xs">
@@ -2381,7 +2381,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.COMPLETED.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
+                  <div key={task.id} className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 border-b items-center bg-muted/30 opacity-60">
                     <div>
                       {task.category ? (
                         <div className="flex items-center gap-2 px-2">
@@ -2418,7 +2418,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.CANCELLED.map((task) => (
-                  <div key={task.id} className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 border-b items-center bg-red-50/30 dark:bg-red-950/10 opacity-50">
+                  <div key={task.id} className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 border-b items-center bg-red-50/30 dark:bg-red-950/10 opacity-50">
                     <div>
                       {task.category ? (
                         <div className="flex items-center gap-2 px-2">
@@ -2447,7 +2447,7 @@ export default function SchedulePage() {
 
             {/* Add New Task Row */}
             {isAddingTask ? (
-              <div className="grid grid-cols-[140px_1fr_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
+              <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
                 {/* Category Select */}
                 <div>
                   <Select
