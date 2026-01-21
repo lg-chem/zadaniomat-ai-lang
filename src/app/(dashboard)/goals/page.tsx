@@ -967,10 +967,10 @@ export default function GoalsPage() {
     }
   }, [goals.length, fetchStepsForGoals])
 
-  // Fetch tasks for sprint goals
+  // Fetch tasks for sprint goals (including steps assigned to sprints)
   const fetchTasksForGoals = useCallback(async () => {
-    // Only fetch for sprint goals (goals that have a sprintId)
-    const sprintGoals = goals.filter(g => !g.isStep && g.sprint && !tasksMap[g.id])
+    // Fetch for any goal/step that has a sprint assigned
+    const sprintGoals = goals.filter(g => g.sprint && !tasksMap[g.id])
     for (const goal of sprintGoals) {
       try {
         const res = await fetch(`/api/goals/${goal.id}/tasks`)
