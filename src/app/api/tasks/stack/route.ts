@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
 
-// GET - Get task stack (unscheduled assigned tasks)
+// GET - Get task stack (unscheduled assigned tasks) grouped by sprint goals
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -27,21 +27,108 @@ export async function GET(req: Request) {
       }
     })
 
-    // Get tasks assigned to current user that are not yet scheduled
-    const where: Prisma.TaskWhereInput = {
+    const now = new Date()
+
+    // Find active sprint for current user
+    const activeSprint = await prisma.sprint.findFirst({
+      where: {
+        startDate: { lte: now },
+        endDate: { gte: now },
+        isActive: true,
+        // Sprint belongs to user's goals
+        goals: {
+          some: {
+            userId: session.user.id
+          }
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        startDate: true,
+        endDate: true
+      }
+    })
+
+    // Base filter for unscheduled, incomplete tasks assigned to user
+    const baseWhere: Prisma.TaskWhereInput = {
       assignedToId: session.user.id,
       scheduledDate: null,
       status: { not: "COMPLETED" },
       ...(workspace ? { workspaceType: workspace } : {})
     }
 
-    const tasks = await prisma.task.findMany({
-      where,
+    // Get goals for active sprint with their tasks
+    let goalGroups: Array<{
+      goal: { id: string; title: string; category?: { id: string; name: string; color: string } | null }
+      tasks: Array<unknown>
+    }> = []
+
+    if (activeSprint) {
+      // Get goals for active sprint belonging to current user
+      const sprintGoals = await prisma.goal.findMany({
+        where: {
+          sprintId: activeSprint.id,
+          userId: session.user.id
+        },
+        select: {
+          id: true,
+          title: true,
+          category: { select: { id: true, name: true, color: true } }
+        },
+        orderBy: { createdAt: "asc" }
+      })
+
+      // For each goal, get its unscheduled tasks
+      for (const goal of sprintGoals) {
+        const goalTasks = await prisma.task.findMany({
+          where: {
+            ...baseWhere,
+            goalId: goal.id
+          },
+          include: {
+            category: { select: { id: true, name: true, color: true } },
+            user: { select: { id: true, name: true, email: true } },
+            organization: { select: { id: true, name: true } },
+            subtasks: { orderBy: { order: "asc" } }
+          },
+          orderBy: [
+            { priority: "desc" },
+            { createdAt: "asc" }
+          ]
+        })
+
+        // Only add goal group if it has tasks
+        if (goalTasks.length > 0) {
+          goalGroups.push({
+            goal: {
+              id: goal.id,
+              title: goal.title,
+              category: goal.category
+            },
+            tasks: goalTasks
+          })
+        }
+      }
+    }
+
+    // Get goal IDs that are in active sprint
+    const sprintGoalIds = goalGroups.map(g => g.goal.id)
+
+    // Get other tasks (without goal OR goal not in active sprint)
+    const otherTasks = await prisma.task.findMany({
+      where: {
+        ...baseWhere,
+        OR: [
+          { goalId: null },
+          { goalId: { notIn: sprintGoalIds.length > 0 ? sprintGoalIds : ["none"] } }
+        ]
+      },
       include: {
         category: { select: { id: true, name: true, color: true } },
-        user: { select: { id: true, name: true, email: true } }, // Task creator
+        user: { select: { id: true, name: true, email: true } },
         organization: { select: { id: true, name: true } },
-        goal: { select: { id: true, title: true } }, // Goal if task is from a goal
+        goal: { select: { id: true, title: true } },
         subtasks: { orderBy: { order: "asc" } }
       },
       orderBy: [
@@ -50,7 +137,11 @@ export async function GET(req: Request) {
       ]
     })
 
-    return NextResponse.json(tasks)
+    return NextResponse.json({
+      sprint: activeSprint,
+      goalGroups,
+      otherTasks
+    })
   } catch (error) {
     console.error("Error fetching task stack:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

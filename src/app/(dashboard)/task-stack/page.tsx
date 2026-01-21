@@ -19,6 +19,7 @@ import {
   ChevronUp,
   History,
   Target,
+  Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -83,6 +84,30 @@ interface Task {
   subtasks?: Subtask[]
 }
 
+interface GoalGroup {
+  goal: {
+    id: string
+    title: string
+    category?: {
+      id: string
+      name: string
+      color: string
+    } | null
+  }
+  tasks: Task[]
+}
+
+interface StackData {
+  sprint: {
+    id: string
+    name: string
+    startDate: string
+    endDate: string
+  } | null
+  goalGroups: GoalGroup[]
+  otherTasks: Task[]
+}
+
 interface TeamMember {
   id: string
   role: "OWNER" | "MEMBER"
@@ -123,7 +148,7 @@ const priorityLabels: Record<number, { label: string; color: string }> = {
 
 export default function TaskStackPage() {
   const { data: session } = useSession()
-  const { data: tasks, isLoading, mutate } = useSWR<Task[]>("/api/tasks/stack")
+  const { data: stackData, isLoading, mutate } = useSWR<StackData>("/api/tasks/stack")
   const { data: historyTasks, isLoading: isLoadingHistory } = useSWR<Task[]>("/api/tasks/stack/history")
   const { data: teamsData } = useSWR<TeamsResponse>("/api/organizations")
 
@@ -142,6 +167,13 @@ export default function TaskStackPage() {
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
+
+  // Calculate total tasks count
+  const totalTasks = (stackData?.goalGroups?.reduce((sum, g) => sum + g.tasks.length, 0) || 0) + (stackData?.otherTasks?.length || 0)
+  const highPriorityTasks = [
+    ...(stackData?.goalGroups?.flatMap(g => g.tasks) || []),
+    ...(stackData?.otherTasks || [])
+  ].filter(t => t.priority === 3).length
 
   const handleScheduleTask = async () => {
     if (!schedulingTask) return
@@ -226,15 +258,143 @@ export default function TaskStackPage() {
     setEditDescription(task.description || "")
   }
 
-  // Handle subtasks change - optimistic update for immediate UI feedback
-  const handleSubtasksChange = (taskId: string, newSubtasks: Subtask[]) => {
-    const currentTasks = tasks ?? []
-    const updatedTasks = currentTasks.map(task =>
-      task.id === taskId ? { ...task, subtasks: newSubtasks } : task
-    )
-    // Update without revalidation - SubtaskList already saved to API
-    mutate(updatedTasks, { revalidate: false })
-  }
+  // Render a single task item
+  const renderTaskItem = (task: Task) => (
+    <div
+      key={task.id}
+      className="rounded-lg border hover:bg-muted/50 transition-colors"
+    >
+      <div className="flex items-start justify-between p-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium">{task.title}</span>
+            {task.category && (
+              <Badge
+                variant="outline"
+                style={{
+                  borderColor: task.category.color,
+                  color: task.category.color,
+                }}
+              >
+                {task.category.name}
+              </Badge>
+            )}
+            {task.priority > 0 && (
+              <Badge className={priorityLabels[task.priority].color}>
+                {priorityLabels[task.priority].label}
+              </Badge>
+            )}
+            {task.subtasks && task.subtasks.length > 0 && (
+              <SubtaskProgress subtasks={task.subtasks} />
+            )}
+          </div>
+
+          {task.description && expandedTaskId !== task.id && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {task.description}
+            </p>
+          )}
+
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              Od: {task.user.name || task.user.email}
+            </span>
+            {task.organization && (
+              <span className="flex items-center gap-1">
+                <Building2 className="h-3 w-3" />
+                {task.organization.name}
+              </span>
+            )}
+            {task.plannedMinutes && (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {task.plannedMinutes} min
+              </span>
+            )}
+            <span>
+              {format(new Date(task.createdAt), "d MMM yyyy", { locale: pl })}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 ml-4">
+          <Button
+            size="sm"
+            onClick={() => {
+              setSchedulingTask(task)
+              setScheduleDate(format(new Date(), "yyyy-MM-dd"))
+            }}
+          >
+            <Calendar className="h-4 w-4 mr-1" />
+            Zaplanuj
+          </Button>
+          <Button
+            size="sm"
+            variant={expandedTaskId === task.id ? "default" : "outline"}
+            onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+          >
+            {expandedTaskId === task.id ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Oznacz jako gotowe
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openEditDialog(task)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edytuj tytuł
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => handleDeleteTask(task.id)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Usuń
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Expanded content */}
+      {expandedTaskId === task.id && (
+        <div className="px-4 pb-4 space-y-4 border-t pt-4 bg-muted/30">
+          {/* Description */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Opis</Label>
+            <EditableDescription
+              taskId={task.id}
+              initialValue={task.description}
+              onSaved={() => mutate()}
+              placeholder="Dodaj opis zadania..."
+              rows={3}
+            />
+          </div>
+
+          {/* Subtasks / Checklist */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Lista kontrolna</Label>
+            <SubtaskList
+              taskId={task.id}
+              subtasks={task.subtasks || []}
+              onSubtasksChange={() => mutate()}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
   if (isLoading) {
     return (
@@ -295,178 +455,116 @@ export default function TaskStackPage() {
             <CardContent className="flex items-center gap-8 py-4">
               <div>
                 <div className="text-sm text-muted-foreground">Do zaplanowania</div>
-                <div className="text-2xl font-bold">{tasks?.length || 0}</div>
+                <div className="text-2xl font-bold">{totalTasks}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Wysoki priorytet</div>
                 <div className="text-2xl font-bold text-red-500">
-                  {tasks?.filter((t) => t.priority === 3).length || 0}
+                  {highPriorityTasks}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Task List */}
+          {/* Sprint Goals Section */}
+          {stackData?.sprint && stackData.goalGroups.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-orange-500" />
+                  <CardTitle className="text-lg">
+                    Sprint: {stackData.sprint.name}
+                  </CardTitle>
+                  <Badge variant="outline" className="ml-2">
+                    {format(new Date(stackData.sprint.startDate), "d MMM", { locale: pl })} - {format(new Date(stackData.sprint.endDate), "d MMM", { locale: pl })}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  Zadania powiązane z celami aktywnego sprintu
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {stackData.goalGroups.map((group) => (
+                  <div key={group.goal.id} className="border rounded-lg p-4 bg-purple-50/50 dark:bg-purple-950/20">
+                    {/* Goal Header */}
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+                      <Target className="h-5 w-5 text-purple-600" />
+                      <span className="font-semibold text-purple-900 dark:text-purple-100">
+                        {group.goal.title}
+                      </span>
+                      {group.goal.category && (
+                        <Badge
+                          variant="outline"
+                          style={{
+                            borderColor: group.goal.category.color,
+                            color: group.goal.category.color,
+                          }}
+                        >
+                          {group.goal.category.name}
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="ml-auto">
+                        {group.tasks.length} {group.tasks.length === 1 ? 'zadanie' : 'zadań'}
+                      </Badge>
+                    </div>
+
+                    {/* Goal Tasks */}
+                    <div className="space-y-2 pl-2">
+                      {group.tasks.map((task) => renderTaskItem(task))}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Other Tasks Section */}
           <Card>
             <CardHeader>
-              <CardTitle>Przydzielone zadania</CardTitle>
+              <CardTitle>
+                {stackData?.sprint && stackData.goalGroups.length > 0
+                  ? "Inne zadania"
+                  : "Przydzielone zadania"
+                }
+              </CardTitle>
               <CardDescription>
-                Kliknij "Zaplanuj" aby dodać zadanie do swojego harmonogramu
+                {stackData?.sprint && stackData.goalGroups.length > 0
+                  ? "Zadania niepowiązane z celami sprintu"
+                  : "Kliknij \"Zaplanuj\" aby dodać zadanie do swojego harmonogramu"
+                }
               </CardDescription>
             </CardHeader>
             <CardContent>
-          {!tasks || tasks.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Layers className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">Stos jest pusty</p>
-              <p className="text-sm">Nie masz żadnych nieprzydzielonych zadań</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-lg border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-start justify-between p-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{task.title}</span>
-                        {task.category && (
-                          <Badge
-                            variant="outline"
-                            style={{
-                              borderColor: task.category.color,
-                              color: task.category.color,
-                            }}
-                          >
-                            {task.category.name}
-                          </Badge>
-                        )}
-                        {task.priority > 0 && (
-                          <Badge className={priorityLabels[task.priority].color}>
-                            {priorityLabels[task.priority].label}
-                          </Badge>
-                        )}
-                        {task.subtasks && task.subtasks.length > 0 && (
-                          <SubtaskProgress subtasks={task.subtasks} />
-                        )}
-                        {task.goal && (
-                          <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                            <Target className="h-3 w-3 mr-1" />
-                            {task.goal.title}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {task.description && expandedTaskId !== task.id && (
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          Od: {task.user.name || task.user.email}
-                        </span>
-                        {task.organization && (
-                          <span className="flex items-center gap-1">
-                            <Building2 className="h-3 w-3" />
-                            {task.organization.name}
-                          </span>
-                        )}
-                        {task.plannedMinutes && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {task.plannedMinutes} min
-                          </span>
-                        )}
-                        <span>
-                          {format(new Date(task.createdAt), "d MMM yyyy", { locale: pl })}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 ml-4">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setSchedulingTask(task)
-                          setScheduleDate(format(new Date(), "yyyy-MM-dd"))
-                        }}
-                      >
-                        <Calendar className="h-4 w-4 mr-1" />
-                        Zaplanuj
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={expandedTaskId === task.id ? "default" : "outline"}
-                        onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                      >
-                        {expandedTaskId === task.id ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
-                            <CheckCircle2 className="h-4 w-4 mr-2" />
-                            Oznacz jako gotowe
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditDialog(task)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edytuj tytuł
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDeleteTask(task.id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Usuń
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                  {/* Expanded content */}
-                  {expandedTaskId === task.id && (
-                    <div className="px-4 pb-4 space-y-4 border-t pt-4 bg-muted/30">
-                      {/* Description */}
-                      <div>
-                        <Label className="text-sm font-medium mb-2 block">Opis</Label>
-                        <EditableDescription
-                          taskId={task.id}
-                          initialValue={task.description}
-                          onSaved={() => mutate()}
-                          placeholder="Dodaj opis zadania..."
-                          rows={3}
-                        />
-                      </div>
-
-                      {/* Subtasks / Checklist */}
-                      <div>
-                        <Label className="text-sm font-medium mb-2 block">Lista kontrolna</Label>
-                        <SubtaskList
-                          taskId={task.id}
-                          subtasks={task.subtasks || []}
-                          onSubtasksChange={(newSubtasks) => handleSubtasksChange(task.id, newSubtasks)}
-                        />
-                      </div>
-                    </div>
+              {(!stackData?.otherTasks || stackData.otherTasks.length === 0) ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  {totalTasks === 0 ? (
+                    <>
+                      <Layers className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p className="font-medium">Stos jest pusty</p>
+                      <p className="text-sm">Nie masz żadnych nieprzydzielonych zadań</p>
+                    </>
+                  ) : (
+                    <p className="text-sm">Brak innych zadań do zaplanowania</p>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+              ) : (
+                <div className="space-y-3">
+                  {stackData.otherTasks.map((task) => (
+                    <div key={task.id}>
+                      {renderTaskItem(task)}
+                      {/* Show goal badge for tasks from non-active sprint goals */}
+                      {task.goal && (
+                        <div className="ml-4 mt-1">
+                          <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs">
+                            <Target className="h-3 w-3 mr-1" />
+                            Z celu: {task.goal.title}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
