@@ -31,6 +31,7 @@ import {
   Building2,
   Layers,
   Lightbulb,
+  Flag,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -150,6 +151,14 @@ export function SidebarContent() {
     fetcher
   )
   const taskStackCount = taskStackTasks.length
+
+  // Fetch admin reports count (only for admins)
+  const isAdminUser = session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN"
+  const { data: adminReports = [] } = useSWR<Array<{ id: string; status: string }>>(
+    isAdminUser ? "/api/admin/reports" : null,
+    fetcher
+  )
+  const newReportsCount = adminReports.filter(r => r.status === "NEW").length
 
   // Fetch user's organizations
   const { data: orgsData, isLoading: isLoadingOrgs } = useSWR<OrganizationsResponse>(
@@ -360,20 +369,39 @@ export function SidebarContent() {
             {item.label}
           </Link>
         ))}
-        {/* Admin link - only visible for admins */}
-        {(session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN") && (
-          <Link
-            href="/admin"
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive("/admin")
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            <ShieldCheck className="h-5 w-5" />
-            Admin
-          </Link>
+        {/* Admin links - only visible for admins */}
+        {isAdminUser && (
+          <>
+            <Link
+              href="/admin"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <ShieldCheck className="h-5 w-5" />
+              Admin
+            </Link>
+            <Link
+              href="/admin/reports"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/reports"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <Flag className="h-5 w-5" />
+              <span className="flex-1">Zgłoszenia</span>
+              {newReportsCount > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                  {newReportsCount}
+                </span>
+              )}
+            </Link>
+          </>
         )}
       </nav>
 
