@@ -55,10 +55,11 @@ export async function GET(
     }
 
     // Get ALL tasks for this goal (both scheduled and unscheduled)
+    // Don't filter by userId - tasks may be created by admin for employee's goal
+    // canAccessGoal already verified the user has permission to view this goal
     const tasks = await prisma.task.findMany({
       where: {
         goalId,
-        userId: goal.userId,
       },
       include: {
         category: true,
