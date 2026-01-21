@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  Target,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -74,6 +75,10 @@ interface Task {
   organization?: {
     id: string
     name: string
+  }
+  goal?: {
+    id: string
+    title: string
   }
   subtasks?: Subtask[]
 }
@@ -346,6 +351,12 @@ export default function TaskStackPage() {
                         {task.subtasks && task.subtasks.length > 0 && (
                           <SubtaskProgress subtasks={task.subtasks} />
                         )}
+                        {task.goal && (
+                          <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            <Target className="h-3 w-3 mr-1" />
+                            {task.goal.title}
+                          </Badge>
+                        )}
                       </div>
 
                       {task.description && expandedTaskId !== task.id && (
@@ -513,6 +524,12 @@ export default function TaskStackPage() {
                             {task.priority > 0 && (
                               <Badge className={priorityLabels[task.priority].color}>
                                 {priorityLabels[task.priority].label}
+                              </Badge>
+                            )}
+                            {task.goal && (
+                              <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                <Target className="h-3 w-3 mr-1" />
+                                {task.goal.title}
                               </Badge>
                             )}
                           </div>

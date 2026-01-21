@@ -102,6 +102,7 @@ export async function POST(
     }
 
     // Create task linked to the goal (owned by goal owner)
+    // Set assignedToId so it appears in goal owner's task-stack
     const task = await prisma.task.create({
       data: {
         title: title.trim(),
@@ -110,6 +111,7 @@ export async function POST(
         status: "NEW",
         priority: 0,
         userId: goal.userId,
+        assignedToId: goal.userId, // Appears in task-stack for scheduling
         goalId,
         categoryId: goal.categoryId,
         workspaceType: goal.category?.workspaceType || "WORK",

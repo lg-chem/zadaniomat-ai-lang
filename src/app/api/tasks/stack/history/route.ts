@@ -29,6 +29,7 @@ export async function GET(req: Request) {
         category: { select: { id: true, name: true, color: true } },
         user: { select: { id: true, name: true, email: true } }, // Task creator
         organization: { select: { id: true, name: true } },
+        goal: { select: { id: true, title: true } }, // Goal if task is from a goal
         subtasks: { orderBy: { order: "asc" } }
       },
       orderBy: { updatedAt: "desc" },
