@@ -13,10 +13,10 @@ export function DashboardClient({ children }: DashboardClientProps) {
   // Prefetch common data in background when dashboard loads
   usePrefetchData()
 
-  const handleTimerComplete = useCallback(async (taskId: string, durationSeconds: number) => {
-    // durationSeconds is the TOTAL elapsed time (accumulated across all sessions)
-    // Round only once at final save
-    const durationMinutes = Math.ceil(durationSeconds / 60)
+  const handleTimerComplete = useCallback(async (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => {
+    // sessionDurationSeconds = time worked in THIS session only
+    // durationSeconds = total elapsed across all timer sessions in this chain
+    const sessionMinutes = Math.ceil(sessionDurationSeconds / 60)
 
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -24,19 +24,19 @@ export function DashboardClient({ children }: DashboardClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
-          actualMinutes: durationMinutes,
+          actualMinutesIncrement: sessionMinutes,
           completedAt: new Date().toISOString(),
         }),
       })
 
-      // Save time entry
-      if (durationMinutes > 0) {
+      // Save time entry for this session only
+      if (sessionMinutes > 0) {
         await fetch("/api/time-entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             taskId,
-            duration: durationMinutes,
+            duration: sessionMinutes,
           }),
         })
       }
@@ -48,29 +48,28 @@ export function DashboardClient({ children }: DashboardClientProps) {
     }
   }, [])
 
-  const handleTimerStop = useCallback(async (taskId: string, durationSeconds: number) => {
-    // durationSeconds is the TOTAL elapsed time (accumulated across all sessions)
-    // Round only once and save to actualMinutes
-    const durationMinutes = Math.ceil(durationSeconds / 60)
+  const handleTimerStop = useCallback(async (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => {
+    // sessionDurationSeconds = time worked in THIS session only
+    const sessionMinutes = Math.ceil(sessionDurationSeconds / 60)
 
     try {
-      // Update actualMinutes with total time (not adding to existing!)
+      // Increment actualMinutes by session time (not overwrite!)
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          actualMinutes: durationMinutes,
+          actualMinutesIncrement: sessionMinutes,
         }),
       })
 
-      // Save time entry for this session
-      if (durationMinutes > 0) {
+      // Save time entry for this session only
+      if (sessionMinutes > 0) {
         await fetch("/api/time-entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             taskId,
-            duration: durationMinutes,
+            duration: sessionMinutes,
           }),
         })
       }

@@ -27,6 +27,7 @@ interface TimerState {
   // Session tracking
   sessionStartTime: Date | null
   accumulatedSeconds: number  // Czas zapisany przed pauzą
+  sessionStartElapsed: number // elapsedSeconds at the moment timer was started (to calculate session-only duration)
 
   // Notification state
   isTimeUp: boolean           // Czy czas się skończył
@@ -51,8 +52,8 @@ interface TimerState {
   pauseTimer: () => void
   resumeTimer: () => void
   extendTimer: (minutes: number) => void
-  stopTimer: () => { taskId: string; durationSeconds: number } | null
-  completeTask: () => { taskId: string; durationSeconds: number } | null
+  stopTimer: () => { taskId: string; durationSeconds: number; sessionDurationSeconds: number } | null
+  completeTask: () => { taskId: string; durationSeconds: number; sessionDurationSeconds: number } | null
   tick: () => void
   dismissNotification: () => void
   reset: () => void
@@ -189,6 +190,7 @@ export const useTimerStore = create<TimerState>()(
       remainingSeconds: 0,
       sessionStartTime: null,
       accumulatedSeconds: 0,
+      sessionStartElapsed: 0,
       isTimeUp: false,
       showNotification: false,
       taskTimeStates: {},
@@ -237,6 +239,7 @@ export const useTimerStore = create<TimerState>()(
           remainingSeconds: initialRemaining,
           sessionStartTime: new Date(),
           accumulatedSeconds: initialElapsed,
+          sessionStartElapsed: initialElapsed,
           isTimeUp: false,
           showNotification: false,
           pendingStart: null,
@@ -292,6 +295,7 @@ export const useTimerStore = create<TimerState>()(
           remainingSeconds: additionalSeconds,
           sessionStartTime: new Date(),
           accumulatedSeconds: previousElapsed,
+          sessionStartElapsed: previousElapsed,
           isTimeUp: false,
           showNotification: false,
           pendingStart: null,
@@ -322,11 +326,11 @@ export const useTimerStore = create<TimerState>()(
       },
 
       pauseTimer: () => {
-        const { isRunning, isPaused, elapsedSeconds, accumulatedSeconds } = get()
+        const { isRunning, isPaused, elapsedSeconds } = get()
         if (isRunning && !isPaused) {
           const newState = {
             isPaused: true,
-            accumulatedSeconds: accumulatedSeconds + (elapsedSeconds - accumulatedSeconds),
+            accumulatedSeconds: elapsedSeconds,
             sessionStartTime: null,
           }
           set(newState)
@@ -377,7 +381,7 @@ export const useTimerStore = create<TimerState>()(
       },
 
       stopTimer: () => {
-        const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates, isStopping } = get()
+        const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates, isStopping, sessionStartElapsed } = get()
 
         // Race condition protection - prevent multiple simultaneous stops
         if (!isRunning || !taskId || isStopping) return null
@@ -385,15 +389,19 @@ export const useTimerStore = create<TimerState>()(
         // Set flag immediately to prevent race conditions
         set({ isStopping: true })
 
-        // Return seconds - rounding should happen only once at final save
+        // durationSeconds = total elapsed across all sessions in this chain
+        // sessionDurationSeconds = only time worked in THIS session (since last start)
         const durationSeconds = elapsedSeconds
+        const sessionDurationSeconds = elapsedSeconds - sessionStartElapsed
         const stoppedTaskId = taskId
 
         console.log('[stopTimer] Saving state:', {
           taskId,
           elapsedSeconds,
           remainingSeconds,
-          durationSeconds
+          durationSeconds,
+          sessionDurationSeconds,
+          sessionStartElapsed,
         })
 
         // Save state for this task so we can resume later
@@ -416,6 +424,7 @@ export const useTimerStore = create<TimerState>()(
           remainingSeconds: 0,
           sessionStartTime: null,
           accumulatedSeconds: 0,
+          sessionStartElapsed: 0,
           isTimeUp: false,
           showNotification: false,
           taskTimeStates: newTaskTimeStates,
@@ -425,24 +434,26 @@ export const useTimerStore = create<TimerState>()(
         set(newState)
         broadcastState(newState)
 
-        return { taskId: stoppedTaskId, durationSeconds }
+        return { taskId: stoppedTaskId, durationSeconds, sessionDurationSeconds }
       },
 
       completeTask: () => {
-        const { taskId, taskTimeStates, isStopping } = get()
+        const { taskId, isStopping } = get()
 
         // Race condition protection
-        if (isStopping) return null
+        if (isStopping || !taskId) return null
+
+        // Capture taskId before stopTimer clears it
+        const completedTaskId = taskId
 
         const result = get().stopTimer()
 
         // Clear saved state for completed task (no need to resume)
-        if (taskId) {
-          const newTaskTimeStates = { ...get().taskTimeStates }
-          delete newTaskTimeStates[taskId]
-          set({ taskTimeStates: newTaskTimeStates })
-          broadcastState({ taskTimeStates: newTaskTimeStates })
-        }
+        // stopTimer already added to taskTimeStates, so remove it
+        const newTaskTimeStates = { ...get().taskTimeStates }
+        delete newTaskTimeStates[completedTaskId]
+        set({ taskTimeStates: newTaskTimeStates })
+        broadcastState({ taskTimeStates: newTaskTimeStates })
 
         return result
       },
@@ -454,7 +465,13 @@ export const useTimerStore = create<TimerState>()(
 
         // Calculate real elapsed time based on wall clock (not setInterval ticks)
         const now = new Date()
-        const sessionSeconds = Math.floor((now.getTime() - new Date(sessionStartTime).getTime()) / 1000)
+        const startTime = sessionStartTime instanceof Date ? sessionStartTime : new Date(sessionStartTime)
+        if (isNaN(startTime.getTime())) {
+          // Invalid sessionStartTime (corrupted localStorage) - reset it
+          set({ sessionStartTime: new Date(), accumulatedSeconds: get().elapsedSeconds })
+          return
+        }
+        const sessionSeconds = Math.floor((now.getTime() - startTime.getTime()) / 1000)
         const newElapsedSeconds = accumulatedSeconds + sessionSeconds
 
         if (mode === 'countdown') {
@@ -500,7 +517,8 @@ export const useTimerStore = create<TimerState>()(
       },
 
       dismissNotification: () => {
-        set({ showNotification: false })
+        // Reset isTimeUp too, so the user can resume the timer via the widget
+        set({ showNotification: false, isTimeUp: false })
       },
 
       reset: () =>
@@ -515,14 +533,18 @@ export const useTimerStore = create<TimerState>()(
           remainingSeconds: 0,
           sessionStartTime: null,
           accumulatedSeconds: 0,
+          sessionStartElapsed: 0,
           isTimeUp: false,
           showNotification: false,
           isStopping: false,
         }),
 
-      // Cross-tab synchronization
+      // Cross-tab synchronization - merge carefully instead of blind overwrite
       syncFromBroadcast: (state) => {
         console.log('[syncFromBroadcast] Received state update:', state)
+        const current = get()
+        // Don't accept broadcast while we're in the middle of stopping
+        if (current.isStopping) return
         set(state)
       },
     }),
@@ -541,8 +563,11 @@ export const useTimerStore = create<TimerState>()(
         elapsedSeconds: state.elapsedSeconds,
         remainingSeconds: state.remainingSeconds,
         accumulatedSeconds: state.accumulatedSeconds,
+        sessionStartElapsed: state.sessionStartElapsed,
         isTimeUp: state.isTimeUp,
         taskTimeStates: state.taskTimeStates,
+        // Persist sessionStartTime as ISO string so timer survives page refresh
+        sessionStartTime: state.sessionStartTime ? (state.sessionStartTime instanceof Date ? state.sessionStartTime.toISOString() : state.sessionStartTime) : null,
       }),
     }
   )

@@ -131,8 +131,9 @@ export default function SchedulePage() {
   // Helper to get real-time actual minutes for a task (includes running timer)
   const getActualMinutes = (task: Task) => {
     if (timerStore.taskId === task.id && timerStore.isRunning) {
-      // Timer is running for this task - show real-time value
-      return (task.actualMinutes || 0) + Math.floor(timerStore.elapsedSeconds / 60)
+      // sessionDuration = only the time worked in the current session (not accumulated from previous stops)
+      const sessionDuration = timerStore.elapsedSeconds - (timerStore.sessionStartElapsed || 0)
+      return (task.actualMinutes || 0) + Math.ceil(sessionDuration / 60)
     }
     return task.actualMinutes || 0
   }
@@ -687,6 +688,22 @@ export default function SchedulePage() {
     }
   }
 
+  // Save time for a stopped timer session
+  const saveStoppedTimerTime = async (taskId: string, sessionDurationSeconds: number) => {
+    const sessionMinutes = Math.ceil(sessionDurationSeconds / 60)
+    if (sessionMinutes <= 0) return
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actualMinutesIncrement: sessionMinutes }),
+      })
+      mutateTasks()
+    } catch (error) {
+      console.error("Error saving stopped timer time:", error)
+    }
+  }
+
   // Timer toggle (play/pause/resume)
   const handleTimerToggle = (task: Task) => {
     if (timerStore.taskId === task.id) {
@@ -697,6 +714,13 @@ export default function SchedulePage() {
         timerStore.pauseTimer()
       }
     } else {
+      // Stop previous timer first to save its time
+      if (timerStore.isRunning && timerStore.taskId) {
+        const result = timerStore.stopTimer()
+        if (result) {
+          saveStoppedTimerTime(result.taskId, result.sessionDurationSeconds)
+        }
+      }
       // Start new timer for this task
       timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
       handleUpdateTaskStatus(task.id, "IN_PROGRESS")

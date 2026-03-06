@@ -33,10 +33,10 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
 
   const handleStart = () => {
     if (isRunning && activeTaskId !== taskId) {
-      // Stop current timer first
+      // Stop current timer first and notify parent (fire-and-forget for API save)
       const result = stopTimer()
       if (result && onStop) {
-        onStop(result.durationSeconds)
+        onStop(result.sessionDurationSeconds)
       }
     }
     startTimer(taskId, taskTitle || "Zadanie", plannedMinutes)
@@ -53,7 +53,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
   const handleStop = () => {
     const result = stopTimer()
     if (result && onStop) {
-      onStop(result.durationSeconds)
+      onStop(result.sessionDurationSeconds)
     }
   }
 

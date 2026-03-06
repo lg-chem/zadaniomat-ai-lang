@@ -16,8 +16,8 @@ import {
 import { useTimerStore, formatTime, useTimerHydration } from "@/stores/timer-store"
 
 interface FloatingTimerProps {
-  onComplete?: (taskId: string, durationSeconds: number) => void
-  onStop?: (taskId: string, durationSeconds: number) => void
+  onComplete?: (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => void
+  onStop?: (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => void
 }
 
 export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
@@ -77,7 +77,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   const handleStop = () => {
     const result = stopTimer()
     if (result && onStop) {
-      onStop(result.taskId, result.durationSeconds)
+      onStop(result.taskId, result.durationSeconds, result.sessionDurationSeconds)
     }
   }
 
@@ -85,7 +85,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   const handleComplete = () => {
     const result = completeTask()
     if (result && onComplete) {
-      onComplete(result.taskId, result.durationSeconds)
+      onComplete(result.taskId, result.durationSeconds, result.sessionDurationSeconds)
     }
   }
 
