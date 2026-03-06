@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect } from "react"
 import { Play, Pause, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTimerStore, formatTime } from "@/stores/timer-store"
@@ -10,7 +9,7 @@ interface TaskTimerProps {
   taskId: string
   taskTitle?: string
   plannedMinutes?: number
-  onStop?: (duration: number) => void
+  onStop?: (elapsedSeconds: number, baseActualMinutes: number) => void
   compact?: boolean
 }
 
@@ -24,19 +23,15 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
     pauseTimer,
     resumeTimer,
     stopTimer,
-    tick,
   } = useTimerStore()
 
   const isActive = activeTaskId === taskId
 
-  // Note: Timer tick is handled by FloatingTimer only to avoid double counting
-
   const handleStart = () => {
     if (isRunning && activeTaskId !== taskId) {
-      // Stop current timer first and notify parent (fire-and-forget for API save)
       const result = stopTimer()
       if (result && onStop) {
-        onStop(result.sessionDurationSeconds)
+        onStop(result.elapsedSeconds, result.baseActualMinutes)
       }
     }
     startTimer(taskId, taskTitle || "Zadanie", plannedMinutes)
@@ -53,7 +48,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
   const handleStop = () => {
     const result = stopTimer()
     if (result && onStop) {
-      onStop(result.sessionDurationSeconds)
+      onStop(result.elapsedSeconds, result.baseActualMinutes)
     }
   }
 

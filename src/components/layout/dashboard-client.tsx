@@ -10,13 +10,16 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ children }: DashboardClientProps) {
-  // Prefetch common data in background when dashboard loads
   usePrefetchData()
 
-  const handleTimerComplete = useCallback(async (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => {
-    // sessionDurationSeconds = time worked in THIS session only
-    // durationSeconds = total elapsed across all timer sessions in this chain
-    const sessionMinutes = Math.ceil(sessionDurationSeconds / 60)
+  // Calculate total actualMinutes: base (from before timer) + timer elapsed
+  // One ceil at the end → no rounding inflation
+  const calcActualMinutes = (elapsedSeconds: number, baseActualMinutes: number) =>
+    baseActualMinutes + Math.ceil(elapsedSeconds / 60)
+
+  const handleTimerComplete = useCallback(async (taskId: string, elapsedSeconds: number, baseActualMinutes: number) => {
+    const actualMinutes = calcActualMinutes(elapsedSeconds, baseActualMinutes)
+    const durationMinutes = Math.ceil(elapsedSeconds / 60)
 
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -24,57 +27,45 @@ export function DashboardClient({ children }: DashboardClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
-          actualMinutesIncrement: sessionMinutes,
+          actualMinutes,
           completedAt: new Date().toISOString(),
         }),
       })
 
-      // Save time entry for this session only
-      if (sessionMinutes > 0) {
+      if (durationMinutes > 0) {
         await fetch("/api/time-entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            taskId,
-            duration: sessionMinutes,
-          }),
+          body: JSON.stringify({ taskId, duration: durationMinutes }),
         })
       }
 
-      // Refresh tasks data so UI updates immediately
       mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
     } catch (error) {
       console.error("Error completing task:", error)
     }
   }, [])
 
-  const handleTimerStop = useCallback(async (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => {
-    // sessionDurationSeconds = time worked in THIS session only
-    const sessionMinutes = Math.ceil(sessionDurationSeconds / 60)
+  const handleTimerStop = useCallback(async (taskId: string, elapsedSeconds: number, baseActualMinutes: number) => {
+    const actualMinutes = calcActualMinutes(elapsedSeconds, baseActualMinutes)
+    const durationMinutes = Math.ceil(elapsedSeconds / 60)
 
     try {
-      // Increment actualMinutes by session time (not overwrite!)
+      // Overwrite actualMinutes with correct total (base + elapsed)
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actualMinutesIncrement: sessionMinutes,
-        }),
+        body: JSON.stringify({ actualMinutes }),
       })
 
-      // Save time entry for this session only
-      if (sessionMinutes > 0) {
+      if (durationMinutes > 0) {
         await fetch("/api/time-entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            taskId,
-            duration: sessionMinutes,
-          }),
+          body: JSON.stringify({ taskId, duration: durationMinutes }),
         })
       }
 
-      // Refresh tasks data so UI updates immediately
       mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
     } catch (error) {
       console.error("Error saving time:", error)

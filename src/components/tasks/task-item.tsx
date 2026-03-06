@@ -139,7 +139,7 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
           <TaskTimer
             taskId={task.id}
             compact
-            onStop={(duration) => onTimeAdd(task.id, duration)}
+            onStop={(elapsedSeconds, baseActualMinutes) => onTimeAdd(task.id, baseActualMinutes + Math.ceil(elapsedSeconds / 60))}
           />
         )}
 

@@ -16,12 +16,11 @@ import {
 import { useTimerStore, formatTime, useTimerHydration } from "@/stores/timer-store"
 
 interface FloatingTimerProps {
-  onComplete?: (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => void
-  onStop?: (taskId: string, durationSeconds: number, sessionDurationSeconds: number) => void
+  onComplete?: (taskId: string, elapsedSeconds: number, baseActualMinutes: number) => void
+  onStop?: (taskId: string, elapsedSeconds: number, baseActualMinutes: number) => void
 }
 
 export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
-  // Wait for hydration to prevent timer flash on page load
   const isHydrated = useTimerHydration()
 
   const {
@@ -51,19 +50,14 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     setPosition,
   } = useTimerStore()
 
-  // Timer tick effect - only tick when running and not paused
+  // Timer tick effect
   useEffect(() => {
     if (!isRunning || isPaused) return
 
-    const interval = setInterval(() => {
-      tick()
-    }, 1000)
+    const interval = setInterval(() => tick(), 1000)
 
-    // Immediately sync when tab becomes visible again (browser throttles setInterval in background)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        tick()
-      }
+      if (document.visibilityState === 'visible') tick()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
@@ -73,31 +67,23 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     }
   }, [isRunning, isPaused, tick])
 
-  // Handle stop
   const handleStop = () => {
     const result = stopTimer()
     if (result && onStop) {
-      onStop(result.taskId, result.durationSeconds, result.sessionDurationSeconds)
+      onStop(result.taskId, result.elapsedSeconds, result.baseActualMinutes)
     }
   }
 
-  // Handle complete
   const handleComplete = () => {
     const result = completeTask()
     if (result && onComplete) {
-      onComplete(result.taskId, result.durationSeconds, result.sessionDurationSeconds)
+      onComplete(result.taskId, result.elapsedSeconds, result.baseActualMinutes)
     }
   }
 
-  // Handle extend
   const handleExtend = (minutes: number) => {
     extendTimer(minutes)
     dismissNotification()
-  }
-
-  // Handle pending start confirmation
-  const handleConfirmPendingStart = (minutes: number) => {
-    confirmPendingStart(minutes)
   }
 
   // Drag functionality
@@ -120,7 +106,6 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     if (!isDragging.current) return
     const newX = e.clientX - dragOffset.current.x
     const newY = e.clientY - dragOffset.current.y
-    // Clamp to viewport
     const maxX = window.innerWidth - (cardRef.current?.offsetWidth || 280)
     const maxY = window.innerHeight - (cardRef.current?.offsetHeight || 200)
     setPosition({
@@ -133,7 +118,6 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     isDragging.current = false
   }, [])
 
-  // Add/remove global mouse event listeners for drag
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
@@ -143,7 +127,6 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     }
   }, [handleMouseMove, handleMouseUp])
 
-  // Calculate position style
   const positionStyle = position
     ? { left: position.x, top: position.y, right: 'auto' }
     : { top: '5rem', right: '1rem' }
@@ -169,30 +152,17 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
 
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handleConfirmPendingStart(5)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">5 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleConfirmPendingStart(15)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">15 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleConfirmPendingStart(30)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">30 min</span>
-              </Button>
+              {[5, 15, 30].map((m) => (
+                <Button
+                  key={m}
+                  variant="outline"
+                  onClick={() => confirmPendingStart(m)}
+                  className="flex flex-col h-auto py-3"
+                >
+                  <Plus className="h-4 w-4 mb-1" />
+                  <span className="text-sm">{m} min</span>
+                </Button>
+              ))}
             </div>
           </div>
 
@@ -206,22 +176,17 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     )
   }
 
-  // Don't render until hydration is complete and timer is actually running
   if (!isHydrated || !isRunning) return null
 
-  // Calculate progress percentage
   const progress = mode === 'countdown' && plannedSeconds > 0
     ? ((plannedSeconds - remainingSeconds) / plannedSeconds) * 100
     : 0
 
-  // Display time based on mode
   const displayTime = mode === 'countdown' ? remainingSeconds : elapsedSeconds
 
   return (
     <>
-      {/* Floating Timer Widget */}
       {isMinimized ? (
-        // Minimized view - compact timer
         <Card
           ref={cardRef}
           className="fixed z-50 p-2 shadow-lg bg-background/95 backdrop-blur"
@@ -254,14 +219,12 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
           </div>
         </Card>
       ) : (
-        // Full view
         <Card
           ref={cardRef}
           className="fixed z-50 p-4 shadow-lg min-w-[280px] bg-background/95 backdrop-blur"
           style={positionStyle}
         >
           <div className="space-y-3">
-            {/* Header with drag handle, title and minimize button */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1">
                 <div
@@ -280,7 +243,6 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
               </Button>
             </div>
 
-            {/* Timer display */}
             <div className="text-center">
               <span className={`text-3xl font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
                 {formatTime(displayTime)}
@@ -292,17 +254,14 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
               )}
             </div>
 
-            {/* Progress bar (only for countdown) */}
             {mode === 'countdown' && plannedSeconds > 0 && (
               <Progress value={progress} className="h-2" />
             )}
 
-            {/* Elapsed time info */}
             <div className="text-xs text-muted-foreground text-center">
               Przepracowano: {formatTime(elapsedSeconds)}
             </div>
 
-            {/* Controls */}
             <div className="flex items-center justify-center gap-2">
               {isPaused && !isTimeUp ? (
                 <Button size="sm" onClick={resumeTimer} className="flex-1">
@@ -328,7 +287,7 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
         </Card>
       )}
 
-      {/* Time Up Notification Dialog */}
+      {/* Time Up Dialog */}
       <Dialog open={showNotification} onOpenChange={dismissNotification}>
         <DialogContent>
           <DialogHeader>
@@ -344,36 +303,19 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Co chcesz zrobić?
-            </p>
-
-            {/* Extension options */}
+            <p className="text-sm text-muted-foreground">Co chcesz zrobić?</p>
             <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handleExtend(5)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">+5 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleExtend(15)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">+15 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleExtend(30)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">+30 min</span>
-              </Button>
+              {[5, 15, 30].map((m) => (
+                <Button
+                  key={m}
+                  variant="outline"
+                  onClick={() => handleExtend(m)}
+                  className="flex flex-col h-auto py-3"
+                >
+                  <Plus className="h-4 w-4 mb-1" />
+                  <span className="text-sm">+{m} min</span>
+                </Button>
+              ))}
             </div>
           </div>
 

@@ -2,41 +2,51 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useEffect, useState } from 'react'
 
+// ─── Types ──────────────────────────────────────────────────────────────────────
+
 export type TimerMode = 'countdown' | 'stopwatch'
 
-interface TaskTimeState {
-  remainingSeconds: number
+interface SavedTaskTime {
   elapsedSeconds: number
+  remainingSeconds: number
 }
 
 interface TimerState {
-  // Core state
-  isRunning: boolean
-  isPaused: boolean
-  isMinimized: boolean
-  position: { x: number; y: number } | null  // null = default position (top-right)
+  // What task is being timed
   taskId: string | null
   taskTitle: string | null
 
-  // Time tracking
+  // Timer lifecycle
+  isRunning: boolean
+  isPaused: boolean
+  isStopping: boolean
+
+  // Timer config
   mode: TimerMode
-  plannedSeconds: number      // Planowany czas w sekundach
-  elapsedSeconds: number      // Całkowity czas, który upłynął
-  remainingSeconds: number    // Pozostały czas (dla countdown)
+  plannedSeconds: number
 
-  // Session tracking
-  sessionStartTime: Date | null
-  accumulatedSeconds: number  // Czas zapisany przed pauzą
-  sessionStartElapsed: number // elapsedSeconds at the moment timer was started (to calculate session-only duration)
+  // ── Time tracking (all in seconds) ──
+  // The ONLY source of truth for elapsed time:
+  //   when running: frozenElapsed + floor((Date.now() - startedAt) / 1000)
+  //   when paused:  frozenElapsed
+  //   when stopped: 0
+  startedAt: number | null     // Date.now() timestamp, null when paused/stopped
+  frozenElapsed: number        // Seconds banked from before current run segment
+  elapsedSeconds: number       // Computed on each tick (for UI reactivity)
+  remainingSeconds: number     // plannedSeconds - elapsedSeconds (countdown only)
 
-  // Notification state
-  isTimeUp: boolean           // Czy czas się skończył
-  showNotification: boolean   // Czy pokazać powiadomienie
+  // How much actualMinutes the task had BEFORE this timer chain started.
+  // Used to calculate correct total: baseActualMinutes + ceil(elapsed/60)
+  baseActualMinutes: number
 
-  // Per-task time tracking (remembers where user left off)
-  taskTimeStates: Record<string, TaskTimeState>
+  // Notification
+  isTimeUp: boolean
+  showNotification: boolean
 
-  // Pending start (when we need to show extend dialog first)
+  // Per-task saved time (for stop → resume later)
+  taskTimeStates: Record<string, SavedTaskTime>
+
+  // Dialog: task exceeded planned time, ask for extension
   pendingStart: {
     taskId: string
     taskTitle: string
@@ -44,31 +54,37 @@ interface TimerState {
     alreadyWorkedMinutes: number
   } | null
 
-  // Race condition protection
-  isStopping: boolean
+  // UI
+  isMinimized: boolean
+  position: { x: number; y: number } | null
 
-  // Actions
+  // ── Actions ──
   startTimer: (taskId: string, taskTitle: string, plannedMinutes?: number, alreadyWorkedMinutes?: number) => void
   pauseTimer: () => void
   resumeTimer: () => void
   extendTimer: (minutes: number) => void
-  stopTimer: () => { taskId: string; durationSeconds: number; sessionDurationSeconds: number } | null
-  completeTask: () => { taskId: string; durationSeconds: number; sessionDurationSeconds: number } | null
+  stopTimer: () => StopResult | null
+  completeTask: () => StopResult | null
   tick: () => void
   dismissNotification: () => void
   reset: () => void
-  // New actions
   setPendingStart: (taskId: string, taskTitle: string, plannedMinutes: number, alreadyWorkedMinutes: number) => void
   confirmPendingStart: (additionalMinutes: number) => void
   cancelPendingStart: () => void
   clearTaskTimeState: (taskId: string) => void
   toggleMinimize: () => void
   setPosition: (position: { x: number; y: number } | null) => void
-  // Cross-tab sync
   syncFromBroadcast: (state: Partial<TimerState>) => void
 }
 
-// BroadcastChannel for cross-tab synchronization
+interface StopResult {
+  taskId: string
+  elapsedSeconds: number      // Total elapsed in this timer chain
+  baseActualMinutes: number   // What actualMinutes was before timer started
+}
+
+// ─── BroadcastChannel ───────────────────────────────────────────────────────────
+
 let broadcastChannel: BroadcastChannel | null = null
 
 const getBroadcastChannel = () => {
@@ -79,205 +95,143 @@ const getBroadcastChannel = () => {
   return broadcastChannel
 }
 
-const broadcastState = (state: Partial<TimerState>) => {
+const broadcast = (state: Partial<TimerState>) => {
   const channel = getBroadcastChannel()
   if (channel) {
     channel.postMessage({ type: 'TIMER_STATE_UPDATE', state })
   }
 }
 
-// Helper to request notification permission
+// ─── Notification helpers ───────────────────────────────────────────────────────
+
 const requestNotificationPermission = async () => {
   if ('Notification' in window && Notification.permission === 'default') {
     await Notification.requestPermission()
   }
 }
 
-// Helper to play notification sound
 const playNotificationSound = () => {
   if (typeof window === 'undefined') return
-
   try {
-    // Create audio context for notification sound
-    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-
-    // Create oscillator for beep sound
-    const oscillator = audioContext.createOscillator()
-    const gainNode = audioContext.createGain()
-
-    oscillator.connect(gainNode)
-    gainNode.connect(audioContext.destination)
-
-    // Configure sound - pleasant alert tone
-    oscillator.frequency.value = 880 // A5 note
-    oscillator.type = 'sine'
-
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
-
-    oscillator.start(audioContext.currentTime)
-    oscillator.stop(audioContext.currentTime + 0.5)
-
-    // Play 3 beeps
-    setTimeout(() => {
-      const osc2 = audioContext.createOscillator()
-      const gain2 = audioContext.createGain()
-      osc2.connect(gain2)
-      gain2.connect(audioContext.destination)
-      osc2.frequency.value = 880
-      osc2.type = 'sine'
-      gain2.gain.setValueAtTime(0.3, audioContext.currentTime)
-      gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
-      osc2.start(audioContext.currentTime)
-      osc2.stop(audioContext.currentTime + 0.5)
-    }, 600)
-
-    setTimeout(() => {
-      const osc3 = audioContext.createOscillator()
-      const gain3 = audioContext.createGain()
-      osc3.connect(gain3)
-      gain3.connect(audioContext.destination)
-      osc3.frequency.value = 1047 // C6 note - higher for attention
-      osc3.type = 'sine'
-      gain3.gain.setValueAtTime(0.3, audioContext.currentTime)
-      gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.7)
-      osc3.start(audioContext.currentTime)
-      osc3.stop(audioContext.currentTime + 0.7)
-    }, 1200)
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const beep = (freq: number, delay: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = freq
+      osc.type = 'sine'
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + delay)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + duration)
+      osc.start(ctx.currentTime + delay)
+      osc.stop(ctx.currentTime + delay + duration)
+    }
+    beep(880, 0, 0.5)
+    beep(880, 0.6, 0.5)
+    beep(1047, 1.2, 0.7)
   } catch (e) {
     console.warn('Could not play notification sound:', e)
   }
 }
 
-// Helper to show browser notification
-const showBrowserNotification = (title: string, body: string) => {
+const notifyTimeUp = (taskTitle: string) => {
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, {
-      body,
+    new Notification('⏰ Czas minął!', {
+      body: `Zadanie "${taskTitle}" - czas się skończył. Przedłuż lub zakończ.`,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
       tag: 'timer-notification',
       requireInteraction: true,
     })
   }
+  playNotificationSound()
 }
 
-// Combined notification function
-const notifyTimeUp = (taskTitle: string) => {
-  // 1. Browser notification
-  showBrowserNotification(
-    '⏰ Czas minął!',
-    `Zadanie "${taskTitle}" - czas się skończył. Przedłuż lub zakończ.`
-  )
+// ─── Helpers ────────────────────────────────────────────────────────────────────
 
-  // 2. Sound notification
-  playNotificationSound()
+/** Calculate current elapsed from frozen + wall clock */
+const computeElapsed = (frozenElapsed: number, startedAt: number | null): number => {
+  if (!startedAt) return frozenElapsed
+  return frozenElapsed + Math.floor((Date.now() - startedAt) / 1000)
+}
+
+// ─── Store ──────────────────────────────────────────────────────────────────────
+
+const INITIAL_STATE = {
+  taskId: null as string | null,
+  taskTitle: null as string | null,
+  isRunning: false,
+  isPaused: false,
+  isStopping: false,
+  mode: 'countdown' as TimerMode,
+  plannedSeconds: 0,
+  startedAt: null as number | null,
+  frozenElapsed: 0,
+  elapsedSeconds: 0,
+  remainingSeconds: 0,
+  baseActualMinutes: 0,
+  isTimeUp: false,
+  showNotification: false,
+  taskTimeStates: {} as Record<string, SavedTaskTime>,
+  pendingStart: null as TimerState['pendingStart'],
+  isMinimized: false,
+  position: null as { x: number; y: number } | null,
 }
 
 export const useTimerStore = create<TimerState>()(
   persist(
     (set, get) => ({
-      // Initial state
-      isRunning: false,
-      isPaused: false,
-      isMinimized: false,
-      position: null,
-      taskId: null,
-      taskTitle: null,
-      mode: 'countdown',
-      plannedSeconds: 0,
-      elapsedSeconds: 0,
-      remainingSeconds: 0,
-      sessionStartTime: null,
-      accumulatedSeconds: 0,
-      sessionStartElapsed: 0,
-      isTimeUp: false,
-      showNotification: false,
-      taskTimeStates: {},
-      pendingStart: null,
-      isStopping: false,
+      ...INITIAL_STATE,
 
+      // ── Start ─────────────────────────────────────────────────────────────
       startTimer: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes = 0) => {
         requestNotificationPermission()
 
-        const { taskTimeStates } = get()
-        const savedState = taskTimeStates[taskId]
-
-        // Check if task already exceeded planned time
+        // If task already exceeded planned time → ask user for extension
         if (plannedMinutes && alreadyWorkedMinutes >= plannedMinutes) {
-          // Need to ask user how much additional time
-          set({
-            pendingStart: {
-              taskId,
-              taskTitle,
-              plannedMinutes,
-              alreadyWorkedMinutes,
-            }
-          })
+          set({ pendingStart: { taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes } })
           return
         }
 
-        let initialElapsed = 0
-        let initialRemaining = plannedMinutes ? plannedMinutes * 60 : 0
-
-        // If we have saved state for this task, resume from there
-        if (savedState) {
-          initialElapsed = savedState.elapsedSeconds
-          initialRemaining = savedState.remainingSeconds
-        }
-
+        const saved = get().taskTimeStates[taskId]
+        const initialElapsed = saved?.elapsedSeconds || 0
+        const initialRemaining = saved?.remainingSeconds ?? (plannedMinutes ? plannedMinutes * 60 : 0)
         const mode: TimerMode = plannedMinutes ? 'countdown' : 'stopwatch'
 
         const newState = {
           isRunning: true,
           isPaused: false,
+          isStopping: false,
           taskId,
           taskTitle,
           mode,
           plannedSeconds: plannedMinutes ? plannedMinutes * 60 : 0,
+          startedAt: Date.now(),
+          frozenElapsed: initialElapsed,
           elapsedSeconds: initialElapsed,
           remainingSeconds: initialRemaining,
-          sessionStartTime: new Date(),
-          accumulatedSeconds: initialElapsed,
-          sessionStartElapsed: initialElapsed,
+          baseActualMinutes: alreadyWorkedMinutes,
           isTimeUp: false,
           showNotification: false,
           pendingStart: null,
-          isStopping: false,
         }
         set(newState)
-        broadcastState(newState)
+        broadcast(newState)
       },
 
+      // ── Pending start (exceeded planned time) ─────────────────────────────
       setPendingStart: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes) => {
-        set({
-          pendingStart: {
-            taskId,
-            taskTitle,
-            plannedMinutes,
-            alreadyWorkedMinutes,
-          }
-        })
+        set({ pendingStart: { taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes } })
       },
 
       confirmPendingStart: (additionalMinutes) => {
         const { pendingStart, taskTimeStates } = get()
         if (!pendingStart) return
-
         requestNotificationPermission()
 
-        // Check if there's saved state from a previous session (user stopped but didn't complete)
-        const savedState = taskTimeStates[pendingStart.taskId]
-        const previousElapsed = savedState?.elapsedSeconds || 0
+        const saved = taskTimeStates[pendingStart.taskId]
+        const previousElapsed = saved?.elapsedSeconds || 0
         const additionalSeconds = additionalMinutes * 60
-
-        console.log('[confirmPendingStart] State:', {
-          taskId: pendingStart.taskId,
-          savedState,
-          previousElapsed,
-          additionalMinutes,
-          allTaskTimeStates: taskTimeStates
-        })
 
         // Clear saved state since we're resuming
         const newTaskTimeStates = { ...taskTimeStates }
@@ -286,81 +240,67 @@ export const useTimerStore = create<TimerState>()(
         const newState = {
           isRunning: true,
           isPaused: false,
+          isStopping: false,
           taskId: pendingStart.taskId,
           taskTitle: pendingStart.taskTitle,
           mode: 'countdown' as TimerMode,
-          // plannedSeconds = previous elapsed + new time, so tick() calculates remaining correctly
           plannedSeconds: previousElapsed + additionalSeconds,
+          startedAt: Date.now(),
+          frozenElapsed: previousElapsed,
           elapsedSeconds: previousElapsed,
           remainingSeconds: additionalSeconds,
-          sessionStartTime: new Date(),
-          accumulatedSeconds: previousElapsed,
-          sessionStartElapsed: previousElapsed,
+          baseActualMinutes: pendingStart.alreadyWorkedMinutes,
           isTimeUp: false,
           showNotification: false,
           pendingStart: null,
           taskTimeStates: newTaskTimeStates,
-          isStopping: false,
         }
         set(newState)
-        broadcastState(newState)
+        broadcast(newState)
       },
 
-      cancelPendingStart: () => {
-        set({ pendingStart: null })
-      },
+      cancelPendingStart: () => set({ pendingStart: null }),
 
       clearTaskTimeState: (taskId) => {
-        const { taskTimeStates } = get()
-        const newTaskTimeStates = { ...taskTimeStates }
-        delete newTaskTimeStates[taskId]
-        set({ taskTimeStates: newTaskTimeStates })
+        const next = { ...get().taskTimeStates }
+        delete next[taskId]
+        set({ taskTimeStates: next })
       },
 
-      toggleMinimize: () => {
-        set((state) => ({ isMinimized: !state.isMinimized }))
-      },
-
-      setPosition: (position) => {
-        set({ position })
-      },
-
+      // ── Pause / Resume ────────────────────────────────────────────────────
       pauseTimer: () => {
-        const { isRunning, isPaused, elapsedSeconds } = get()
-        if (isRunning && !isPaused) {
-          const newState = {
-            isPaused: true,
-            accumulatedSeconds: elapsedSeconds,
-            sessionStartTime: null,
-          }
-          set(newState)
-          broadcastState(newState)
+        const { isRunning, isPaused, startedAt, frozenElapsed } = get()
+        if (!isRunning || isPaused) return
+
+        // Bank elapsed time and clear wall-clock reference
+        const elapsed = computeElapsed(frozenElapsed, startedAt)
+        const newState = {
+          isPaused: true,
+          startedAt: null as number | null,
+          frozenElapsed: elapsed,
+          elapsedSeconds: elapsed,
         }
+        set(newState)
+        broadcast(newState)
       },
 
       resumeTimer: () => {
         const { isRunning, isPaused, isTimeUp } = get()
-        if (isRunning && isPaused && !isTimeUp) {
-          const newState = {
-            isPaused: false,
-            sessionStartTime: new Date(),
-          }
-          set(newState)
-          broadcastState(newState)
+        if (!isRunning || !isPaused || isTimeUp) return
+
+        const newState = {
+          isPaused: false,
+          startedAt: Date.now(),
         }
+        set(newState)
+        broadcast(newState)
       },
 
+      // ── Extend (after time-up) ────────────────────────────────────────────
       extendTimer: (minutes) => {
-        const { remainingSeconds, elapsedSeconds, accumulatedSeconds: oldAccumulated, plannedSeconds } = get()
+        const { remainingSeconds, plannedSeconds, frozenElapsed, startedAt } = get()
+        const elapsed = computeElapsed(frozenElapsed, startedAt)
         const additionalSeconds = minutes * 60
-
-        console.log('[extendTimer] Before:', {
-          elapsedSeconds,
-          remainingSeconds,
-          oldAccumulated,
-          minutes,
-          additionalSeconds
-        })
 
         const newState = {
           remainingSeconds: remainingSeconds + additionalSeconds,
@@ -368,189 +308,119 @@ export const useTimerStore = create<TimerState>()(
           isTimeUp: false,
           showNotification: false,
           isPaused: false,
-          sessionStartTime: new Date(),
-          accumulatedSeconds: elapsedSeconds, // Sync accumulated with elapsed before resuming
+          startedAt: Date.now(),
+          frozenElapsed: elapsed,
         }
         set(newState)
-        broadcastState(newState)
-
-        console.log('[extendTimer] After:', {
-          newAccumulated: elapsedSeconds,
-          newRemaining: remainingSeconds + additionalSeconds
-        })
+        broadcast(newState)
       },
 
+      // ── Stop (save state, allow resume later) ─────────────────────────────
       stopTimer: () => {
-        const { taskId, elapsedSeconds, remainingSeconds, isRunning, taskTimeStates, isStopping, sessionStartElapsed } = get()
-
-        // Race condition protection - prevent multiple simultaneous stops
+        const { taskId, isRunning, isStopping, frozenElapsed, startedAt, remainingSeconds, taskTimeStates, baseActualMinutes } = get()
         if (!isRunning || !taskId || isStopping) return null
 
-        // Set flag immediately to prevent race conditions
         set({ isStopping: true })
 
-        // durationSeconds = total elapsed across all sessions in this chain
-        // sessionDurationSeconds = only time worked in THIS session (since last start)
-        const durationSeconds = elapsedSeconds
-        const sessionDurationSeconds = elapsedSeconds - sessionStartElapsed
-        const stoppedTaskId = taskId
+        const elapsed = computeElapsed(frozenElapsed, startedAt)
 
-        console.log('[stopTimer] Saving state:', {
-          taskId,
-          elapsedSeconds,
-          remainingSeconds,
-          durationSeconds,
-          sessionDurationSeconds,
-          sessionStartElapsed,
-        })
-
-        // Save state for this task so we can resume later
+        // Save state so user can resume this task later
         const newTaskTimeStates = {
           ...taskTimeStates,
-          [taskId]: {
-            elapsedSeconds,
-            remainingSeconds,
-          }
+          [taskId]: { elapsedSeconds: elapsed, remainingSeconds },
         }
+
+        const result: StopResult = { taskId, elapsedSeconds: elapsed, baseActualMinutes }
 
         const newState = {
-          isRunning: false,
-          isPaused: false,
-          taskId: null,
-          taskTitle: null,
-          mode: 'countdown' as TimerMode,
-          plannedSeconds: 0,
-          elapsedSeconds: 0,
-          remainingSeconds: 0,
-          sessionStartTime: null,
-          accumulatedSeconds: 0,
-          sessionStartElapsed: 0,
-          isTimeUp: false,
-          showNotification: false,
+          ...INITIAL_STATE,
           taskTimeStates: newTaskTimeStates,
-          isStopping: false, // Reset flag
+          // Preserve UI preferences
+          isMinimized: get().isMinimized,
+          position: get().position,
         }
-
         set(newState)
-        broadcastState(newState)
-
-        return { taskId: stoppedTaskId, durationSeconds, sessionDurationSeconds }
-      },
-
-      completeTask: () => {
-        const { taskId, isStopping } = get()
-
-        // Race condition protection
-        if (isStopping || !taskId) return null
-
-        // Capture taskId before stopTimer clears it
-        const completedTaskId = taskId
-
-        const result = get().stopTimer()
-
-        // Clear saved state for completed task (no need to resume)
-        // stopTimer already added to taskTimeStates, so remove it
-        const newTaskTimeStates = { ...get().taskTimeStates }
-        delete newTaskTimeStates[completedTaskId]
-        set({ taskTimeStates: newTaskTimeStates })
-        broadcastState({ taskTimeStates: newTaskTimeStates })
+        broadcast(newState)
 
         return result
       },
 
+      // ── Complete (stop + clear saved state) ───────────────────────────────
+      completeTask: () => {
+        const { taskId, isStopping } = get()
+        if (isStopping || !taskId) return null
+
+        const completedTaskId = taskId
+        const result = get().stopTimer()
+
+        // Remove saved state — completed task won't be resumed
+        const next = { ...get().taskTimeStates }
+        delete next[completedTaskId]
+        set({ taskTimeStates: next })
+        broadcast({ taskTimeStates: next })
+
+        return result
+      },
+
+      // ── Tick (called every 1s by FloatingTimer) ───────────────────────────
       tick: () => {
-        const { isRunning, isPaused, sessionStartTime, accumulatedSeconds, remainingSeconds, mode, isTimeUp, taskTitle, plannedSeconds } = get()
+        const { isRunning, isPaused, startedAt, frozenElapsed, mode, isTimeUp, taskTitle, plannedSeconds } = get()
+        if (!isRunning || isPaused || !startedAt) return
 
-        if (!isRunning || isPaused || !sessionStartTime) return
-
-        // Calculate real elapsed time based on wall clock (not setInterval ticks)
-        const now = new Date()
-        const startTime = sessionStartTime instanceof Date ? sessionStartTime : new Date(sessionStartTime)
-        if (isNaN(startTime.getTime())) {
-          // Invalid sessionStartTime (corrupted localStorage) - reset it
-          set({ sessionStartTime: new Date(), accumulatedSeconds: get().elapsedSeconds })
-          return
-        }
-        const sessionSeconds = Math.floor((now.getTime() - startTime.getTime()) / 1000)
-        const newElapsedSeconds = accumulatedSeconds + sessionSeconds
+        const elapsed = computeElapsed(frozenElapsed, startedAt)
 
         if (mode === 'countdown') {
-          // Calculate remaining based on planned time minus elapsed
-          const totalElapsed = newElapsedSeconds
-          const newRemainingSeconds = Math.max(0, plannedSeconds - totalElapsed)
+          const remaining = Math.max(0, plannedSeconds - elapsed)
 
-          // Sprawdź czy czas się skończył
-          if (newRemainingSeconds === 0 && !isTimeUp) {
-            // Combined notification: browser + sound + voice
+          if (remaining === 0 && !isTimeUp) {
             notifyTimeUp(taskTitle || 'Zadanie')
 
-            // Save state to taskTimeStates so it can be recovered if user closes dialog
+            // Save state in case user closes dialog
             const { taskId, taskTimeStates } = get()
-            const newTaskTimeStates = taskId ? {
-              ...taskTimeStates,
-              [taskId]: {
-                elapsedSeconds: newElapsedSeconds,
-                remainingSeconds: 0,
-              }
-            } : taskTimeStates
+            const newTaskTimeStates = taskId
+              ? { ...taskTimeStates, [taskId]: { elapsedSeconds: elapsed, remainingSeconds: 0 } }
+              : taskTimeStates
 
             const newState = {
-              elapsedSeconds: newElapsedSeconds,
+              elapsedSeconds: elapsed,
               remainingSeconds: 0,
               isTimeUp: true,
               showNotification: true,
-              isPaused: true, // Auto-pauza po zakończeniu czasu
+              isPaused: true,
+              startedAt: null as number | null,
+              frozenElapsed: elapsed,
               taskTimeStates: newTaskTimeStates,
             }
             set(newState)
-            broadcastState(newState)
+            broadcast(newState)
           } else {
-            set({
-              elapsedSeconds: newElapsedSeconds,
-              remainingSeconds: newRemainingSeconds,
-            })
+            set({ elapsedSeconds: elapsed, remainingSeconds: remaining })
           }
         } else {
-          // Stopwatch mode - just count up
-          set({ elapsedSeconds: newElapsedSeconds })
+          set({ elapsedSeconds: elapsed })
         }
       },
 
+      // ── Notification ──────────────────────────────────────────────────────
       dismissNotification: () => {
-        // Reset isTimeUp too, so the user can resume the timer via the widget
         set({ showNotification: false, isTimeUp: false })
       },
 
-      reset: () =>
-        set({
-          isRunning: false,
-          isPaused: false,
-          taskId: null,
-          taskTitle: null,
-          mode: 'countdown',
-          plannedSeconds: 0,
-          elapsedSeconds: 0,
-          remainingSeconds: 0,
-          sessionStartTime: null,
-          accumulatedSeconds: 0,
-          sessionStartElapsed: 0,
-          isTimeUp: false,
-          showNotification: false,
-          isStopping: false,
-        }),
+      // ── Reset ─────────────────────────────────────────────────────────────
+      reset: () => set({ ...INITIAL_STATE }),
 
-      // Cross-tab synchronization - merge carefully instead of blind overwrite
+      // ── UI ────────────────────────────────────────────────────────────────
+      toggleMinimize: () => set((s) => ({ isMinimized: !s.isMinimized })),
+      setPosition: (position) => set({ position }),
+
+      // ── Cross-tab sync ────────────────────────────────────────────────────
       syncFromBroadcast: (state) => {
-        console.log('[syncFromBroadcast] Received state update:', state)
-        const current = get()
-        // Don't accept broadcast while we're in the middle of stopping
-        if (current.isStopping) return
+        if (get().isStopping) return
         set(state)
       },
     }),
     {
       name: 'timer-storage',
-      // Persist only essential data for session recovery
       partialize: (state) => ({
         isRunning: state.isRunning,
         isPaused: state.isPaused,
@@ -562,58 +432,50 @@ export const useTimerStore = create<TimerState>()(
         plannedSeconds: state.plannedSeconds,
         elapsedSeconds: state.elapsedSeconds,
         remainingSeconds: state.remainingSeconds,
-        accumulatedSeconds: state.accumulatedSeconds,
-        sessionStartElapsed: state.sessionStartElapsed,
+        frozenElapsed: state.frozenElapsed,
+        startedAt: state.startedAt,
+        baseActualMinutes: state.baseActualMinutes,
         isTimeUp: state.isTimeUp,
         taskTimeStates: state.taskTimeStates,
-        // Persist sessionStartTime as ISO string so timer survives page refresh
-        sessionStartTime: state.sessionStartTime ? (state.sessionStartTime instanceof Date ? state.sessionStartTime.toISOString() : state.sessionStartTime) : null,
       }),
     }
   )
 )
 
-// Helper function to format time
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
 export const formatTime = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
-
   if (hours > 0) {
     return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
   return `${minutes}:${secs.toString().padStart(2, '0')}`
 }
 
-// Helper function to format minutes to readable string
 export const formatMinutes = (minutes: number): string => {
-  if (minutes < 60) {
-    return `${minutes} min`
-  }
+  if (minutes < 60) return `${minutes} min`
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`
 }
 
-// Hook to check if timer store is hydrated (prevents SSR mismatch)
-// Also sets up cross-tab synchronization
+// ─── Hydration hook ─────────────────────────────────────────────────────────────
+
 export const useTimerHydration = () => {
   const [isHydrated, setIsHydrated] = useState(false)
   const syncFromBroadcast = useTimerStore((state) => state.syncFromBroadcast)
 
   useEffect(() => {
-    // Zustand persist rehydrates synchronously after mount
-    // We wait a tick to ensure localStorage state is loaded
     const unsubFinishHydration = useTimerStore.persist.onFinishHydration(() => {
       setIsHydrated(true)
     })
 
-    // If already rehydrated (e.g., navigating between pages)
     if (useTimerStore.persist.hasHydrated()) {
       setIsHydrated(true)
     }
 
-    // Set up BroadcastChannel listener for cross-tab sync
     const channel = getBroadcastChannel()
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'TIMER_STATE_UPDATE' && event.data?.state) {
@@ -635,4 +497,3 @@ export const useTimerHydration = () => {
 
   return isHydrated
 }
-

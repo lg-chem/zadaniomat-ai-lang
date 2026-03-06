@@ -131,9 +131,8 @@ export default function SchedulePage() {
   // Helper to get real-time actual minutes for a task (includes running timer)
   const getActualMinutes = (task: Task) => {
     if (timerStore.taskId === task.id && timerStore.isRunning) {
-      // sessionDuration = only the time worked in the current session (not accumulated from previous stops)
-      const sessionDuration = timerStore.elapsedSeconds - (timerStore.sessionStartElapsed || 0)
-      return (task.actualMinutes || 0) + Math.ceil(sessionDuration / 60)
+      // baseActualMinutes + elapsed = total actual (same formula as API save)
+      return timerStore.baseActualMinutes + Math.ceil(timerStore.elapsedSeconds / 60)
     }
     return task.actualMinutes || 0
   }
@@ -688,15 +687,14 @@ export default function SchedulePage() {
     }
   }
 
-  // Save time for a stopped timer session
-  const saveStoppedTimerTime = async (taskId: string, sessionDurationSeconds: number) => {
-    const sessionMinutes = Math.ceil(sessionDurationSeconds / 60)
-    if (sessionMinutes <= 0) return
+  // Save time for a stopped timer (overwrite with correct total)
+  const saveStoppedTimerTime = async (taskId: string, elapsedSeconds: number, baseActualMinutes: number) => {
+    const actualMinutes = baseActualMinutes + Math.ceil(elapsedSeconds / 60)
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actualMinutesIncrement: sessionMinutes }),
+        body: JSON.stringify({ actualMinutes }),
       })
       mutateTasks()
     } catch (error) {
@@ -707,7 +705,6 @@ export default function SchedulePage() {
   // Timer toggle (play/pause/resume)
   const handleTimerToggle = (task: Task) => {
     if (timerStore.taskId === task.id) {
-      // This task's timer is active
       if (timerStore.isPaused) {
         timerStore.resumeTimer()
       } else {
@@ -718,10 +715,9 @@ export default function SchedulePage() {
       if (timerStore.isRunning && timerStore.taskId) {
         const result = timerStore.stopTimer()
         if (result) {
-          saveStoppedTimerTime(result.taskId, result.sessionDurationSeconds)
+          saveStoppedTimerTime(result.taskId, result.elapsedSeconds, result.baseActualMinutes)
         }
       }
-      // Start new timer for this task
       timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
       handleUpdateTaskStatus(task.id, "IN_PROGRESS")
     }
