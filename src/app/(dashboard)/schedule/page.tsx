@@ -57,6 +57,7 @@ import { startTaskTimer, stopTimerForTask, discardTimerForTask, taskWorkedSecond
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
+import { QuarterRitualReminder } from "@/components/quarter/ritual-reminder"
 import { useTaskCounts } from "@/hooks/use-task-counts"
 import { useOverdueTasks } from "@/hooks/use-overdue-tasks"
 import { useDayBlocks, useScheduleOverride, type BlockData } from "@/hooks/use-schedule-blocks"
@@ -1093,6 +1094,7 @@ export default function SchedulePage() {
                 </span>
               </div>
             )}
+            {workspace === "WORK" && <QuarterRitualReminder />}
           </div>
 
           {/* Date controls - desktop */}

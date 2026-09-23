@@ -13,7 +13,6 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Timer,
   Inbox,
   Sparkles,
   Trophy,
@@ -102,7 +101,6 @@ const workNavItems = [
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays, id: "schedule" },
   { href: "/calendar", label: "Kalendarz", icon: Calendar, id: "calendar" },
   { href: "/goals", label: "Cele", icon: Target, id: "goals" },
-  { href: "/sprints", label: "Sprinty", icon: Timer, id: "sprints" },
   { href: "/recurring", label: "Cykliczne", icon: Repeat2, id: "recurring" },
   { href: "/stats", label: "Statystyki", icon: BarChart3, id: "stats" },
 ]

@@ -137,18 +137,51 @@ export async function POST(req: Request) {
     // Note: organizationId is only used for authorization, not stored on goals
     // Goals are personal to the user (employee), admin just has permission to view/create them
 
+    // Goals added outside the Cele screen (e.g. from the AI chat) into a calendar quarter
+    // become quarterly goals (target -> key result) or sprint commitments
+    let kind: "QUARTER" | "COMMITMENT" | null = null
+    let goalPeriodId = periodId
+    if (sprintId) {
+      const sprint = await prisma.sprint.findUnique({
+        where: { id: sprintId },
+        select: { periodId: true, period: { select: { year: true } } },
+      })
+      if (sprint && sprint.period.year !== null) {
+        kind = "COMMITMENT"
+        goalPeriodId = sprint.periodId
+      }
+    } else if (periodId) {
+      const period = await prisma.period.findUnique({ where: { id: periodId }, select: { year: true } })
+      if (period && period.year !== null) kind = "QUARTER"
+    }
+    const parsedTarget = targetValue ? parseFloat(targetValue) : null
+    const keyResultTarget = kind === "QUARTER" && parsedTarget !== null && !isNaN(parsedTarget) ? parsedTarget : null
+
     const goal = await prisma.goal.create({
       data: {
         title,
         description,
-        targetValue: targetValue ? parseFloat(targetValue) : null,
-        unit,
+        targetValue: kind === "QUARTER" ? null : parsedTarget,
+        unit: kind === "QUARTER" ? null : unit,
         categoryId,
-        periodId,
+        periodId: goalPeriodId,
         sprintId,
+        kind,
         workspaceType,
         userId: goalUserId,
         // Don't set organizationId - goals are personal, not team-owned
+        ...(keyResultTarget !== null && {
+          keyResults: {
+            create: {
+              title,
+              unit: unit || null,
+              startValue: 0,
+              targetValue: keyResultTarget,
+              currentValue: 0,
+              entries: { create: { value: 0 } },
+            },
+          },
+        }),
       },
       include: {
         category: true,

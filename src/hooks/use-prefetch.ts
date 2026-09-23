@@ -3,6 +3,7 @@ import { preload } from 'swr'
 import { fetcher } from '@/lib/swr-config'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays } from 'date-fns'
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { localDayKey, quarterApiKey, quarterOf } from '@/lib/quarters'
 
 /**
  * Prefetches all common data for the current workspace
@@ -110,12 +111,8 @@ export function prefetchPage(page: string, workspace: string = 'WORK') {
       preload(`/api/tasks?workspace=${workspace}&from=${monthStart}&to=${monthEnd}`, fetcher)
       break
     case 'goals':
-      preload(`/api/goals?workspace=${workspace}`, fetcher)
+      preload(quarterApiKey(quarterOf(localDayKey(today))), fetcher)
       preload(`/api/categories?workspace=${workspace}`, fetcher)
-      preload(`/api/periods?workspace=${workspace}`, fetcher)
-      break
-    case 'sprints':
-      preload(`/api/periods?workspace=${workspace}`, fetcher)
       break
     case 'backlog':
       preload(`/api/backlog?workspace=${workspace}&showProcessed=false`, fetcher)

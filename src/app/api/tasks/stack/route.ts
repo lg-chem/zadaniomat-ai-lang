@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
+import { utcToday } from "@/lib/quarters"
 
 // GET - Get task stack (unscheduled assigned tasks) grouped by sprint goals
 export async function GET(req: Request) {
@@ -27,14 +28,15 @@ export async function GET(req: Request) {
       }
     })
 
-    const now = new Date()
+    // Sprint dates are stored as UTC midnight of the day - compare with today's day
+    // so the sprint still counts on its last day
+    const today = utcToday()
 
     // Find active sprint for current user
     const activeSprint = await prisma.sprint.findFirst({
       where: {
-        startDate: { lte: now },
-        endDate: { gte: now },
-        isActive: true,
+        startDate: { lte: today },
+        endDate: { gte: today },
         // Sprint belongs to user's goals
         goals: {
           some: {

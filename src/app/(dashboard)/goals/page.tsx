@@ -1,2389 +1,411 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
-import { Plus, Target, Check, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, Calendar, Zap, Save, X, Sparkles, ListTodo, ArrowRight, BookmarkPlus, Clock, Users } from "lucide-react"
+import { useMemo, useState } from "react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
+import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, Plus, Target } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { quarterRequest, useQuarter } from "@/hooks/use-quarter"
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { useWorkspaceStore } from "@/stores/workspace-store"
-import { useGoals } from "@/hooks/use-goals"
-import { useCategories } from "@/hooks/use-categories"
-import useSWR, { mutate } from "swr"
-import { SubtaskList, type Subtask } from "@/components/tasks/subtask-list"
-import { EditableDescription } from "@/components/tasks/editable-description"
+  buildQuarterSchedule,
+  currentSprint,
+  dayKeyToLocalDate,
+  defaultQuarter,
+  lastEndedSprint,
+  latestCheckIn,
+  leadExecution,
+  localDayKey,
+  quarterElapsed,
+  quarterLabel,
+  quarterOf,
+  quarterPhase,
+  quarterWeek,
+  RECOMMENDED_MAX_GOALS,
+  sameQuarter,
+  shiftQuarter,
+  type QuarterGoal,
+  type QuarterPayload,
+  type QuarterRef,
+  type QuarterSprint,
+} from "@/lib/quarters"
+import { ArchiveSection } from "@/components/quarter/archive-section"
+import { CheckInDialog } from "@/components/quarter/check-in-dialog"
+import { GoalCard } from "@/components/quarter/goal-card"
+import { GoalDialog, type GoalPrefill } from "@/components/quarter/goal-dialog"
+import { QuarterReviewDialog } from "@/components/quarter/quarter-review-dialog"
+import { QuarterTimeline } from "@/components/quarter/quarter-timeline"
+import { computeRituals, RitualList, type Ritual } from "@/components/quarter/rituals"
+import { SprintCloseDialog } from "@/components/quarter/sprint-close-dialog"
+import { SprintPanel } from "@/components/quarter/sprint-panel"
+import { SprintPlanDialog } from "@/components/quarter/sprint-plan-dialog"
 
-interface Step {
-  id: string
-  title: string
-  description?: string | null
-  isCompleted: boolean
-  order: number
-  sprintId?: string | null
-  sprint?: { id: string; name: string } | null
-  taskProgress?: {
-    total: number
-    completed: number
-    percentage: number
-  }
-}
+const dayLabel = (key: string, pattern = "d MMM") => format(dayKeyToLocalDate(key), pattern, { locale: pl })
 
-interface GoalTask {
-  id: string
-  title: string
-  description?: string | null
-  status: string
-  priority: number
-  plannedMinutes?: number | null
-  scheduledDate?: string | null
-  subtasks?: Subtask[]
-  category?: { id: string; name: string; color: string } | null
-}
-
-interface Goal {
-  id: string
-  title: string
-  description?: string | null
-  targetValue?: number | null
-  currentValue: number
-  unit?: string | null
-  isCompleted: boolean
-  isStep?: boolean
-  parentGoalId?: string | null
-  category?: { id: string; name: string; color: string } | null
-  period?: { id: string; name: string } | null
-  sprint?: { id: string; name: string } | null
-  childGoals?: Goal[]
-}
-
-interface Category {
-  id: string
-  name: string
-  color: string
-  isStrategic: boolean
-}
-
-interface KnowledgeCategory {
-  id: string
-  name: string
-  color: string
-  parentId?: string | null
-  children?: KnowledgeCategory[]
-}
-
-interface Sprint {
-  id: string
-  name: string
-  startDate: string
-  endDate: string
-  isActive: boolean
-}
-
-interface Period {
-  id: string
-  name: string
-  startDate: string
-  endDate: string
-  isActive: boolean
-  sprints: Sprint[]
-}
-
-// Goal card component - moved outside to prevent re-renders
-function GoalCard({
-  goal,
-  onToggleComplete,
-  onDelete,
-  onEdit,
-  onPlanWithAI,
-  editingGoalId,
-  editingTitle,
-  setEditingTitle,
-  onSaveEdit,
-  onCancelEdit,
-  steps,
-  onToggleStepComplete,
-  onPromoteToSprint,
-  onEditStep,
-  onSaveStepEdit,
-  onCancelStepEdit,
-  onDeleteStep,
-  editingStepId,
-  editingStepTitle,
-  setEditingStepTitle,
-  sprints,
-  isSprintGoal,
-  tasks,
-  onScheduleTask,
-  onCompleteTask,
-  onTaskSubtasksChange,
-  onRefreshTasks,
-  onDeleteTask,
-  expandedTaskId,
-  onExpandTask,
-  onEditTask,
-  onSaveTaskEdit,
-  onCancelTaskEdit,
-  editingTaskId,
-  editingTaskTitle,
-  setEditingTaskTitle,
-  onAddStep,
-  onAddTask,
-}: {
-  goal: Goal
-  onToggleComplete: (goal: Goal) => void
-  onDelete: (id: string) => void
-  onEdit: (goal: Goal) => void
-  onPlanWithAI: (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => void
-  editingGoalId: string | null
-  editingTitle: string
-  setEditingTitle: (title: string) => void
-  onSaveEdit: (id: string) => void
-  onCancelEdit: () => void
-  steps?: Step[]
-  onToggleStepComplete?: (step: Step) => void
-  onPromoteToSprint?: (stepId: string, sprintId: string) => void
-  onEditStep?: (step: Step) => void
-  onSaveStepEdit?: (stepId: string) => void
-  onCancelStepEdit?: () => void
-  onDeleteStep?: (stepId: string) => void
-  editingStepId?: string | null
-  editingStepTitle?: string
-  setEditingStepTitle?: (title: string) => void
-  sprints?: { id: string; name: string }[]
-  isSprintGoal?: boolean
-  tasks?: GoalTask[]
-  onScheduleTask?: (task: GoalTask, goalId: string) => void
-  onCompleteTask?: (taskId: string, goalId: string) => void
-  onTaskSubtasksChange?: (taskId: string, goalId: string, subtasks: Subtask[]) => void
-  onRefreshTasks?: (goalId: string) => void
-  onDeleteTask?: (taskId: string, goalId: string) => void
-  expandedTaskId?: string | null
-  onExpandTask?: (taskId: string | null) => void
-  onEditTask?: (task: GoalTask) => void
-  onSaveTaskEdit?: (taskId: string, goalId: string) => void
-  onCancelTaskEdit?: () => void
-  editingTaskId?: string | null
-  editingTaskTitle?: string
-  setEditingTaskTitle?: (title: string) => void
-  onAddStep?: (goalId: string, title: string) => void
-  onAddTask?: (goalId: string, title: string) => void
-}) {
-  const isEditing = editingGoalId === goal.id
-  const [showSteps, setShowSteps] = useState(false)
-  const [showTasks, setShowTasks] = useState(false)
-  const [newStepTitle, setNewStepTitle] = useState("")
-  const [newTaskTitle, setNewTaskTitle] = useState("")
-  const getProgress = (g: Goal) => {
-    if (!g.targetValue) return g.isCompleted ? 100 : 0
-    return Math.min(100, (g.currentValue / g.targetValue) * 100)
-  }
-
-  const hasSteps = steps && steps.length > 0
-  const completedSteps = steps?.filter(s => s.isCompleted).length || 0
-  const hasTasks = tasks && tasks.length > 0
-  const completedTasks = tasks?.filter(t => t.status === "COMPLETED").length || 0
-
+/** Sprint shown by default: the running one, before the quarter the first, after it the last ended */
+function defaultSprint(quarter: QuarterPayload, today: string): QuarterSprint | null {
+  if (quarter.sprints.length === 0) return null
   return (
-    <div
-      className={`p-2 rounded border ${
-        goal.isCompleted ? "bg-green-50 border-green-200 dark:bg-green-950/20" : "bg-background"
-      }`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        {isEditing ? (
-          <div className="flex-1 flex gap-1">
-            <Input
-              value={editingTitle}
-              onChange={(e) => setEditingTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  onSaveEdit(goal.id)
-                } else if (e.key === "Escape") {
-                  onCancelEdit()
-                }
-              }}
-              className="h-7 text-sm"
-              autoFocus
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => onSaveEdit(goal.id)}
-            >
-              <Save className="h-3 w-3 text-green-500" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={onCancelEdit}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-1">
-              {/* Always show expand button - period goals have steps, sprint goals have tasks */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5"
-                onClick={() => {
-                  if (!isSprintGoal) setShowSteps(!showSteps)
-                  if (isSprintGoal) setShowTasks(!showTasks)
-                }}
-              >
-                {(showSteps || showTasks) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </Button>
-              <span className={`text-sm ${goal.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-                {goal.title}
-              </span>
-              {hasSteps && (
-                <Badge variant="outline" className="text-[10px] ml-1">
-                  {completedSteps}/{steps?.length}
-                </Badge>
-              )}
-              {hasTasks && (
-                <Badge variant="secondary" className="text-[10px] ml-1">
-                  {completedTasks}/{tasks?.length} zadań
-                </Badge>
-              )}
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => onPlanWithAI(goal, isSprintGoal ? "breakdown_tasks" : "planning_steps")}
-                title={isSprintGoal ? "Rozpisz na zadania z AI" : "Zaplanuj kroki z AI"}
-              >
-                <Sparkles className="h-3 w-3 text-purple-500" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => onEdit(goal)}
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => onToggleComplete(goal)}
-              >
-                <Check className={`h-3 w-3 ${goal.isCompleted ? "text-green-500" : ""}`} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => onDelete(goal.id)}
-              >
-                <Trash2 className="h-3 w-3 text-destructive" />
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Progress bar */}
-      {goal.targetValue ? (
-        <div className="mt-1">
-          <Progress value={getProgress(goal)} className="h-1" />
-          <span className="text-[10px] text-muted-foreground">
-            {goal.currentValue}/{goal.targetValue} {goal.unit}
-          </span>
-        </div>
-      ) : !hasSteps && (
-        <Badge variant="secondary" className="text-[10px] mt-1">Cel jakościowy</Badge>
-      )}
-
-      {/* Steps (Strategy) section - for period goals */}
-      {showSteps && !isSprintGoal && (
-        <div className="mt-2 pl-4 border-l-2 border-purple-200 space-y-1">
-          <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
-            <ListTodo className="h-3 w-3" /> Kroki realizacji
-          </div>
-          {steps?.map((step) => {
-            const isStepEditing = editingStepId === step.id
-            return (
-              <div
-                key={step.id}
-                className={`flex items-center justify-between p-1.5 rounded text-xs ${
-                  step.isCompleted ? "bg-green-50 dark:bg-green-950/20" : "bg-muted/50"
-                }`}
-              >
-                {isStepEditing ? (
-                  <div className="flex-1 flex gap-1">
-                    <Input
-                      value={editingStepTitle}
-                      onChange={(e) => setEditingStepTitle?.(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          onSaveStepEdit?.(step.id)
-                        } else if (e.key === "Escape") {
-                          onCancelStepEdit?.()
-                        }
-                      }}
-                      className="h-6 text-xs"
-                      autoFocus
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => onSaveStepEdit?.(step.id)}
-                    >
-                      <Save className="h-3 w-3 text-green-500" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={onCancelStepEdit}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 flex-1">
-                      <button
-                        onClick={() => onToggleStepComplete?.(step)}
-                        className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
-                          step.isCompleted ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
-                        }`}
-                      >
-                        {step.isCompleted && <Check className="h-3 w-3" />}
-                      </button>
-                      <span className={step.isCompleted ? "line-through text-muted-foreground" : ""}>
-                        {step.title}
-                      </span>
-                      {step.sprint && (
-                        <Badge variant="outline" className="text-[9px]">
-                          {step.sprint.name}
-                        </Badge>
-                      )}
-                      {step.taskProgress && step.taskProgress.total > 0 && (
-                        <Badge variant="secondary" className="text-[9px]">
-                          {step.taskProgress.completed}/{step.taskProgress.total} zadań
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={() => onEditStep?.(step)}
-                      >
-                        <Pencil className="h-2.5 w-2.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={() => onDeleteStep?.(step.id)}
-                      >
-                        <Trash2 className="h-2.5 w-2.5 text-destructive" />
-                      </Button>
-                      {sprints && sprints.length > 0 && (
-                        <select
-                          className="text-[10px] border rounded px-1 py-0.5 bg-background"
-                          value={step.sprint?.id || step.sprintId || ""}
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              onPromoteToSprint?.(step.id, e.target.value)
-                            }
-                          }}
-                        >
-                          <option value="">Sprint</option>
-                          {sprints.map((sprint) => (
-                            <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            )
-          })}
-          {/* Manual step input */}
-          <div className="flex gap-1 mt-2">
-            <Input
-              value={newStepTitle}
-              onChange={(e) => setNewStepTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newStepTitle.trim()) {
-                  onAddStep?.(goal.id, newStepTitle.trim())
-                  setNewStepTitle("")
-                }
-              }}
-              placeholder="Dodaj krok..."
-              className="h-6 text-xs"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => {
-                if (newStepTitle.trim()) {
-                  onAddStep?.(goal.id, newStepTitle.trim())
-                  setNewStepTitle("")
-                }
-              }}
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Tasks section (for sprint goals) */}
-      {showTasks && isSprintGoal && (
-        <div className="mt-2 pl-4 border-l-2 border-green-200 space-y-2">
-          <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
-            <ListTodo className="h-3 w-3" /> Zadania do wykonania
-          </div>
-          {tasks?.map((task) => {
-            const isExpanded = expandedTaskId === task.id
-            const isTaskEditing = editingTaskId === task.id
-            const hasSubtasks = task.subtasks && task.subtasks.length > 0
-            const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0
-            const isScheduled = !!task.scheduledDate
-
-            return (
-              <div
-                key={task.id}
-                className={`rounded border bg-background ${
-                  task.status === "COMPLETED" ? "bg-green-50 dark:bg-green-950/20" : ""
-                } ${isScheduled ? "border-blue-200" : ""}`}
-              >
-                <div className="flex items-center justify-between p-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <button
-                      onClick={() => onCompleteTask?.(task.id, goal.id)}
-                      className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${
-                        task.status === "COMPLETED" ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
-                      }`}
-                    >
-                      {task.status === "COMPLETED" && <Check className="h-3 w-3" />}
-                    </button>
-                    {isTaskEditing ? (
-                      <div className="flex-1 flex gap-1">
-                        <Input
-                          value={editingTaskTitle}
-                          onChange={(e) => setEditingTaskTitle?.(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              onSaveTaskEdit?.(task.id, goal.id)
-                            } else if (e.key === "Escape") {
-                              onCancelTaskEdit?.()
-                            }
-                          }}
-                          className="h-6 text-xs"
-                          autoFocus
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => onSaveTaskEdit?.(task.id, goal.id)}
-                        >
-                          <Save className="h-3 w-3 text-green-500" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={onCancelTaskEdit}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className={`text-xs ${task.status === "COMPLETED" ? "line-through text-muted-foreground" : ""}`}>
-                          {task.title}
-                        </span>
-                        {isScheduled && (
-                          <Badge variant="secondary" className="text-[9px] bg-blue-100 text-blue-700">
-                            <Calendar className="h-2 w-2 mr-0.5" />
-                            {format(new Date(task.scheduledDate!), "d MMM", { locale: pl })}
-                          </Badge>
-                        )}
-                        {hasSubtasks && (
-                          <Badge variant="outline" className="text-[9px]">
-                            {completedSubtasks}/{task.subtasks!.length}
-                          </Badge>
-                        )}
-                        {task.plannedMinutes && (
-                          <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                            <Clock className="h-2.5 w-2.5" />
-                            {task.plannedMinutes}min
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  {!isTaskEditing && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={() => onEditTask?.(task)}
-                      >
-                        <Pencil className="h-2.5 w-2.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={() => onExpandTask?.(isExpanded ? null : task.id)}
-                      >
-                        {isExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
-                      </Button>
-                      {!isScheduled ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-5 text-[10px] px-1.5"
-                          onClick={() => onScheduleTask?.(task, goal.id)}
-                        >
-                          <Calendar className="h-2.5 w-2.5 mr-0.5" />
-                          Zaplanuj
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[10px] px-1.5 text-blue-600"
-                          onClick={() => onScheduleTask?.(task, goal.id)}
-                        >
-                          <Calendar className="h-2.5 w-2.5 mr-0.5" />
-                          Zmień
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-destructive hover:text-destructive"
-                        onClick={() => {
-                          if (confirm("Czy na pewno chcesz usunąć to zadanie?")) {
-                            onDeleteTask?.(task.id, goal.id)
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-2.5 w-2.5" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Expanded content */}
-                {isExpanded && (
-                  <div className="px-2 pb-2 space-y-2 border-t pt-2 bg-muted/30">
-                    {/* Description */}
-                    <div>
-                      <div className="text-[10px] font-medium mb-1">Opis</div>
-                      <EditableDescription
-                        taskId={task.id}
-                        initialValue={task.description}
-                        onSaved={() => onRefreshTasks?.(goal.id)}
-                        placeholder="Dodaj opis..."
-                        rows={2}
-                      />
-                    </div>
-
-                    {/* Subtasks / Checklist */}
-                    <div>
-                      <div className="text-[10px] font-medium mb-1">Lista kontrolna</div>
-                      <SubtaskList
-                        taskId={task.id}
-                        subtasks={task.subtasks || []}
-                        onSubtasksChange={(newSubtasks) => onTaskSubtasksChange?.(task.id, goal.id, newSubtasks)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          {/* Manual task input */}
-          <div className="flex gap-1 mt-2">
-            <Input
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newTaskTitle.trim()) {
-                  onAddTask?.(goal.id, newTaskTitle.trim())
-                  setNewTaskTitle("")
-                }
-              }}
-              placeholder="Dodaj zadanie..."
-              className="h-6 text-xs"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => {
-                if (newTaskTitle.trim()) {
-                  onAddTask?.(goal.id, newTaskTitle.trim())
-                  setNewTaskTitle("")
-                }
-              }}
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
+    currentSprint(quarter.sprints, today) ??
+    (today < quarter.sprints[0].startKey ? quarter.sprints[0] : lastEndedSprint(quarter.sprints, today)) ??
+    quarter.sprints[0]
   )
 }
 
-// Category template component - moved outside to prevent re-renders
-function CategoryTemplate({
-  category,
-  periodId,
-  sprintId,
-  categoryGoals,
-  inputValue,
-  onInputChange,
-  onSave,
-  onToggleComplete,
-  onDelete,
-  onEdit,
-  onPlanWithAI,
-  editingGoalId,
-  editingTitle,
-  setEditingTitle,
-  onSaveEdit,
-  onCancelEdit,
-  stepsMap,
-  onToggleStepComplete,
-  onPromoteToSprint,
-  onEditStep,
-  onSaveStepEdit,
-  onCancelStepEdit,
-  onDeleteStep,
-  editingStepId,
-  editingStepTitle,
-  setEditingStepTitle,
-  sprints,
-  tasksMap,
-  onScheduleTask,
-  onCompleteTask,
-  onTaskSubtasksChange,
-  onRefreshTasks,
-  onDeleteTask,
-  expandedTaskId,
-  onExpandTask,
-  onEditTask,
-  onSaveTaskEdit,
-  onCancelTaskEdit,
-  editingTaskId,
-  editingTaskTitle,
-  setEditingTaskTitle,
-  onAddStep,
-  onAddTask,
+function PlanQuarter({
+  quarterRef,
+  today,
+  creating,
+  onCreate,
 }: {
-  category: Category
-  periodId?: string
-  sprintId?: string
-  categoryGoals: Goal[]
-  inputValue: string
-  onInputChange: (key: string, value: string) => void
-  onSave: (categoryId: string, periodId?: string, sprintId?: string) => void
-  onToggleComplete: (goal: Goal) => void
-  onDelete: (id: string) => void
-  onEdit: (goal: Goal) => void
-  onPlanWithAI: (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => void
-  editingGoalId: string | null
-  editingTitle: string
-  setEditingTitle: (title: string) => void
-  onSaveEdit: (id: string) => void
-  onCancelEdit: () => void
-  stepsMap: Record<string, Step[]>
-  onToggleStepComplete: (step: Step) => void
-  onPromoteToSprint: (stepId: string, sprintId: string) => void
-  onEditStep: (step: Step) => void
-  onSaveStepEdit: (stepId: string) => void
-  onCancelStepEdit: () => void
-  onDeleteStep: (stepId: string) => void
-  editingStepId: string | null
-  editingStepTitle: string
-  setEditingStepTitle: (title: string) => void
-  sprints: { id: string; name: string }[]
-  tasksMap: Record<string, GoalTask[]>
-  onScheduleTask: (task: GoalTask, goalId: string) => void
-  onCompleteTask: (taskId: string, goalId: string) => void
-  onTaskSubtasksChange: (taskId: string, goalId: string, subtasks: Subtask[]) => void
-  onRefreshTasks: (goalId: string) => void
-  onDeleteTask: (taskId: string, goalId: string) => void
-  expandedTaskId: string | null
-  onExpandTask: (taskId: string | null) => void
-  onEditTask: (task: GoalTask) => void
-  onSaveTaskEdit: (taskId: string, goalId: string) => void
-  onCancelTaskEdit: () => void
-  editingTaskId: string | null
-  editingTaskTitle: string
-  setEditingTaskTitle: (title: string) => void
-  onAddStep: (goalId: string, title: string) => void
-  onAddTask: (goalId: string, title: string) => void
+  quarterRef: QuarterRef
+  today: string
+  creating: boolean
+  onCreate: () => void
 }) {
-  const key = sprintId ? `sprint-${sprintId}-${category.id}` : `period-${periodId}-${category.id}`
+  const schedule = buildQuarterSchedule(quarterRef)
+  const phase = quarterPhase(quarterRef, today)
+  const steps = [
+    {
+      title: "Maks. 3 cele z liczbami",
+      text: "Po czym poznasz, że się udało? Start → cel na koniec kwartału.",
+    },
+    {
+      title: "Sprint co 2 tygodnie",
+      text: "Jeden cel sprintu, 3–5 zobowiązań i krótkie retro na koniec.",
+    },
+    {
+      title: "Check-in co tydzień",
+      text: "2 minuty: aktualne liczby, działanie tygodniowe i pewność.",
+    },
+  ]
 
   return (
-    <div className="border rounded-lg p-3 bg-muted/20">
-      <div className="flex items-center gap-2 mb-2">
-        <div
-          className="h-3 w-3 rounded-full"
-          style={{ backgroundColor: category.color }}
-        />
-        <span className="font-medium text-sm">{category.name}</span>
-        {categoryGoals.length > 0 && (
-          <Badge variant="secondary" className="text-[10px]">{categoryGoals.length}</Badge>
-        )}
-      </div>
-
-      {/* Existing goals */}
-      {categoryGoals.length > 0 && (
-        <div className="space-y-2 mb-2">
-          {categoryGoals.map((goal) => (
-            <GoalCard
-              key={goal.id}
-              goal={goal}
-              onToggleComplete={onToggleComplete}
-              onDelete={onDelete}
-              onEdit={onEdit}
-              onPlanWithAI={onPlanWithAI}
-              editingGoalId={editingGoalId}
-              editingTitle={editingTitle}
-              setEditingTitle={setEditingTitle}
-              onSaveEdit={onSaveEdit}
-              onCancelEdit={onCancelEdit}
-              steps={stepsMap[goal.id]}
-              onToggleStepComplete={onToggleStepComplete}
-              onPromoteToSprint={onPromoteToSprint}
-              onEditStep={onEditStep}
-              onSaveStepEdit={onSaveStepEdit}
-              onCancelStepEdit={onCancelStepEdit}
-              onDeleteStep={onDeleteStep}
-              editingStepId={editingStepId}
-              editingStepTitle={editingStepTitle}
-              setEditingStepTitle={setEditingStepTitle}
-              sprints={sprints}
-              isSprintGoal={!!sprintId || !!goal.sprint}
-              tasks={tasksMap[goal.id]}
-              onScheduleTask={onScheduleTask}
-              onCompleteTask={onCompleteTask}
-              onTaskSubtasksChange={onTaskSubtasksChange}
-              onRefreshTasks={onRefreshTasks}
-              onDeleteTask={onDeleteTask}
-              expandedTaskId={expandedTaskId}
-              onExpandTask={onExpandTask}
-              onEditTask={onEditTask}
-              onSaveTaskEdit={onSaveTaskEdit}
-              onCancelTaskEdit={onCancelTaskEdit}
-              editingTaskId={editingTaskId}
-              editingTaskTitle={editingTaskTitle}
-              setEditingTaskTitle={setEditingTaskTitle}
-              onAddStep={onAddStep}
-              onAddTask={onAddTask}
-            />
-          ))}
+    <Card>
+      <CardContent className="mx-auto max-w-3xl space-y-6 px-4 py-10 text-center md:px-8">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Target className="h-6 w-6" />
         </div>
-      )}
+        <div className="space-y-2">
+          <h2 className="text-xl font-semibold">
+            {phase === "past" ? `${quarterLabel(quarterRef)} nie był planowany` : `Zaplanuj ${quarterLabel(quarterRef)}`}
+          </h2>
+          <p className="text-muted-foreground">
+            {phase === "upcoming" && `Startuje ${dayLabel(schedule.startKey, "d MMMM")}. `}
+            Kwartał to 6 sprintów po 2 tygodnie i tydzień przeglądu na końcu.
+          </p>
+        </div>
+        <ol className="grid gap-3 text-left sm:grid-cols-3">
+          {steps.map((step, i) => (
+            <li key={step.title} className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-sm font-medium">
+                <span className="mr-1.5 text-primary">{i + 1}.</span>
+                {step.title}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{step.text}</p>
+            </li>
+          ))}
+        </ol>
+        <div className="flex flex-wrap justify-center gap-1.5 text-xs text-muted-foreground">
+          {schedule.sprints.map((s) => (
+            <span key={s.number} className="rounded-full border px-2 py-0.5">
+              S{s.number}: {dayLabel(s.startKey)} – {dayLabel(s.endKey)}
+            </span>
+          ))}
+          <span className="rounded-full border border-dashed px-2 py-0.5">
+            Przegląd: {dayLabel(schedule.reviewStartKey)} – {dayLabel(schedule.endKey)}
+          </span>
+        </div>
+        {phase !== "past" && (
+          <Button size="lg" onClick={onCreate} disabled={creating}>
+            <CalendarRange className="mr-2 h-4 w-4" />
+            {creating ? "Tworzenie…" : `Zaplanuj ${quarterLabel(quarterRef)}`}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
-      {/* Input for new goal */}
-      <div className="flex gap-2">
-        <Input
-          placeholder="Wpisz cel..."
-          value={inputValue}
-          onChange={(e) => onInputChange(key, e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              onSave(category.id, periodId, sprintId)
-            }
-          }}
-          className="h-8 text-sm"
-        />
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-2"
-          onClick={() => onSave(category.id, periodId, sprintId)}
-          disabled={!inputValue.trim()}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+function PageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-20 w-full" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-64 w-full" />
+        ))}
       </div>
     </div>
   )
 }
 
 export default function GoalsPage() {
-  const { workspace } = useWorkspaceStore()
+  const [today] = useState(() => localDayKey())
+  const currentRef = useMemo(() => quarterOf(today), [today])
+  const current = useQuarter(currentRef)
 
-  // Team context - for admin viewing employee goals
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+  // Until the user navigates, show the current quarter (or the next one at the very end of an unplanned quarter)
+  const [selectedRef, setSelectedRef] = useState<QuarterRef | null>(null)
+  const defaultRef = current.isLoaded ? defaultQuarter(today, current.quarter !== null) : null
+  const ref = selectedRef ?? defaultRef
+  const view = useQuarter(ref)
+  const quarter = view.quarter
 
-  // Fetch organizations where user is OWNER
-  const { data: ownedOrgs = [] } = useSWR<{
-    id: string
-    name: string
-    members: { id: string; userId: string; user: { id: string; name: string | null; email: string } }[]
-  }[]>(
-    `/api/organizations?role=owner`,
-    async (url: string) => {
-      const res = await fetch(url)
-      if (!res.ok) return []
-      const data = await res.json()
-      return data.owned || []
-    }
-  )
+  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null)
+  const [goalDialog, setGoalDialog] = useState<{ goal: QuarterGoal | null; prefill?: GoalPrefill } | null>(null)
+  const [planSprintId, setPlanSprintId] = useState<string | null>(null)
+  const [closeSprintId, setCloseSprintId] = useState<string | null>(null)
+  const [checkInOpen, setCheckInOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
 
-  // Get members for selected org (excluding owner)
-  const selectedOrgMembers = selectedOrgId
-    ? ownedOrgs.find(o => o.id === selectedOrgId)?.members.filter(m => m.user.id !== selectedEmployeeId) || []
-    : []
+  const refresh = () => view.mutate()
 
-  // Build API params based on context
-  const goalsApiParams = new URLSearchParams({ workspace })
-  if (selectedOrgId) goalsApiParams.set("organizationId", selectedOrgId)
-  if (selectedEmployeeId) goalsApiParams.set("targetUserId", selectedEmployeeId)
+  const goToQuarter = (next: QuarterRef) => {
+    setSelectedRef(next)
+    setSelectedSprintId(null)
+  }
 
-  // Periods are always admin's own - employees see goals within admin's period/sprint structure
-  const periodsApiParams = new URLSearchParams({ workspace })
-  // Don't filter periods by organizationId - always show admin's periods
-
-  // Use SWR hooks for data fetching with cache
-  const { data: goals = [], isLoading: goalsLoading, mutate: mutateGoals } = useSWR<Goal[]>(
-    `/api/goals?${goalsApiParams.toString()}`,
-    async (url: string) => {
-      const res = await fetch(url)
-      if (!res.ok) return []
-      return res.json()
-    }
-  )
-  const { categories, isLoading: categoriesLoading } = useCategories()
-
-  // Fetch periods with sprints - always admin's own periods
-  const { data: periods = [], isLoading: periodsLoading } = useSWR<Period[]>(
-    `/api/periods?${periodsApiParams.toString()}`
-  )
-
-  const isLoading = goalsLoading || categoriesLoading || periodsLoading
-
-  // Expanded state - auto-expand active period/sprint on first load
-  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(() => {
-    const activePeriod = periods.find((p: Period) => p.isActive)
-    return activePeriod ? new Set([activePeriod.id]) : new Set()
-  })
-  const [expandedSprints, setExpandedSprints] = useState<Set<string>>(() => {
-    const activePeriod = periods.find((p: Period) => p.isActive)
-    if (activePeriod) {
-      const today = new Date()
-      const currentSprint = activePeriod.sprints.find((s: Sprint) => {
-        const start = new Date(s.startDate)
-        const end = new Date(s.endDate)
-        return today >= start && today <= end
-      })
-      return currentSprint ? new Set([currentSprint.id]) : new Set()
-    }
-    return new Set()
-  })
-
-  // Template input states - keyed by "periodId-categoryId" or "sprintId-categoryId"
-  const [templateInputs, setTemplateInputs] = useState<Record<string, string>>({})
-
-  // Editing state
-  const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
-  const [editingTitle, setEditingTitle] = useState("")
-  const [editingStepId, setEditingStepId] = useState<string | null>(null)
-  const [editingStepTitle, setEditingStepTitle] = useState("")
-
-  // AI Planning dialog state
-  const [aiPlanningGoal, setAiPlanningGoal] = useState<{
-    goal: Goal
-    stage: "planning_steps" | "breakdown_tasks"
-  } | null>(null)
-  const [aiMessage, setAiMessage] = useState("")
-  const [aiHistory, setAiHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([])
-  const [aiLoading, setAiLoading] = useState(false)
-  const [proposedSteps, setProposedSteps] = useState<{ title: string; description?: string }[]>([])
-  const [proposedTasks, setProposedTasks] = useState<{ title: string; description?: string }[]>([])
-
-  // Knowledge save state
-  const [knowledgeStep, setKnowledgeStep] = useState<"idle" | "generating" | "review" | "saving" | "saved">("idle")
-  const [knowledgeForm, setKnowledgeForm] = useState({ content: "", categoryId: "" })
-  const [knowledgeCategories, setKnowledgeCategories] = useState<{ id: string; name: string }[]>([])
-
-  // Steps data - fetch for each goal that has steps
-  const [stepsMap, setStepsMap] = useState<Record<string, Step[]>>({})
-
-  // Tasks data - fetch for each sprint goal
-  const [tasksMap, setTasksMap] = useState<Record<string, GoalTask[]>>({})
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
-  const [schedulingTask, setSchedulingTask] = useState<GoalTask | null>(null)
-  const [schedulingGoalId, setSchedulingGoalId] = useState<string | null>(null)
-  const [scheduleDate, setScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"))
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
-  const [editingTaskTitle, setEditingTaskTitle] = useState("")
-
-  // Fetch steps for all goals
-  const fetchStepsForGoals = useCallback(async () => {
-    const goalsWithoutSteps = goals.filter(g => !g.isStep && !stepsMap[g.id])
-    for (const goal of goalsWithoutSteps) {
-      try {
-        const res = await fetch(`/api/goals/${goal.id}/steps`)
-        if (res.ok) {
-          const steps = await res.json()
-          if (steps.length > 0) {
-            setStepsMap(prev => ({ ...prev, [goal.id]: steps }))
-          }
-        }
-      } catch (error) {
-        // Ignore errors for individual fetches
-      }
-    }
-  }, [goals, stepsMap])
-
-  // Fetch steps when goals change
-  useEffect(() => {
-    if (goals.length > 0) {
-      fetchStepsForGoals()
-    }
-  }, [goals.length, fetchStepsForGoals])
-
-  // Fetch tasks for sprint goals (including steps assigned to sprints)
-  const fetchTasksForGoals = useCallback(async () => {
-    // Fetch for any goal/step that has a sprint assigned
-    const sprintGoals = goals.filter(g => g.sprint && !tasksMap[g.id])
-    for (const goal of sprintGoals) {
-      try {
-        const res = await fetch(`/api/goals/${goal.id}/tasks`)
-        if (res.ok) {
-          const tasks = await res.json()
-          if (tasks.length > 0) {
-            setTasksMap(prev => ({ ...prev, [goal.id]: tasks }))
-          }
-        }
-      } catch (error) {
-        // Ignore errors for individual fetches
-      }
-    }
-  }, [goals, tasksMap])
-
-  // Fetch tasks when goals change
-  useEffect(() => {
-    if (goals.length > 0) {
-      fetchTasksForGoals()
-    }
-  }, [goals.length, fetchTasksForGoals])
-
-  // AI Chat handler
-  const handleSendAiMessage = async () => {
-    if (!aiMessage.trim() || !aiPlanningGoal || aiLoading) return
-
-    const userMessage = aiMessage.trim()
-    setAiMessage("")
-    setAiHistory(prev => [...prev, { role: "user", content: userMessage }])
-    setAiLoading(true)
-
+  const createQuarter = async () => {
+    if (!ref) return
+    setCreating(true)
     try {
-      // Build messages array in correct format for API
-      const messages = [
-        ...aiHistory.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
-        { role: "user" as const, content: userMessage }
-      ]
-
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages,
-          mode: aiPlanningGoal.stage === "planning_steps" ? "period_goals" : "sprint_goals",
-          goalContext: {
-            goalId: aiPlanningGoal.goal.id,
-            goalTitle: aiPlanningGoal.goal.title,
-            goalDescription: aiPlanningGoal.goal.description,
-            stage: aiPlanningGoal.stage,
-          },
-        }),
-      })
-
-      if (res.ok) {
-        // Parse streaming response
-        const reader = res.body?.getReader()
-        const decoder = new TextDecoder()
-        let fullText = ""
-        let toolResult: { type?: string; steps?: unknown[]; tasks?: unknown[]; message?: string } | null = null
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            const chunk = decoder.decode(value)
-            const lines = chunk.split("\n")
-            for (const line of lines) {
-              // Parse text content (format: 0:"text")
-              if (line.startsWith("0:")) {
-                try {
-                  const text = JSON.parse(line.slice(2))
-                  fullText += text
-                } catch {
-                  // Skip malformed lines
-                }
-              }
-              // Parse tool results (format: a:{...} or 9:{...})
-              if (line.startsWith("a:") || line.startsWith("9:")) {
-                try {
-                  const data = JSON.parse(line.slice(2))
-                  if (data && Array.isArray(data)) {
-                    for (const item of data) {
-                      if (item?.result?.type === "steps_proposal" || item?.result?.type === "tasks_proposal") {
-                        toolResult = item.result
-                      }
-                    }
-                  }
-                } catch {
-                  // Skip malformed lines
-                }
-              }
-            }
-          }
-        }
-
-        // Handle tool results (steps or tasks proposals)
-        if (toolResult?.type === "steps_proposal" && toolResult.steps) {
-          setProposedSteps(toolResult.steps as { title: string; description?: string }[])
-          setAiHistory(prev => [...prev, { role: "assistant", content: toolResult?.message || fullText || "Oto proponowane kroki:" }])
-        } else if (toolResult?.type === "tasks_proposal" && toolResult.tasks) {
-          setProposedTasks(toolResult.tasks as { title: string; category?: string; plannedMinutes?: number }[])
-          setAiHistory(prev => [...prev, { role: "assistant", content: toolResult?.message || fullText || "Oto proponowane zadania:" }])
-        } else if (fullText) {
-          setAiHistory(prev => [...prev, { role: "assistant", content: fullText }])
-        }
-      } else {
-        toast.error("Błąd komunikacji z AI")
-      }
+      await quarterRequest("/api/quarters", "POST", ref)
+      await view.mutate()
+      toast.success(`${quarterLabel(ref)} utworzony. Dodaj cele.`)
+      setGoalDialog({ goal: null })
     } catch (error) {
-      console.error("AI chat error:", error)
-      toast.error("Wystąpił błąd")
+      toast.error(error instanceof Error ? error.message : "Nie udało się utworzyć kwartału")
     } finally {
-      setAiLoading(false)
+      setCreating(false)
     }
   }
 
-  // Save proposed steps
-  const handleSaveSteps = async () => {
-    if (!aiPlanningGoal || proposedSteps.length === 0) return
-
-    try {
-      const res = await fetch(`/api/goals/${aiPlanningGoal.goal.id}/steps`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steps: proposedSteps }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        toast.success(`Dodano ${data.steps.length} kroków realizacji`)
-        setStepsMap(prev => ({ ...prev, [aiPlanningGoal.goal.id]: data.steps }))
-        setAiPlanningGoal(null)
-        setAiHistory([])
-        setProposedSteps([])
-        mutateGoals()
-      } else {
-        toast.error("Nie udało się zapisać kroków")
-      }
-    } catch (error) {
-      console.error("Error saving steps:", error)
-      toast.error("Wystąpił błąd")
+  const handleRitual = (ritual: Ritual) => {
+    switch (ritual.kind) {
+      case "close_sprint":
+        setSelectedSprintId(ritual.sprint.id)
+        setCloseSprintId(ritual.sprint.id)
+        break
+      case "plan_sprint":
+        setSelectedSprintId(ritual.sprint.id)
+        setPlanSprintId(ritual.sprint.id)
+        break
+      case "check_in":
+        setCheckInOpen(true)
+        break
+      case "review_quarter":
+        setReviewOpen(true)
+        break
+      case "plan_next_quarter":
+        goToQuarter(ritual.next)
+        break
     }
   }
 
-  // Save proposed tasks to schedule
-  const handleSaveTasks = async () => {
-    if (!aiPlanningGoal || proposedTasks.length === 0) return
-
-    try {
-      // Create tasks one by one linked to the goal, inherit category from goal
-      let successCount = 0
-      for (const task of proposedTasks) {
-        const res = await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: task.title,
-            description: task.description,
-            goalId: aiPlanningGoal.goal.id,
-            categoryId: aiPlanningGoal.goal.category?.id, // Inherit category from goal
-            workspaceType: workspace,
-          }),
-        })
-        if (res.ok) successCount++
-      }
-
-      if (successCount > 0) {
-        toast.success(`Dodano ${successCount} zadań`)
-        // Refresh tasks for this goal
-        refreshGoalTasks(aiPlanningGoal.goal.id)
-        setAiPlanningGoal(null)
-        setAiHistory([])
-        setProposedTasks([])
-        mutateGoals()
-      } else {
-        toast.error("Nie udało się zapisać zadań")
-      }
-    } catch (error) {
-      console.error("Error saving tasks:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Schedule a task (set scheduledDate)
-  const handleScheduleTask = async () => {
-    if (!schedulingTask || !schedulingGoalId) return
-
-    try {
-      const res = await fetch(`/api/tasks/${schedulingTask.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scheduledDate: scheduleDate,
-        }),
-      })
-
-      if (res.ok) {
-        // Update task in tasksMap with new scheduledDate (don't remove it!)
-        setTasksMap(prev => ({
-          ...prev,
-          [schedulingGoalId]: prev[schedulingGoalId]?.map(t =>
-            t.id === schedulingTask.id ? { ...t, scheduledDate: scheduleDate } : t
-          ) || []
-        }))
-        toast.success("Zadanie zaplanowane na " + format(new Date(scheduleDate), "d MMM", { locale: pl }))
-        setSchedulingTask(null)
-        setSchedulingGoalId(null)
-      } else {
-        toast.error("Nie udało się zaplanować zadania")
-      }
-    } catch (error) {
-      console.error("Error scheduling task:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Toggle task completion
-  const handleCompleteTask = async (taskId: string, goalId: string) => {
-    const task = tasksMap[goalId]?.find(t => t.id === taskId)
-    if (!task) return
-
-    const newStatus = task.status === "COMPLETED" ? "TODO" : "COMPLETED"
-
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: newStatus,
-        }),
-      })
-
-      if (res.ok) {
-        // Update task status in tasksMap (don't remove!)
-        setTasksMap(prev => ({
-          ...prev,
-          [goalId]: prev[goalId]?.map(t =>
-            t.id === taskId ? { ...t, status: newStatus } : t
-          ) || []
-        }))
-        toast.success(newStatus === "COMPLETED" ? "Zadanie ukończone!" : "Zadanie oznaczone jako nieukończone")
-      }
-    } catch (error) {
-      console.error("Error toggling task:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Delete task
-  const handleDeleteTask = async (taskId: string, goalId: string) => {
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "DELETE",
-      })
-
-      if (res.ok) {
-        // Remove task from tasksMap
-        setTasksMap(prev => ({
-          ...prev,
-          [goalId]: prev[goalId]?.filter(t => t.id !== taskId) || []
-        }))
-        // Invalidate task-stack cache so it refreshes if user navigates there
-        mutate("/api/tasks/stack")
-        mutate("/api/tasks/stack/history")
-        toast.success("Zadanie usunięte")
-      } else {
-        toast.error("Nie udało się usunąć zadania")
-      }
-    } catch (error) {
-      console.error("Error deleting task:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Handle subtasks change
-  const handleTaskSubtasksChange = (taskId: string, goalId: string, newSubtasks: Subtask[]) => {
-    setTasksMap(prev => ({
-      ...prev,
-      [goalId]: prev[goalId]?.map(task =>
-        task.id === taskId ? { ...task, subtasks: newSubtasks } : task
-      ) || []
-    }))
-  }
-
-  // Edit task title
-  const handleEditTask = (task: GoalTask) => {
-    setEditingTaskId(task.id)
-    setEditingTaskTitle(task.title)
-  }
-
-  const handleCancelTaskEdit = () => {
-    setEditingTaskId(null)
-    setEditingTaskTitle("")
-  }
-
-  const handleSaveTaskEdit = async (taskId: string, goalId: string) => {
-    if (!editingTaskTitle.trim()) return
-
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: editingTaskTitle.trim() }),
-      })
-
-      if (res.ok) {
-        // Update task title in tasksMap
-        setTasksMap(prev => ({
-          ...prev,
-          [goalId]: prev[goalId]?.map(t =>
-            t.id === taskId ? { ...t, title: editingTaskTitle.trim() } : t
-          ) || []
-        }))
-        setEditingTaskId(null)
-        setEditingTaskTitle("")
-        toast.success("Zadanie zaktualizowane")
-      } else {
-        toast.error("Nie udało się zaktualizować zadania")
-      }
-    } catch (error) {
-      console.error("Error updating task:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Refresh tasks for a goal
-  const refreshGoalTasks = async (goalId: string) => {
-    try {
-      const res = await fetch(`/api/goals/${goalId}/tasks`)
-      if (res.ok) {
-        const tasks = await res.json()
-        setTasksMap(prev => ({ ...prev, [goalId]: tasks }))
-      }
-    } catch (error) {
-      console.error("Error refreshing tasks:", error)
-    }
-  }
-
-  // Fetch knowledge categories
-  const fetchKnowledgeCategories = async () => {
-    try {
-      const res = await fetch(`/api/knowledge/categories?workspace=${workspace}`)
-      if (res.ok) {
-        const data = await res.json()
-        // API returns { strategicCategories, customCategories, allCategories }
-        // Use allCategories (flat list) for the select dropdown
-        if (data.allCategories && Array.isArray(data.allCategories)) {
-          setKnowledgeCategories(data.allCategories.map((c: KnowledgeCategory) => ({
-            id: c.id,
-            name: c.name
-          })))
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching knowledge categories:", error)
-    }
-  }
-
-  // Start saving to knowledge - generate summary
-  const handleStartSaveKnowledge = async () => {
-    if (aiHistory.length === 0) {
-      toast.error("Brak rozmowy do zapisania")
-      return
-    }
-
-    fetchKnowledgeCategories()
-    setKnowledgeStep("generating")
-
-    try {
-      const conversationText = aiHistory.map(m =>
-        `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${m.content}`
-      ).join("\n\n")
-
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: `Stwórz zwięzłe podsumowanie poniższej rozmowy. Wyciągnij kluczowe informacje, ustalenia i wnioski. Pisz konkretnie, bez zbędnych wstępów.\n\nRozmowa:\n${conversationText}` }],
-          mode: "general",
-        }),
-      })
-
-      if (res.ok) {
-        // Parse streaming response
-        const reader = res.body?.getReader()
-        const decoder = new TextDecoder()
-        let fullText = ""
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            const chunk = decoder.decode(value)
-            const lines = chunk.split("\n")
-            for (const line of lines) {
-              if (line.startsWith("0:")) {
-                try {
-                  const text = JSON.parse(line.slice(2))
-                  fullText += text
-                } catch {
-                  // Skip malformed lines
-                }
-              }
-            }
-          }
-        }
-
-        if (fullText) {
-          setKnowledgeForm(prev => ({ ...prev, content: fullText }))
-          setKnowledgeStep("review")
-        } else {
-          toast.error("Nie udało się wygenerować podsumowania")
-          setKnowledgeStep("idle")
-        }
-      } else {
-        toast.error("Nie udało się wygenerować podsumowania")
-        setKnowledgeStep("idle")
-      }
-    } catch (error) {
-      console.error("Error generating summary:", error)
-      toast.error("Wystąpił błąd")
-      setKnowledgeStep("idle")
-    }
-  }
-
-  // Save to knowledge base
-  const handleSaveKnowledge = async () => {
-    if (!knowledgeForm.content.trim() || !knowledgeForm.categoryId) {
-      toast.error("Wypełnij treść i wybierz kategorię")
-      return
-    }
-
-    setKnowledgeStep("saving")
-
-    try {
-      const res = await fetch("/api/knowledge/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: aiPlanningGoal?.goal.title ? `Notatka: ${aiPlanningGoal.goal.title}` : "Notatka z rozmowy AI",
-          newInfo: knowledgeForm.content,
-          categoryId: knowledgeForm.categoryId,
-          workspace: workspace,
-        }),
-      })
-
-      if (res.ok) {
-        setKnowledgeStep("saved")
-        mutate("/api/knowledge/categories?workspace=" + workspace)
-        mutate((key: unknown) => typeof key === "string" && key.includes("/api/knowledge/entries"), undefined, { revalidate: true })
-        toast.success("Zapisano do bazy wiedzy")
-        setTimeout(() => setKnowledgeStep("idle"), 2000)
-      } else {
-        toast.error("Nie udało się zapisać")
-        setKnowledgeStep("review")
-      }
-    } catch (error) {
-      console.error("Error saving knowledge:", error)
-      toast.error("Wystąpił błąd")
-      setKnowledgeStep("review")
-    }
-  }
-
-  // Open AI planning dialog
-  const handlePlanWithAI = (goal: Goal, stage: "planning_steps" | "breakdown_tasks") => {
-    setAiPlanningGoal({ goal, stage })
-    setAiHistory([])
-    setProposedSteps([])
-    setProposedTasks([])
-    setAiMessage("")
-    setKnowledgeStep("idle")
-    setKnowledgeForm({ content: "", categoryId: "" })
-  }
-
-  // Edit step
-  const handleEditStep = (step: Step) => {
-    setEditingStepId(step.id)
-    setEditingStepTitle(step.title)
-  }
-
-  const handleCancelStepEdit = () => {
-    setEditingStepId(null)
-    setEditingStepTitle("")
-  }
-
-  const handleSaveStepEdit = async (stepId: string) => {
-    if (!editingStepTitle.trim()) return
-    try {
-      const res = await fetch(`/api/goals/${stepId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: editingStepTitle.trim() }),
-      })
-      if (res.ok) {
-        // Find parent goal and refresh its steps
-        const parentGoalId = Object.keys(stepsMap).find(key =>
-          stepsMap[key].some(s => s.id === stepId)
-        )
-        if (parentGoalId) {
-          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
-          if (stepsRes.ok) {
-            const steps = await stepsRes.json()
-            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
-          }
-        }
-        setEditingStepId(null)
-        setEditingStepTitle("")
-        toast.success("Krok zaktualizowany")
-      } else {
-        toast.error("Nie udało się zaktualizować kroku")
-      }
-    } catch (error) {
-      console.error("Error updating step:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Delete step
-  const handleDeleteStep = async (stepId: string) => {
-    if (!confirm("Czy na pewno chcesz usunąć ten krok?")) return
-    try {
-      const res = await fetch(`/api/goals/${stepId}`, { method: "DELETE" })
-      if (res.ok) {
-        // Find parent goal and refresh its steps
-        const parentGoalId = Object.keys(stepsMap).find(key =>
-          stepsMap[key].some(s => s.id === stepId)
-        )
-        if (parentGoalId) {
-          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
-          if (stepsRes.ok) {
-            const steps = await stepsRes.json()
-            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
-          }
-        }
-        mutateGoals()
-        toast.success("Krok usunięty")
-      } else {
-        toast.error("Nie udało się usunąć kroku")
-      }
-    } catch (error) {
-      console.error("Error deleting step:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Toggle step complete
-  const handleToggleStepComplete = async (step: Step) => {
-    try {
-      const res = await fetch(`/api/goals/${step.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: !step.isCompleted }),
-      })
-      if (res.ok) {
-        // Refresh steps for parent goal
-        const parentGoalId = Object.keys(stepsMap).find(key =>
-          stepsMap[key].some(s => s.id === step.id)
-        )
-        if (parentGoalId) {
-          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
-          if (stepsRes.ok) {
-            const steps = await stepsRes.json()
-            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
-          }
-        }
-        mutateGoals()
-        toast.success(step.isCompleted ? "Krok oznaczony jako nieukończony" : "Krok ukończony!")
-      }
-    } catch (error) {
-      console.error("Error toggling step:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Add step manually (without AI)
-  const handleAddStep = async (goalId: string, title: string) => {
-    try {
-      const res = await fetch(`/api/goals/${goalId}/steps`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steps: [{ title }] }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        setStepsMap(prev => ({
-          ...prev,
-          [goalId]: [...(prev[goalId] || []), ...data.steps]
-        }))
-        mutateGoals()
-        toast.success("Krok dodany")
-      } else {
-        toast.error("Nie udało się dodać kroku")
-      }
-    } catch (error) {
-      console.error("Error adding step:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Add task manually (without AI)
-  const handleAddTask = async (goalId: string, title: string) => {
-    const goal = goals.find(g => g.id === goalId)
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          goalId,
-          categoryId: goal?.category?.id,
-          workspaceType: workspace,
-        }),
-      })
-
-      if (res.ok) {
-        refreshGoalTasks(goalId)
-        toast.success("Zadanie dodane")
-      } else {
-        toast.error("Nie udało się dodać zadania")
-      }
-    } catch (error) {
-      console.error("Error adding task:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Promote step to sprint goal - converts step to a real sprint goal
-  const handlePromoteToSprint = async (stepId: string, sprintId: string) => {
-    try {
-      // Just assign sprintId, keep isStep=true so it shows in BOTH places
-      const res = await fetch(`/api/goals/${stepId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sprintId,
-          // DON'T set isStep: false - keep it as a step so it shows under period goal too
-        }),
-      })
-      if (res.ok) {
-        // Refresh steps for parent goal (to update sprint badge)
-        const parentGoalId = Object.keys(stepsMap).find(key =>
-          stepsMap[key].some(s => s.id === stepId)
-        )
-        if (parentGoalId) {
-          const stepsRes = await fetch(`/api/goals/${parentGoalId}/steps`)
-          if (stepsRes.ok) {
-            const steps = await stepsRes.json()
-            setStepsMap(prev => ({ ...prev, [parentGoalId]: steps }))
-          }
-        }
-        mutateGoals()
-        toast.success("Krok przypisany do sprintu")
-      }
-    } catch (error) {
-      console.error("Error assigning step to sprint:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Get all sprints from all periods for dropdown
-  const allSprints = periods.flatMap(p => p.sprints.map(s => ({ id: s.id, name: s.name })))
-
-  const handleToggleComplete = async (goal: Goal) => {
-    try {
-      const res = await fetch(`/api/goals/${goal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: !goal.isCompleted }),
-      })
-      if (res.ok) {
-        mutateGoals()
-        toast.success(goal.isCompleted ? "Cel oznaczony jako nieukończony" : "Cel ukończony!")
-      } else {
-        toast.error("Nie udało się zaktualizować celu")
-      }
-    } catch (error) {
-      console.error("Error updating goal:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Czy na pewno chcesz usunąć ten cel?")) return
-    try {
-      const res = await fetch(`/api/goals/${id}`, { method: "DELETE" })
-      if (res.ok) {
-        mutateGoals()
-        toast.success("Cel usunięty")
-      } else {
-        toast.error("Nie udało się usunąć celu")
-      }
-    } catch (error) {
-      console.error("Error deleting goal:", error)
-      toast.error("Wystąpił błąd podczas usuwania")
-    }
-  }
-
-  const handleEdit = (goal: Goal) => {
-    setEditingGoalId(goal.id)
-    setEditingTitle(goal.title)
-  }
-
-  const handleCancelEdit = () => {
-    setEditingGoalId(null)
-    setEditingTitle("")
-  }
-
-  const handleSaveEdit = async (id: string) => {
-    if (!editingTitle.trim()) return
-    try {
-      const res = await fetch(`/api/goals/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: editingTitle.trim() }),
-      })
-      if (res.ok) {
-        setEditingGoalId(null)
-        setEditingTitle("")
-        mutateGoals()
-        toast.success("Cel zaktualizowany")
-      } else {
-        toast.error("Nie udało się zaktualizować celu")
-      }
-    } catch (error) {
-      console.error("Error updating goal:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  // Save goal from template
-  const handleSaveFromTemplate = async (
-    categoryId: string,
-    periodId?: string,
-    sprintId?: string
-  ) => {
-    const key = sprintId ? `sprint-${sprintId}-${categoryId}` : `period-${periodId}-${categoryId}`
-    const title = templateInputs[key]?.trim()
-
-    if (!title) return
-
-    try {
-      const res = await fetch("/api/goals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          categoryId,
-          periodId: periodId || undefined,
-          sprintId: sprintId || undefined,
-          workspaceType: workspace,
-          // Pass team context if viewing employee goals
-          organizationId: selectedOrgId || undefined,
-          targetUserId: selectedEmployeeId || undefined,
-        }),
-      })
-      if (res.ok) {
-        setTemplateInputs((prev) => ({ ...prev, [key]: "" }))
-        mutateGoals()
-        toast.success("Cel dodany")
-      } else {
-        toast.error("Nie udało się dodać celu")
-      }
-    } catch (error) {
-      console.error("Error creating goal:", error)
-      toast.error("Wystąpił błąd podczas tworzenia celu")
-    }
-  }
-
-  const handleInputChange = (key: string, value: string) => {
-    setTemplateInputs((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const togglePeriod = (periodId: string) => {
-    const newExpanded = new Set(expandedPeriods)
-    if (newExpanded.has(periodId)) {
-      newExpanded.delete(periodId)
-    } else {
-      newExpanded.add(periodId)
-    }
-    setExpandedPeriods(newExpanded)
-  }
-
-  const toggleSprint = (sprintId: string) => {
-    const newExpanded = new Set(expandedSprints)
-    if (newExpanded.has(sprintId)) {
-      newExpanded.delete(sprintId)
-    } else {
-      newExpanded.add(sprintId)
-    }
-    setExpandedSprints(newExpanded)
-  }
-
-  const strategicCategories = categories.filter((c) => c.isStrategic)
-
-  // Get goals for a specific context (period or sprint) and category
-  // Now includes completed goals too!
-  const getGoalsForCategory = (categoryId: string, periodId?: string, sprintId?: string) => {
-    return goals.filter((g) => {
-      if (g.category?.id !== categoryId) return false
-
-      if (sprintId) {
-        // In sprint context: include regular goals AND steps assigned to this sprint
-        if (g.isStep) {
-          // Steps appear in sprint if assigned to it
-          return g.sprint?.id === sprintId
-        }
-        return g.sprint?.id === sprintId
-      }
-
-      // Period goals context: exclude steps (they show under parent goal)
-      if (g.isStep) return false
-      return g.period?.id === periodId && !g.sprint
-    })
-  }
-
-  if (isLoading) {
+  if (!ref || (view.isLoading && !view.isLoaded)) {
     return (
       <div className="space-y-4 md:space-y-6 animate-fade-in">
-        {/* Header skeleton */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <Skeleton className="h-8 w-24 mb-2" />
-            <Skeleton className="h-4 w-64" />
-          </div>
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">Cele</h1>
         </div>
-
-        {/* Periods skeleton */}
-        {[1, 2].map((i) => (
-          <Card key={i}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-5 w-5" />
-                  <div>
-                    <Skeleton className="h-6 w-32 mb-1" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                </div>
-                <Skeleton className="h-6 w-20" />
-              </div>
-            </CardHeader>
-          </Card>
-        ))}
+        <PageSkeleton />
       </div>
     )
   }
 
-  // Count total goals for a period (period goals + all sprint goals) - excludes steps
-  const countPeriodGoals = (periodId: string, sprints: Sprint[]) => {
-    const periodGoals = goals.filter(
-      (g) => !g.isStep && g.period?.id === periodId && !g.sprint
-    ).length
-    const sprintGoals = sprints.reduce((acc, s) => {
-      return acc + goals.filter((g) => !g.isStep && g.sprint?.id === s.id).length
-    }, 0)
-    return periodGoals + sprintGoals
-  }
+  const elapsed = quarterElapsed(ref, today)
+  const phase = quarterPhase(ref, today)
+  const rituals = quarter ? computeRituals(quarter, today) : []
+  const sprint = quarter
+    ? quarter.sprints.find((s) => s.id === selectedSprintId) ?? defaultSprint(quarter, today)
+    : null
+  const planSprint = quarter?.sprints.find((s) => s.id === planSprintId) ?? null
+  const closeSprint = quarter?.sprints.find((s) => s.id === closeSprintId) ?? null
+  const goalsCount = quarter?.goals.length ?? 0
+
+  const leadScores = (quarter?.goals ?? [])
+    .map((g) => leadExecution(latestCheckIn(g)?.leadActual, g.leadTarget))
+    .filter((v): v is number => v !== null)
+  const leadScore = leadScores.length > 0 ? leadScores.reduce((a, b) => a + b, 0) / leadScores.length : null
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">
-            Cele
-            {selectedEmployeeId && (
-              <span className="text-lg font-normal text-muted-foreground ml-2">
-                — {ownedOrgs.find(o => o.id === selectedOrgId)?.members.find(m => m.user.id === selectedEmployeeId)?.user.name || "Pracownik"}
-              </span>
-            )}
-          </h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Cele</h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            {selectedEmployeeId
-              ? "Zarządzaj celami pracownika"
-              : "Zarządzaj celami okresowymi i sprintowymi"}
+            Kwartał, sprinty co 2 tygodnie i cotygodniowy check-in
           </p>
         </div>
-
-        {/* Employee selector (admin only) */}
-        {ownedOrgs.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <select
-              className="border rounded px-3 py-1.5 text-sm bg-background min-w-[200px]"
-              value={selectedEmployeeId ? `${selectedOrgId}:${selectedEmployeeId}` : ""}
-              onChange={(e) => {
-                if (e.target.value === "") {
-                  setSelectedOrgId(null)
-                  setSelectedEmployeeId(null)
-                } else {
-                  const [orgId, empId] = e.target.value.split(":")
-                  setSelectedOrgId(orgId)
-                  setSelectedEmployeeId(empId)
-                }
-              }}
-            >
-              <option value="">Moje cele</option>
-              {ownedOrgs.map(org => (
-                <optgroup key={org.id} label={org.name}>
-                  {org.members
-                    .filter(m => m.user.id !== org.members.find(mm => mm.id === mm.id)?.userId) // Filter out owner
-                    .map(member => (
-                      <option key={member.id} value={`${org.id}:${member.user.id}`}>
-                        {member.user.name || member.user.email}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
+        <div className="flex items-center gap-1 self-start sm:self-auto">
+          <Button variant="ghost" size="icon" onClick={() => goToQuarter(shiftQuarter(ref, -1))} aria-label="Poprzedni kwartał">
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div className="min-w-[8.5rem] text-center">
+            <p className="font-semibold">{quarterLabel(ref)}</p>
+            <p className="text-xs text-muted-foreground">
+              {dayLabel(buildQuarterSchedule(ref).startKey)} – {dayLabel(buildQuarterSchedule(ref).endKey)}
+            </p>
           </div>
-        )}
+          <Button variant="ghost" size="icon" onClick={() => goToQuarter(shiftQuarter(ref, 1))} aria-label="Następny kwartał">
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+          {defaultRef && !sameQuarter(ref, defaultRef) && (
+            <Button variant="outline" size="sm" className="ml-1" onClick={() => goToQuarter(defaultRef)}>
+              Teraz
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Info about strategic categories */}
-      {strategicCategories.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex items-center gap-4 py-4">
-            <Target className="h-8 w-8 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Brak kategorii strategicznych</p>
-              <p className="text-sm text-muted-foreground">
-                Dodaj kategorie strategiczne w Ustawieniach, aby móc tworzyć cele
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Periods with templates */}
-      {periods.map((period) => {
-        const today = new Date()
-        const isCurrentPeriod = new Date(period.startDate) <= today && today <= new Date(period.endDate)
-        const totalGoals = countPeriodGoals(period.id, period.sprints)
-
-        return (
-          <Card key={period.id} className={isCurrentPeriod ? "border-primary/50" : ""}>
-            <Collapsible
-              open={expandedPeriods.has(period.id)}
-              onOpenChange={() => togglePeriod(period.id)}
-            >
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {expandedPeriods.has(period.id) ? (
-                        <ChevronDown className="h-5 w-5" />
-                      ) : (
-                        <ChevronRight className="h-5 w-5" />
-                      )}
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Calendar className="h-5 w-5" />
-                          {period.name}
-                          {isCurrentPeriod && (
-                            <Badge variant="default" className="text-xs">Aktywny</Badge>
-                          )}
-                        </CardTitle>
-                        <CardDescription>
-                          {format(new Date(period.startDate), "d MMM yyyy", { locale: pl })} -{" "}
-                          {format(new Date(period.endDate), "d MMM yyyy", { locale: pl })}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <Badge variant="secondary">{totalGoals} celów</Badge>
-                  </div>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="space-y-6">
-                  {/* Period-level goals - templates for each category */}
-                  <div>
-                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                      <Target className="h-4 w-4" />
-                      Cele okresu
-                    </h3>
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                      {strategicCategories.map((category) => (
-                        <CategoryTemplate
-                          key={category.id}
-                          category={category}
-                          periodId={period.id}
-                          categoryGoals={getGoalsForCategory(category.id, period.id)}
-                          inputValue={templateInputs[`period-${period.id}-${category.id}`] || ""}
-                          onInputChange={handleInputChange}
-                          onSave={handleSaveFromTemplate}
-                          onToggleComplete={handleToggleComplete}
-                          onDelete={handleDelete}
-                          onEdit={handleEdit}
-                          onPlanWithAI={handlePlanWithAI}
-                          editingGoalId={editingGoalId}
-                          editingTitle={editingTitle}
-                          setEditingTitle={setEditingTitle}
-                          onSaveEdit={handleSaveEdit}
-                          onCancelEdit={handleCancelEdit}
-                          stepsMap={stepsMap}
-                          onToggleStepComplete={handleToggleStepComplete}
-                          onPromoteToSprint={handlePromoteToSprint}
-                          onEditStep={handleEditStep}
-                          onSaveStepEdit={handleSaveStepEdit}
-                          onCancelStepEdit={handleCancelStepEdit}
-                          onDeleteStep={handleDeleteStep}
-                          editingStepId={editingStepId}
-                          editingStepTitle={editingStepTitle}
-                          setEditingStepTitle={setEditingStepTitle}
-                          sprints={allSprints}
-                          tasksMap={tasksMap}
-                          onScheduleTask={(task, goalId) => {
-                            setSchedulingTask(task)
-                            setSchedulingGoalId(goalId)
-                            setScheduleDate(task.scheduledDate || format(new Date(), "yyyy-MM-dd"))
-                          }}
-                          onCompleteTask={handleCompleteTask}
-                          onTaskSubtasksChange={handleTaskSubtasksChange}
-                          onRefreshTasks={refreshGoalTasks}
-                          onDeleteTask={handleDeleteTask}
-                          expandedTaskId={expandedTaskId}
-                          onExpandTask={setExpandedTaskId}
-                          onEditTask={handleEditTask}
-                          onSaveTaskEdit={handleSaveTaskEdit}
-                          onCancelTaskEdit={handleCancelTaskEdit}
-                          editingTaskId={editingTaskId}
-                          editingTaskTitle={editingTaskTitle}
-                          setEditingTaskTitle={setEditingTaskTitle}
-                          onAddStep={handleAddStep}
-                          onAddTask={handleAddTask}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Sprints within period */}
-                  {period.sprints.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold flex items-center gap-2">
-                        <Zap className="h-4 w-4" />
-                        Sprinty
-                      </h3>
-                      {period.sprints.map((sprint) => {
-                        const today = new Date()
-                        const isCurrentSprint =
-                          new Date(sprint.startDate) <= today && today <= new Date(sprint.endDate)
-                        // Count all goals in sprint (including steps assigned to sprint)
-                        const sprintGoalsCount = goals.filter(
-                          (g) => g.sprint?.id === sprint.id
-                        ).length
-
-                        return (
-                          <Collapsible
-                            key={sprint.id}
-                            open={expandedSprints.has(sprint.id)}
-                            onOpenChange={() => toggleSprint(sprint.id)}
-                          >
-                            <div
-                              className={`border rounded-lg ${
-                                isCurrentSprint ? "border-primary/50 bg-primary/5" : ""
-                              }`}
-                            >
-                              <CollapsibleTrigger asChild>
-                                <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors">
-                                  <div className="flex items-center gap-2">
-                                    {expandedSprints.has(sprint.id) ? (
-                                      <ChevronDown className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" />
-                                    )}
-                                    <span className="font-medium">{sprint.name}</span>
-                                    {isCurrentSprint && (
-                                      <Badge variant="default" className="text-[10px]">
-                                        Aktywny
-                                      </Badge>
-                                    )}
-                                    <span className="text-xs text-muted-foreground">
-                                      {format(new Date(sprint.startDate), "d MMM", { locale: pl })} -{" "}
-                                      {format(new Date(sprint.endDate), "d MMM", { locale: pl })}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="outline">{sprintGoalsCount} celów</Badge>
-                                  </div>
-                                </div>
-                              </CollapsibleTrigger>
-                              <CollapsibleContent>
-                                <div className="p-3 pt-0 space-y-4">
-                                  {/* Sprint goals by category (includes steps assigned to sprint) */}
-                                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                                    {strategicCategories.map((category) => (
-                                      <CategoryTemplate
-                                        key={category.id}
-                                        category={category}
-                                        periodId={period.id}
-                                        sprintId={sprint.id}
-                                        categoryGoals={getGoalsForCategory(category.id, period.id, sprint.id)}
-                                        inputValue={templateInputs[`sprint-${sprint.id}-${category.id}`] || ""}
-                                        onInputChange={handleInputChange}
-                                        onSave={handleSaveFromTemplate}
-                                        onToggleComplete={handleToggleComplete}
-                                        onDelete={handleDelete}
-                                        onEdit={handleEdit}
-                                        onPlanWithAI={handlePlanWithAI}
-                                        editingGoalId={editingGoalId}
-                                        editingTitle={editingTitle}
-                                        setEditingTitle={setEditingTitle}
-                                        onSaveEdit={handleSaveEdit}
-                                        onCancelEdit={handleCancelEdit}
-                                        stepsMap={stepsMap}
-                                        onToggleStepComplete={handleToggleStepComplete}
-                                        onPromoteToSprint={handlePromoteToSprint}
-                                        onEditStep={handleEditStep}
-                                        onSaveStepEdit={handleSaveStepEdit}
-                                        onCancelStepEdit={handleCancelStepEdit}
-                                        onDeleteStep={handleDeleteStep}
-                                        editingStepId={editingStepId}
-                                        editingStepTitle={editingStepTitle}
-                                        setEditingStepTitle={setEditingStepTitle}
-                                        sprints={allSprints}
-                                        tasksMap={tasksMap}
-                                        onScheduleTask={(task, goalId) => {
-                                          setSchedulingTask(task)
-                                          setSchedulingGoalId(goalId)
-                                          setScheduleDate(task.scheduledDate || format(new Date(), "yyyy-MM-dd"))
-                                        }}
-                                        onCompleteTask={handleCompleteTask}
-                                        onTaskSubtasksChange={handleTaskSubtasksChange}
-                                        onRefreshTasks={refreshGoalTasks}
-                                        onDeleteTask={handleDeleteTask}
-                                        expandedTaskId={expandedTaskId}
-                                        onExpandTask={setExpandedTaskId}
-                                        onEditTask={handleEditTask}
-                                        onSaveTaskEdit={handleSaveTaskEdit}
-                                        onCancelTaskEdit={handleCancelTaskEdit}
-                                        editingTaskId={editingTaskId}
-                                        editingTaskTitle={editingTaskTitle}
-                                        setEditingTaskTitle={setEditingTaskTitle}
-                                        onAddStep={handleAddStep}
-                                        onAddTask={handleAddTask}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              </CollapsibleContent>
-                            </div>
-                          </Collapsible>
-                        )
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        )
-      })}
-
-      {/* Empty state - no periods */}
-      {periods.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Brak okresów</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Stwórz najpierw okres w zakładce Sprinty, aby móc dodawać cele
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* AI Planning Dialog */}
-      <Dialog open={!!aiPlanningGoal} onOpenChange={(open) => !open && setAiPlanningGoal(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-500" />
-              {aiPlanningGoal?.stage === "planning_steps"
-                ? "Planowanie kroków realizacji"
-                : "Rozbijanie na zadania"}
-            </DialogTitle>
-            <DialogDescription>
-              Cel: <span className="font-medium">{aiPlanningGoal?.goal.title}</span>
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Chat history */}
-          <div className="flex-1 overflow-y-auto space-y-3 py-4 min-h-[200px] max-h-[300px]">
-            {aiHistory.length === 0 && (
-              <div className="text-center text-muted-foreground text-sm py-8">
-                {aiPlanningGoal?.stage === "planning_steps"
-                  ? "Opisz cel i porozmawiaj z AI, aby wspólnie zaplanować kroki realizacji."
-                  : "Porozmawiaj z AI, aby rozbić cel na konkretne zadania do wykonania."}
-              </div>
-            )}
-            {aiHistory.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
-                >
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            {aiLoading && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-lg px-3 py-2 text-sm">
-                  <span className="animate-pulse">AI pisze...</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Proposed steps preview */}
-          {proposedSteps.length > 0 && (
-            <div className="border rounded-lg p-3 bg-purple-50 dark:bg-purple-950/20">
-              <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                <ListTodo className="h-4 w-4" />
-                Proponowane kroki ({proposedSteps.length})
-              </div>
-              <div className="space-y-1">
-                {proposedSteps.map((step, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">{i + 1}.</span>
-                    <span>{step.title}</span>
-                  </div>
-                ))}
-              </div>
-              <Button
-                className="w-full mt-3"
-                onClick={handleSaveSteps}
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Zatwierdź i zapisz kroki
-              </Button>
-            </div>
-          )}
-
-          {/* Proposed tasks preview */}
-          {proposedTasks.length > 0 && (
-            <div className="border rounded-lg p-3 bg-green-50 dark:bg-green-950/20">
-              <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                <ListTodo className="h-4 w-4" />
-                Proponowane zadania ({proposedTasks.length})
-              </div>
-              <div className="space-y-1">
-                {proposedTasks.map((task, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">{i + 1}.</span>
-                    <span>{task.title}</span>
-                  </div>
-                ))}
-              </div>
-              <Button
-                className="w-full mt-3"
-                onClick={handleSaveTasks}
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Dodaj do harmonogramu
-              </Button>
-            </div>
-          )}
-
-          {/* Save to knowledge section */}
-          {knowledgeStep === "generating" && (
-            <div className="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 text-center text-sm">
-              <span className="animate-pulse">Tworzę podsumowanie...</span>
-            </div>
-          )}
-
-          {knowledgeStep === "review" && (
-            <div className="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 space-y-3">
-              <div className="text-sm font-medium flex items-center gap-2">
-                <BookmarkPlus className="h-4 w-4" />
-                Zapisz do bazy wiedzy
-              </div>
-              <div className="space-y-2">
-                <Textarea
-                  value={knowledgeForm.content}
-                  onChange={(e) => setKnowledgeForm(prev => ({ ...prev, content: e.target.value }))}
-                  placeholder="Treść do zapisania..."
-                  className="min-h-[80px] text-sm"
-                />
-                <div>
-                  <Label className="text-xs">Kategoria</Label>
-                  <select
-                    className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
-                    value={knowledgeForm.categoryId}
-                    onChange={(e) => setKnowledgeForm(prev => ({ ...prev, categoryId: e.target.value }))}
-                  >
-                    <option value="">Wybierz kategorię...</option>
-                    {knowledgeCategories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleSaveKnowledge} disabled={!knowledgeForm.content.trim() || !knowledgeForm.categoryId}>
-                  <Check className="h-3 w-3 mr-1" /> Zapisz
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setKnowledgeStep("idle")}>
-                  Anuluj
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {knowledgeStep === "saving" && (
-            <div className="border rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 text-center text-sm">
-              <span className="animate-pulse">Zapisuję...</span>
-            </div>
-          )}
-
-          {knowledgeStep === "saved" && (
-            <div className="border rounded-lg p-3 bg-green-50 dark:bg-green-950/20 text-center text-sm text-green-600">
-              Zapisano do bazy wiedzy!
-            </div>
-          )}
-
-          {/* Input */}
-          <div className="flex gap-2 pt-2 border-t">
-            <Input
-              placeholder={
-                aiPlanningGoal?.stage === "planning_steps"
-                  ? "Opisz cel lub poproś o propozycję kroków..."
-                  : "Opisz lub poproś o propozycję zadań..."
-              }
-              value={aiMessage}
-              onChange={(e) => setAiMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSendAiMessage()
-                }
-              }}
-              disabled={aiLoading || knowledgeStep !== "idle"}
+      {!quarter ? (
+        <PlanQuarter quarterRef={ref} today={today} creating={creating} onCreate={createQuarter} />
+      ) : (
+        <>
+          {/* Timeline */}
+          <div className="space-y-2">
+            <QuarterTimeline
+              quarter={quarter}
+              today={today}
+              selectedSprintId={sprint?.id ?? null}
+              onSelectSprint={setSelectedSprintId}
             />
-            <Button onClick={handleSendAiMessage} disabled={aiLoading || !aiMessage.trim() || knowledgeStep !== "idle"}>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            {aiHistory.length > 0 && knowledgeStep === "idle" && (
-              <Button variant="outline" onClick={handleStartSaveKnowledge} title="Zapisz do bazy wiedzy">
-                <BookmarkPlus className="h-4 w-4" />
-              </Button>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {phase === "upcoming" && `Start ${dayLabel(quarter.startKey, "d MMMM")}`}
+              {(phase === "sprints" || phase === "review") &&
+                `Tydzień ${quarterWeek(ref, today)}/13 · minęło ${Math.round(elapsed * 100)}% kwartału`}
+              {phase === "past" && "Kwartał zakończony"}
+              {leadScore !== null && ` · działania tygodniowe (ost. check-in): ${Math.round(leadScore * 100)}%`}
+            </p>
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Schedule Task Dialog */}
-      <Dialog open={!!schedulingTask} onOpenChange={(open) => !open && setSchedulingTask(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Zaplanuj zadanie
-            </DialogTitle>
-            <DialogDescription>
-              Wybierz datę, na którą chcesz zaplanować to zadanie
-            </DialogDescription>
-          </DialogHeader>
+          <RitualList rituals={rituals} onAction={handleRitual} />
 
-          <div className="space-y-4 py-4">
-            <div className="p-3 bg-muted rounded-lg">
-              <div className="font-medium">{schedulingTask?.title}</div>
-              {schedulingTask?.description && (
-                <p className="text-sm text-muted-foreground mt-1">{schedulingTask.description}</p>
+          {/* Goals */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">
+                Cele kwartału <span className="font-normal text-muted-foreground">{goalsCount}</span>
+              </h2>
+              {goalsCount > 0 && (
+                <Button size="sm" variant="outline" onClick={() => setGoalDialog({ goal: null })}>
+                  <Plus className="mr-1 h-4 w-4" /> Dodaj cel
+                </Button>
               )}
             </div>
+            {goalsCount > RECOMMENDED_MAX_GOALS && (
+              <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {goalsCount} cele to dużo na jeden kwartał. Rozważ przesunięcie jednego na następny.
+              </p>
+            )}
+            {goalsCount === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <p className="font-medium">Zacznij od celów: maksymalnie 3, każdy z liczbą</p>
+                <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                  np. „Marketing, który przyprowadza klientów” → Nowi klienci: 0 → 7, działanie: 20 rozmów tygodniowo
+                </p>
+                <Button className="mt-4" onClick={() => setGoalDialog({ goal: null })}>
+                  <Plus className="mr-1 h-4 w-4" /> Dodaj pierwszy cel
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {quarter.goals.map((goal, i) => (
+                  <GoalCard
+                    key={goal.id}
+                    goal={goal}
+                    index={i}
+                    elapsed={elapsed}
+                    onEdit={(g) => setGoalDialog({ goal: g })}
+                    onChanged={refresh}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
-            <div>
-              <label className="text-sm font-medium">Data wykonania</label>
-              <Input
-                type="date"
-                value={scheduleDate}
-                onChange={(e) => setScheduleDate(e.target.value)}
-                className="mt-1"
+          {/* Sprint */}
+          {sprint && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">Sprint</h2>
+              <SprintPanel
+                quarter={quarter}
+                sprint={sprint}
+                today={today}
+                onPlan={(s) => setPlanSprintId(s.id)}
+                onClose={(s) => setCloseSprintId(s.id)}
+                onChanged={refresh}
               />
-            </div>
-          </div>
+            </section>
+          )}
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setSchedulingTask(null)}>
-              Anuluj
-            </Button>
-            <Button onClick={handleScheduleTask}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Zaplanuj
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          <GoalDialog
+            open={goalDialog !== null}
+            onOpenChange={(open) => !open && setGoalDialog(null)}
+            quarterId={quarter.id}
+            quarterName={quarter.name}
+            goal={goalDialog?.goal ?? null}
+            prefill={goalDialog?.prefill}
+            goalsCount={goalsCount}
+            onSaved={refresh}
+          />
+          <SprintPlanDialog
+            open={planSprint !== null}
+            onOpenChange={(open) => !open && setPlanSprintId(null)}
+            quarter={quarter}
+            sprint={planSprint}
+            history={view.history}
+            elapsed={elapsed}
+            onSaved={refresh}
+          />
+          <SprintCloseDialog
+            open={closeSprint !== null}
+            onOpenChange={(open) => !open && setCloseSprintId(null)}
+            quarter={quarter}
+            sprint={closeSprint}
+            onSaved={async (next) => {
+              await view.mutate()
+              if (next && !next.plannedAt && quarter.goals.length > 0) {
+                setSelectedSprintId(next.id)
+                setPlanSprintId(next.id)
+              }
+            }}
+          />
+          <CheckInDialog
+            open={checkInOpen}
+            onOpenChange={setCheckInOpen}
+            quarter={quarter}
+            today={today}
+            onSaved={refresh}
+          />
+          <QuarterReviewDialog
+            open={reviewOpen}
+            onOpenChange={setReviewOpen}
+            quarter={quarter}
+            onSaved={async (carriedTo) => {
+              await view.mutate()
+              if (carriedTo) goToQuarter(carriedTo)
+            }}
+          />
+        </>
+      )}
+
+      <ArchiveSection
+        carryTargetLabel={quarter ? quarter.name : null}
+        onCarry={(goal) =>
+          setGoalDialog({
+            goal: null,
+            prefill: { title: goal.title, categoryId: goal.categoryId, carriedFromGoalId: goal.id },
+          })
+        }
+      />
     </div>
   )
 }

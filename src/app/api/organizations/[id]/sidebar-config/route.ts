@@ -14,7 +14,6 @@ const DEFAULT_SIDEBAR_CONFIG = [
   { id: "schedule", label: "Harmonogram", enabled: true, order: 6 },
   { id: "calendar", label: "Kalendarz", enabled: true, order: 7 },
   { id: "goals", label: "Cele", enabled: true, order: 8 },
-  { id: "sprints", label: "Sprinty", enabled: true, order: 9 },
   { id: "recurring", label: "Cykliczne", enabled: true, order: 10 },
   { id: "stats", label: "Statystyki", enabled: true, order: 11 },
   // AI Chat tabs (prefixed with ai-tab-)
@@ -61,8 +60,10 @@ export async function GET(
     let config = DEFAULT_SIDEBAR_CONFIG
     if (organization.sidebarConfig && Array.isArray(organization.sidebarConfig)) {
       const existingConfig = organization.sidebarConfig as typeof DEFAULT_SIDEBAR_CONFIG
-      // Start with existing config
-      const mergedConfig = [...existingConfig]
+      // Start with existing config, without tabs that no longer exist (e.g. "sprints" is part of "goals" now)
+      const mergedConfig = existingConfig.filter(item =>
+        DEFAULT_SIDEBAR_CONFIG.some(defaultItem => defaultItem.id === item.id)
+      )
       // Add any new default items that don't exist in saved config
       for (const defaultItem of DEFAULT_SIDEBAR_CONFIG) {
         const exists = existingConfig.some(item => item.id === defaultItem.id)

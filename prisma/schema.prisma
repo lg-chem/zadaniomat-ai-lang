@@ -162,6 +162,12 @@ model Period {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
+  // Calendar quarter (null = legacy period with custom dates)
+  year          Int?
+  quarter       Int?          // 1-4
+  reviewNotes   String?       @db.Text // Quarter review: lessons learned
+  reviewedAt    DateTime?
+
   // Relations
   userId        String
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -173,6 +179,7 @@ model Period {
   organizationId String?
   organization   Organization? @relation("OrganizationPeriods", fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, workspaceType, year, quarter])
   @@index([userId, workspaceType])
   @@index([organizationId])
 }
@@ -185,6 +192,12 @@ model Sprint {
   isActive      Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  // Quarter sprint (null = legacy sprint)
+  number        Int?          // 1-6 within the quarter
+  sprintGoal    String?       @db.Text // One sentence: what is true after these 2 weeks
+  plannedAt     DateTime?
+  closedAt      DateTime?     // Set when the sprint review + retro is done
 
   // Relations
   periodId      String
@@ -282,6 +295,19 @@ model Goal {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
+  // Quarter goals (kind = QUARTER) and sprint commitments (kind = COMMITMENT)
+  kind          GoalKind?     // null = legacy period/sprint goal
+  why           String?       @db.Text // Why it matters
+  obstacle      String?       @db.Text // What will most likely stop me
+  ifThenPlan    String?       @db.Text // "If <obstacle>, then <action>"
+  leadMeasure   String?       // Weekly action that drives the result
+  leadTarget    Float?        // Weekly target for the lead measure
+  score         Float?        // Quarter review score 0-1
+  reviewNote    String?       @db.Text
+  carriedOver   Boolean       @default(false) // Moved on to the next sprint/quarter
+  keyResults    KeyResult[]
+  checkIns      GoalCheckIn[]
+
   // Relations
   userId        String
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -307,6 +333,58 @@ model Goal {
   @@index([sprintId])
   @@index([parentGoalId])
   @@index([organizationId])
+}
+
+enum GoalKind {
+  QUARTER     // Quarterly goal measured by key results
+  COMMITMENT  // Sprint commitment that moves a quarterly goal
+}
+
+// Measurable result of a quarterly goal, e.g. "Nowi klienci: 0 -> 7"
+model KeyResult {
+  id           String   @id @default(cuid())
+  title        String
+  unit         String?
+  startValue   Float    @default(0)
+  targetValue  Float
+  currentValue Float    @default(0)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  goalId       String
+  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  entries      KeyResultEntry[]
+
+  @@index([goalId])
+}
+
+// History of key result values (one row per update)
+model KeyResultEntry {
+  id          String    @id @default(cuid())
+  value       Float
+  createdAt   DateTime  @default(now())
+
+  keyResultId String
+  keyResult   KeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+
+  @@index([keyResultId, createdAt])
+}
+
+// Weekly check-in of a quarterly goal
+model GoalCheckIn {
+  id          String   @id @default(cuid())
+  weekStart   DateTime @db.Date // Monday of the week
+  confidence  Int?     // 1-10: how sure I am to reach the goal
+  leadActual  Float?   // Lead measure done in the last week
+  note        String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  goalId      String
+  goal        Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, weekStart])
 }
 
 // ==================== TASKS ====================
