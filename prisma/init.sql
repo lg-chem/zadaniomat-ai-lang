@@ -9,6 +9,7 @@ CREATE TYPE "GroupChallengeMemberRole" AS ENUM ('CREATOR', 'MEMBER');
 CREATE TYPE "GroupChallengeInvitationStatus" AS ENUM ('PENDING', 'ACCEPTED', 'DECLINED');
 CREATE TYPE "AIConversationType" AS ENUM ('MORNING_ROUTINE', 'PLANNING', 'RETROSPECTIVE', 'GENERAL', 'BACKLOG_DISCUSSION');
 CREATE TYPE "KnowledgeVisibility" AS ENUM ('PRIVATE', 'TEAM');
+CREATE TYPE "GoalKind" AS ENUM ('QUARTER', 'COMMITMENT');
 CREATE TYPE "FitnessGoalType" AS ENUM ('WEIGHT_LOSS', 'WEIGHT_GAIN', 'MUSCLE_GAIN', 'CARDIO_IMPROVEMENT', 'STRENGTH_INCREASE', 'FLEXIBILITY', 'ENDURANCE', 'BODY_FAT_REDUCTION', 'CUSTOM');
 CREATE TYPE "AdminReportType" AS ENUM ('BUG', 'FEATURE', 'OTHER');
 CREATE TYPE "AdminReportStatus" AS ENUM ('NEW', 'IN_PROGRESS', 'RESOLVED', 'REJECTED');
@@ -130,10 +131,15 @@ CREATE TABLE "Period" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "year" INTEGER,
+    "quarter" INTEGER,
+    "reviewNotes" TEXT,
+    "reviewedAt" TIMESTAMP(3),
     "userId" TEXT NOT NULL,
     CONSTRAINT "Period_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "Period_userId_workspaceType_idx" ON "Period"("userId", "workspaceType");
+CREATE UNIQUE INDEX "Period_userId_workspaceType_year_quarter_key" ON "Period"("userId", "workspaceType", "year", "quarter");
 
 CREATE TABLE "Sprint" (
     "id" TEXT NOT NULL,
@@ -143,6 +149,10 @@ CREATE TABLE "Sprint" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "number" INTEGER,
+    "sprintGoal" TEXT,
+    "plannedAt" TIMESTAMP(3),
+    "closedAt" TIMESTAMP(3),
     "periodId" TEXT NOT NULL,
     CONSTRAINT "Sprint_pkey" PRIMARY KEY ("id")
 );
@@ -218,11 +228,57 @@ CREATE TABLE "Goal" (
     "categoryId" TEXT,
     "periodId" TEXT,
     "sprintId" TEXT,
+    "kind" "GoalKind",
+    "why" TEXT,
+    "obstacle" TEXT,
+    "ifThenPlan" TEXT,
+    "leadMeasure" TEXT,
+    "leadTarget" DOUBLE PRECISION,
+    "score" DOUBLE PRECISION,
+    "reviewNote" TEXT,
+    "carriedOver" BOOLEAN NOT NULL DEFAULT false,
     CONSTRAINT "Goal_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "Goal_userId_workspaceType_idx" ON "Goal"("userId", "workspaceType");
 CREATE INDEX "Goal_periodId_idx" ON "Goal"("periodId");
 CREATE INDEX "Goal_sprintId_idx" ON "Goal"("sprintId");
+
+CREATE TABLE "KeyResult" (
+    "id" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "unit" TEXT,
+    "startValue" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "targetValue" DOUBLE PRECISION NOT NULL,
+    "currentValue" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "order" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "goalId" TEXT NOT NULL,
+    CONSTRAINT "KeyResult_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "KeyResult_goalId_idx" ON "KeyResult"("goalId");
+
+CREATE TABLE "KeyResultEntry" (
+    "id" TEXT NOT NULL,
+    "value" DOUBLE PRECISION NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "keyResultId" TEXT NOT NULL,
+    CONSTRAINT "KeyResultEntry_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "KeyResultEntry_keyResultId_createdAt_idx" ON "KeyResultEntry"("keyResultId", "createdAt");
+
+CREATE TABLE "GoalCheckIn" (
+    "id" TEXT NOT NULL,
+    "weekStart" DATE NOT NULL,
+    "confidence" INTEGER,
+    "leadActual" DOUBLE PRECISION,
+    "note" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "goalId" TEXT NOT NULL,
+    CONSTRAINT "GoalCheckIn_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "GoalCheckIn_goalId_weekStart_key" ON "GoalCheckIn"("goalId", "weekStart");
 
 -- ==================== TASKS ====================
 CREATE TABLE "Task" (
@@ -803,6 +859,9 @@ ALTER TABLE "Goal" ADD CONSTRAINT "Goal_userId_fkey" FOREIGN KEY ("userId") REFE
 ALTER TABLE "Goal" ADD CONSTRAINT "Goal_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "Goal" ADD CONSTRAINT "Goal_periodId_fkey" FOREIGN KEY ("periodId") REFERENCES "Period"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "Goal" ADD CONSTRAINT "Goal_sprintId_fkey" FOREIGN KEY ("sprintId") REFERENCES "Sprint"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "KeyResult" ADD CONSTRAINT "KeyResult_goalId_fkey" FOREIGN KEY ("goalId") REFERENCES "Goal"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "KeyResultEntry" ADD CONSTRAINT "KeyResultEntry_keyResultId_fkey" FOREIGN KEY ("keyResultId") REFERENCES "KeyResult"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "GoalCheckIn" ADD CONSTRAINT "GoalCheckIn_goalId_fkey" FOREIGN KEY ("goalId") REFERENCES "Goal"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Task" ADD CONSTRAINT "Task_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Task" ADD CONSTRAINT "Task_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "Task" ADD CONSTRAINT "Task_sprintId_fkey" FOREIGN KEY ("sprintId") REFERENCES "Sprint"("id") ON DELETE SET NULL ON UPDATE CASCADE;

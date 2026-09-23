@@ -83,6 +83,7 @@ interface Category {
 interface Sprint {
   id: string
   name: string
+  period?: { id: string; name: string }
 }
 
 interface Period {
@@ -1429,7 +1430,9 @@ export default function AIPage() {
                   <SelectContent>
                     <SelectItem value="none">Brak</SelectItem>
                     {sprints.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.period ? `${item.period.name} · ${item.name}` : item.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

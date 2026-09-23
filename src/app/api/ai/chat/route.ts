@@ -8,6 +8,7 @@ import { format, startOfDay, endOfDay, addDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_META_PROMPT } from "@/lib/ai-prompts"
 import { searchKnowledge, searchConversations } from "@/lib/embeddings"
+import { utcToday } from "@/lib/quarters"
 
 // Helper to strip HTML tags from content (for AI context)
 function stripHtml(html: string): string {
@@ -82,6 +83,7 @@ async function getTeamKnowledgeCategoryIds(userId: string): Promise<string[]> {
 // Minimal context - just essentials
 async function getMinimalContext(userId: string) {
   const today = new Date()
+  const todayDate = utcToday()
 
   const teamCategoryIds = await getTeamKnowledgeCategoryIds(userId)
 
@@ -91,18 +93,34 @@ async function getMinimalContext(userId: string) {
       select: { name: true, isStrategic: true },
       orderBy: { order: "asc" },
     }),
+    // Period and sprint that contain today (calendar quarters first)
     prisma.period.findFirst({
-      where: { userId, workspaceType: "WORK", isActive: true },
+      where: { userId, workspaceType: "WORK", startDate: { lte: todayDate }, endDate: { gte: todayDate } },
+      orderBy: [{ year: { sort: "desc", nulls: "last" } }, { startDate: "desc" }],
       select: {
         name: true,
         startDate: true,
         endDate: true,
-        goals: { select: { title: true, currentValue: true, targetValue: true, unit: true, isCompleted: true } }
+        goals: {
+          where: { sprintId: null, parentGoalId: null, isStep: false },
+          select: {
+            title: true,
+            currentValue: true,
+            targetValue: true,
+            unit: true,
+            isCompleted: true,
+            keyResults: {
+              orderBy: { order: "asc" },
+              select: { title: true, currentValue: true, targetValue: true, unit: true },
+            },
+          },
+        },
       },
     }),
     prisma.sprint.findFirst({
-      where: { isActive: true, period: { userId, workspaceType: "WORK", isActive: true } },
-      include: { goals: { include: { category: { select: { name: true } } } } },
+      where: { startDate: { lte: todayDate }, endDate: { gte: todayDate }, period: { userId, workspaceType: "WORK" } },
+      orderBy: { startDate: "desc" },
+      include: { goals: { where: { userId }, include: { category: { select: { name: true } } } } },
     }),
     prisma.aIKnowledgeBase.findUnique({
       where: { userId_workspaceType: { userId, workspaceType: "WORK" } },
@@ -128,16 +146,23 @@ async function getMinimalContext(userId: string) {
   const categoryNames = categories.map((c: { name: string; isStrategic: boolean }) => c.name + (c.isStrategic ? " ★" : "")).join(", ")
 
   const periodGoalsList = activePeriod?.goals
-    .filter((g: { isCompleted: boolean }) => !g.isCompleted)
-    .map((g: { title: string; currentValue: number; targetValue: number | null; unit: string | null }) =>
-      `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
+    .filter((g) => !g.isCompleted)
+    .map((g) =>
+      g.keyResults.length > 0
+        ? `${g.title} (${g.keyResults.map((kr) => `${kr.title}: ${kr.currentValue}/${kr.targetValue} ${kr.unit || ''}`.trim()).join(", ")})`
+        : `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
 
-  const sprintGoalsList = activeSprint?.goals
-    .filter((g: { isCompleted: boolean }) => !g.isCompleted)
-    .map((g: { title: string; currentValue: number; targetValue: number | null; unit: string | null }) =>
-      `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
+  const sprintCommitments = activeSprint?.goals
+    .filter((g) => !g.isCompleted)
+    .map((g) =>
+      g.kind === "COMMITMENT"
+        ? g.title
+        : `${g.title}: ${g.currentValue}/${g.targetValue ?? 0} ${g.unit || ''}`
     ).join("; ") || null
+  const sprintGoalsList = activeSprint?.sprintGoal
+    ? `Cel sprintu: ${activeSprint.sprintGoal}${sprintCommitments ? `; zobowiązania: ${sprintCommitments}` : ""}`
+    : sprintCommitments
 
   const knowledgeSummary = importantKnowledge.length > 0
     ? importantKnowledge.map((k: { title: string; content: string | null; category: { name: string } | null; user: { name: string | null }; userId: string }) =>

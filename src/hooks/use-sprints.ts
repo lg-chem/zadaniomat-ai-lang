@@ -55,19 +55,15 @@ export function useSprints() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // First, try to find a sprint where today is within the date range
-    const currentByDate = sprints.find(s => {
+    // Only a sprint that contains today counts - the isActive flag is never switched off,
+    // so falling back to it showed long-finished sprints as active
+    return sprints.find(s => {
       const start = new Date(s.startDate)
       const end = new Date(s.endDate)
       start.setHours(0, 0, 0, 0)
       end.setHours(23, 59, 59, 999)
       return today >= start && today <= end
-    })
-
-    if (currentByDate) return currentByDate
-
-    // Fallback to isActive flag if no date match
-    return sprints.find(s => s.isActive) ?? null
+    }) ?? null
   }
 
   return {

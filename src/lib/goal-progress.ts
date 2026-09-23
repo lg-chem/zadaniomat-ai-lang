@@ -20,6 +20,9 @@ export async function updateGoalProgressFromTasks(goalId: string): Promise<void>
 
   if (!goal) return
 
+  // Quarterly goals are measured by their key results, not by task counts
+  if (goal.kind === "QUARTER") return
+
   const totalTasks = goal.tasks.length
   const completedTasks = goal.tasks.filter(t => t.status === "COMPLETED").length
 

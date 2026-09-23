@@ -121,27 +121,34 @@ const { habits, isLoading, isError, mutate } = useHabits()
 
 **Logika:**
 - Pobiera sprinty dla aktualnego workspace
-- Używane w planowaniu sprintów
+- `activeSprint` = sprint, który obejmuje dzisiejszą datę (flaga `isActive` nie jest brana pod uwagę)
 
 **Gdzie użyte:**
-- Panel sprintów
-- Przypisywanie zadań do sprintów
+- `/src/app/(dashboard)/schedule/page.tsx` - nagłówek i sekcja "Cele sprintu"
 
 ---
 
-### `useGoals`
-**Lokalizacja:** `src/hooks/use-goals.ts`
+### `useQuarter` + `quarterRequest`
+**Lokalizacja:** `src/hooks/use-quarter.ts`
 
 **Zależności:**
 - `useSWR`
-- `useWorkspaceStore`
+- `quarterApiKey` z `src/lib/quarters.ts`
 
 **Logika:**
-- Pobiera cele z opcjonalnym filtrowaniem po `sprintId` i `periodId`
+- Pobiera kwartał kalendarzowy (cele z KR, check-iny, sprinty z zobowiązaniami i retro) z `/api/quarters`
+- `quarter` = `null`, gdy kwartał nie jest jeszcze zaplanowany; `null` jako argument = czekaj
+- `quarterRequest(url, method, body)` - fetch JSON, rzuca błąd z komunikatem z API
 
 **Gdzie użyte:**
-- Panel celów
-- Formularz przypisywania zadań do celów
+- `/src/app/(dashboard)/goals/page.tsx` - ekran Cele
+- `/src/components/quarter/*` - dialogi i karty
+- `/src/components/quarter/ritual-reminder.tsx` - przypomnienie w Harmonogramie
+
+**API:**
+```typescript
+const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 2026, quarter: 4 })
+```
 
 ---
 
@@ -430,6 +437,32 @@ export const swrConfig: SWRConfiguration = {
 
 ---
 
+### `quarters` (kwartały i sprinty)
+**Lokalizacja:** `src/lib/quarters.ts` (czyste funkcje, klient + serwer)
+
+**Logika:**
+- Kwartał kalendarzowy = 6 sprintów po 14 dni od 1. dnia kwartału + tydzień przeglądu (6-8 dni)
+- Daty jako klucze dnia `YYYY-MM-DD`; w bazie data = północ UTC danego dnia (`toDayKey`, `dayKeyToDate`, `utcToday`)
+- Tempo: `keyResultProgress`, `quarterElapsed`, `paceStatus` (W tempie / Lekko za / Za tempem), `leadExecution`
+- Typy payloadu API (`QuarterPayload`, `QuarterGoal`, `QuarterSprint`, ...)
+
+**Gdzie użyte:**
+- Ekran Cele, `src/components/quarter/*`, API kwartałów, `/api/sprints/active`, `/api/tasks/stack`, kontekst AI
+
+---
+
+### `quarter-data` / `quarter-schemas`
+**Lokalizacja:** `src/lib/quarter-data.ts`, `src/lib/quarter-schemas.ts` (tylko serwer)
+
+**Logika:**
+- `loadQuarter` - pełny widok kwartału (czas z timera liczony z zadań podpiętych pod cel i zobowiązania)
+- `ensureQuarter` - tworzy kwartał + 6 sprintów (idempotentne)
+- `loadSprintHistory` - ile zobowiązań domknięto w 3 ostatnich zamkniętych sprintach
+- `setKeyResultValue` - zmiana wartości KR z zapisem historii (`KeyResultEntry`)
+- `goalInputSchema` - walidacja celu (zod)
+
+---
+
 ### `ai-prompts`
 **Lokalizacja:** `src/lib/ai-prompts.ts`
 
@@ -459,8 +492,21 @@ export const swrConfig: SWRConfiguration = {
 ### Goals
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/goals` | GET/POST | Lista/tworzenie celów |
-| `/api/goals/[id]` | GET/PATCH/DELETE | CRUD celu |
+| `/api/goals` | GET/POST | Lista/tworzenie celów (w kwartale tworzy cel kwartalny z KR lub zobowiązanie sprintu) |
+| `/api/goals/[id]` | GET/PATCH/DELETE | CRUD celu (używane też do odhaczania zobowiązań) |
+| `/api/goals/[id]/tasks` | GET/POST | Zadania celu / zobowiązania |
+
+### Quarters (cele kwartalne, WORK)
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/api/quarters?year&quarter` | GET | Kwartał (cele, KR, check-iny, sprinty, retro) + historia sprintów |
+| `/api/quarters` | POST | Utworzenie kwartału z 6 sprintami (idempotentne) |
+| `/api/quarters/archive` | GET | Stare okresy (bez roku/kwartału) z celami - tylko odczyt |
+| `/api/quarters/[id]/goals` | POST | Nowy cel kwartalny z KR (`carriedFromGoalId` = kontynuacja) |
+| `/api/quarters/[id]/check-in` | POST | Cotygodniowy check-in: wartości KR, działanie tygodniowe, pewność |
+| `/api/quarters/[id]/review` | POST | Przegląd kwartału: oceny 0-1, wnioski, przeniesienie celów dalej |
+| `/api/quarter-goals/[id]` | PATCH/DELETE | Edycja celu kwartalnego (lista KR zastępowana) / usunięcie |
+| `/api/key-results/[id]` | PATCH | Szybka zmiana wartości KR (z historią) |
 
 ### Habits
 | Endpoint | Metoda | Opis |
@@ -479,6 +525,9 @@ export const swrConfig: SWRConfiguration = {
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
 | `/api/sprints` | GET/POST | Sprinty |
+| `/api/sprints/active` | GET | Sprint obejmujący dzisiejszą datę (WORK) |
+| `/api/sprints/[id]/plan` | PUT | Plan sprintu: cel sprintu + zobowiązania (lista zastępowana) |
+| `/api/sprints/[id]/close` | POST | Zamknięcie sprintu: zrobione / przeniesione / odpuszczone + retro |
 | `/api/periods` | GET/POST | Okresy |
 
 ### Organizations (Teams)
@@ -531,7 +580,7 @@ export const swrConfig: SWRConfiguration = {
 - `src/components/layout/` - layouty, sidebar, header
 - `src/components/teams/` - komponenty zespołowe
 - `src/components/schedule/` - harmonogram
-- `src/components/sprints/` - sprinty
+- `src/components/quarter/` - ekran Cele: karty celów, oś kwartału, rytuały, dialogi (cel, plan sprintu, zamknięcie sprintu, check-in, przegląd kwartału), archiwum
 
 ---
 
@@ -654,6 +703,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-09-23 | Nowy moduł Cele: kwartały kalendarzowe, KR, check-iny, plan/retro sprintu (`useQuarter`, `lib/quarters`, `/api/quarters/*`); usunięto `useGoals` i stronę Sprinty | Claude |
 | 2026-01-09 | Dodano system toastów (sonner), lazy loading, A11y | Claude |
 | 2026-01-09 | Utworzenie dokumentu | Claude |
 

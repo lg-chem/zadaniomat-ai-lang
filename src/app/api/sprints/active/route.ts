@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { utcToday } from "@/lib/quarters"
 
 export async function GET() {
   try {
@@ -10,16 +11,19 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Find the active sprint in the user's active WORK period
+    // Find the sprint that contains today in the user's WORK periods
+    // (dates decide - the isActive flag is never switched off)
+    const today = utcToday()
     const activeSprint = await prisma.sprint.findFirst({
       where: {
-        isActive: true,
+        startDate: { lte: today },
+        endDate: { gte: today },
         period: {
           userId: session.user.id,
           workspaceType: "WORK",
-          isActive: true,
         },
       },
+      orderBy: { startDate: "desc" },
       include: {
         goals: {
           orderBy: { createdAt: "asc" },
