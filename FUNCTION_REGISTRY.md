@@ -302,12 +302,12 @@ interface TimerState {
 ```
 
 **Akcje:**
-- `startTimer(taskId, taskTitle, plannedMinutes?, alreadyWorkedMinutes?)` - rozpoczyna sesję (dla tego samego zadania tylko wznawia)
+- `startTimer(taskId, taskTitle, plannedMinutes?, alreadyWorkedSeconds?)` - rozpoczyna sesję (dla tego samego zadania tylko wznawia)
 - `pauseTimer()` - pauzuje
 - `resumeTimer()` - wznawia
 - `stopTimer()` - zatrzymuje i zwraca `{ taskId, sessionSeconds }` - czas sesji do dodania do zadania
 - `completeTask()` - jak `stopTimer()`, dodatkowo czyści przedłużenia zadania
-- `extendTimer(minutes)` - przedłuża plan (od aktualnego czasu, jeśli plan już minął)
+- `extendTimer(minutes)` - dodaje minuty do planu (1:00 + 5 min = 6:00), timer liczy dalej
 - `tick()` - aktualizacja co sekundę (wywoływana przez setInterval)
 
 **Logika:**
@@ -321,7 +321,7 @@ interface TimerState {
 - `stopActiveTimer()` / `completeActiveTimer()` - zatrzymuje i dodaje czas sesji do zadania
 - `stopTimerForTask(taskId, { complete? })` - zatrzymuje timer, jeśli liczy dla tego zadania
 - `discardTimerForTask(taskId)` - porzuca timer usuniętego zadania
-- Czas sesji dodawany przez `POST /api/tasks/[id]/time` (inkrementacja `actualMinutes`)
+- Czas sesji dodawany co do sekundy przez `POST /api/tasks/[id]/time` (`durationSeconds`) - pełne minuty w `actualMinutes`, reszta w `actualExtraSeconds`
 
 **Gdzie użyte:**
 - Floating timer widget

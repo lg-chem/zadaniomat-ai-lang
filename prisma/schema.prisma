@@ -319,6 +319,7 @@ model Task {
   priority       Int           @default(0) // 0-3: none, low, medium, high
   plannedMinutes Int?
   actualMinutes  Int           @default(0)
+  actualExtraSeconds Int       @default(0) // Seconds on top of actualMinutes (0-59), saved by the timer
   scheduledDate  DateTime?     @db.Date
   scheduledTime  String?       // HH:mm format
   orderInDay     Int           @default(0)

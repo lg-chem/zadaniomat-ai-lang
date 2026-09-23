@@ -15,10 +15,12 @@ export async function POST(
 
     const { id } = params
     const body = await req.json()
-    const { duration, notes } = body
+    const { duration, durationSeconds, notes } = body
 
-    if (!Number.isInteger(duration) || duration <= 0) {
-      return NextResponse.json({ error: "Duration must be a positive number of minutes" }, { status: 400 })
+    // Timer sends exact seconds, older clients send whole minutes
+    const seconds = durationSeconds !== undefined ? durationSeconds : duration * 60
+    if (!Number.isInteger(seconds) || seconds <= 0) {
+      return NextResponse.json({ error: "Duration must be a positive number of seconds or minutes" }, { status: 400 })
     }
 
     // Verify the user owns or is assigned to the task
@@ -33,23 +35,25 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    // Create time entry and update actual minutes
+    // Add the seconds to the task's time, carrying full minutes into actualMinutes
+    const totalSeconds = task.actualMinutes * 60 + task.actualExtraSeconds + seconds
+    const endTime = new Date()
+
     const [timeEntry] = await prisma.$transaction([
       prisma.timeEntry.create({
         data: {
           taskId: id,
-          startTime: new Date(Date.now() - duration * 60000),
-          endTime: new Date(),
-          duration,
+          startTime: new Date(endTime.getTime() - seconds * 1000),
+          endTime,
+          duration: Math.round(seconds / 60),
           notes,
         },
       }),
       prisma.task.update({
         where: { id },
         data: {
-          actualMinutes: {
-            increment: duration,
-          },
+          actualMinutes: Math.floor(totalSeconds / 60),
+          actualExtraSeconds: totalSeconds % 60,
         },
       }),
     ])

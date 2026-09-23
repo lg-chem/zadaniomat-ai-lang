@@ -36,7 +36,7 @@ interface TimerState {
   plannedExtensions: Record<string, number>
 
   // Actions
-  startTimer: (taskId: string, taskTitle: string, plannedMinutes?: number, alreadyWorkedMinutes?: number) => void
+  startTimer: (taskId: string, taskTitle: string, plannedMinutes?: number, alreadyWorkedSeconds?: number) => void
   pauseTimer: () => void
   resumeTimer: () => void
   extendTimer: (minutes: number) => void
@@ -190,7 +190,7 @@ export const useTimerStore = create<TimerState>()(
       position: null,
       plannedExtensions: {},
 
-      startTimer: (taskId, taskTitle, plannedMinutes, alreadyWorkedMinutes = 0) => {
+      startTimer: (taskId, taskTitle, plannedMinutes, alreadyWorkedSeconds = 0) => {
         const state = get()
 
         if (state.isRunning) {
@@ -205,7 +205,7 @@ export const useTimerStore = create<TimerState>()(
         const plannedSeconds = plannedMinutes
           ? plannedMinutes * 60 + (state.plannedExtensions[taskId] || 0)
           : 0
-        const baseSeconds = Math.max(0, alreadyWorkedMinutes) * 60
+        const baseSeconds = Math.max(0, alreadyWorkedSeconds)
 
         const newState = {
           ...idleSession,
@@ -261,15 +261,16 @@ export const useTimerStore = create<TimerState>()(
         const state = get()
         if (!state.isRunning || !state.taskId) return
 
-        // Extend from the current worked time when already over plan,
-        // so "+15 min" always means 15 more minutes from now
+        // "+5 min" adds to the plan: 1:00 -> 6:00, whenever it's clicked
+        const addedSeconds = minutes * 60
+        const newPlannedSeconds = state.plannedSeconds + addedSeconds
         const workedSeconds = state.baseSeconds + sessionSecondsAt(state)
-        const newPlannedSeconds = Math.max(state.plannedSeconds, workedSeconds) + minutes * 60
-        const addedSeconds = newPlannedSeconds - state.plannedSeconds
 
         const newState = {
           plannedSeconds: newPlannedSeconds,
           showNotification: false,
+          // Still over plan after extending - the widget shows it, no need for another popup
+          notifiedAtSeconds: workedSeconds >= newPlannedSeconds ? newPlannedSeconds : state.notifiedAtSeconds,
           plannedExtensions: {
             ...state.plannedExtensions,
             [state.taskId]: (state.plannedExtensions[state.taskId] || 0) + addedSeconds,

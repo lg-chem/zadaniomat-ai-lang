@@ -22,6 +22,7 @@ interface Task {
   priority: number
   plannedMinutes?: number | null
   actualMinutes: number
+  actualExtraSeconds?: number
   scheduledTime?: string | null
   category?: Category | null
   subtasks?: Subtask[]
@@ -140,6 +141,7 @@ export function TaskItem({ task, onStatusChange, onEdit, onDelete }: TaskItemPro
             taskTitle={task.title}
             plannedMinutes={task.plannedMinutes}
             actualMinutes={task.actualMinutes}
+            actualExtraSeconds={task.actualExtraSeconds}
             compact
           />
         )}

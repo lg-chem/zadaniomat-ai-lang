@@ -19,6 +19,7 @@ export interface Task {
   priority: number
   plannedMinutes?: number | null
   actualMinutes: number
+  actualExtraSeconds?: number
   scheduledDate?: string | null
   scheduledTime?: string | null
   orderInDay: number
