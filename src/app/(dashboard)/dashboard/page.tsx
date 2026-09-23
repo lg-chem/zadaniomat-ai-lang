@@ -29,6 +29,7 @@ interface Task {
   priority: number
   plannedMinutes?: number | null
   actualMinutes: number
+  actualExtraSeconds?: number
   scheduledTime?: string | null
   category?: Category | null
 }

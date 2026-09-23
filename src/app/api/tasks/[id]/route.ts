@@ -167,7 +167,11 @@ export async function PATCH(
           }
         }
       }
-      if (actualMinutes !== undefined) updateData.actualMinutes = actualMinutes
+      if (actualMinutes !== undefined) {
+        // Time typed in by hand replaces the timer's seconds
+        updateData.actualMinutes = actualMinutes
+        updateData.actualExtraSeconds = 0
+      }
       if (description !== undefined) updateData.description = description
       // Allow assignees to schedule tasks in their own harmonogram
       if (scheduledDate !== undefined)
@@ -188,7 +192,11 @@ export async function PATCH(
         updateData.scheduledDate = scheduledDate ? new Date(scheduledDate) : null
       if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime
       if (plannedMinutes !== undefined) updateData.plannedMinutes = plannedMinutes
-      if (actualMinutes !== undefined) updateData.actualMinutes = actualMinutes
+      if (actualMinutes !== undefined) {
+        // Time typed in by hand replaces the timer's seconds
+        updateData.actualMinutes = actualMinutes
+        updateData.actualExtraSeconds = 0
+      }
       if (priority !== undefined) updateData.priority = priority
       if (orderInDay !== undefined) updateData.orderInDay = orderInDay
       if (goalId !== undefined) updateData.goalId = goalId

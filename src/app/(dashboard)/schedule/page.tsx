@@ -52,8 +52,8 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { useTimerStore, formatMinutes } from "@/stores/timer-store"
-import { startTaskTimer, stopTimerForTask, discardTimerForTask } from "@/lib/timer-actions"
+import { useTimerStore, formatMinutes, formatTime } from "@/stores/timer-store"
+import { startTaskTimer, stopTimerForTask, discardTimerForTask, taskWorkedSeconds } from "@/lib/timer-actions"
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
@@ -129,15 +129,15 @@ export default function SchedulePage() {
   const { workspace } = useWorkspaceStore()
   const timerStore = useTimerStore()
 
-  // Helper to get real-time actual minutes for a task (includes running timer)
-  const getActualMinutes = (task: Task) => {
+  // Helper to get real-time worked seconds for a task (includes running timer)
+  const getActualSeconds = (task: Task) => {
     if (timerStore.taskId === task.id && timerStore.isRunning) {
       // Timer is running for this task - add the current session in real time
       // (a session migrated from the old timer already holds the task's total)
-      const savedMinutes = timerStore.saveAsTotal ? 0 : task.actualMinutes || 0
-      return savedMinutes + Math.floor(timerStore.elapsedSeconds / 60)
+      const savedSeconds = timerStore.saveAsTotal ? 0 : taskWorkedSeconds(task)
+      return savedSeconds + timerStore.elapsedSeconds
     }
-    return task.actualMinutes || 0
+    return taskWorkedSeconds(task)
   }
 
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -1020,7 +1020,7 @@ export default function SchedulePage() {
 
   // Calculate stats
   const totalPlanned = tasks.reduce((sum, t) => sum + (t.plannedMinutes || 0), 0)
-  const totalActual = tasks.reduce((sum, t) => sum + getActualMinutes(t), 0)
+  const totalActual = Math.floor(tasks.reduce((sum, t) => sum + getActualSeconds(t), 0) / 60)
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
 
   // Get strategic categories that need template rows (no tasks yet and not hidden)
@@ -2216,7 +2216,7 @@ export default function SchedulePage() {
                         {editingActualTimeTaskId === task.id ? (
                           <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
                         ) : (
-                          <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
+                          <div className="text-center text-xs font-medium text-blue-600 cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{formatTime(getActualSeconds(task))}</div>
                         )}
                       </div>
                       {/* Actions - bigger buttons */}
@@ -2327,7 +2327,7 @@ export default function SchedulePage() {
                         {editingActualTimeTaskId === task.id ? (
                           <Input type="number" min="0" step="1" value={editingActualTime} onChange={(e) => setEditingActualTime(e.target.value)} onBlur={() => handleSaveActualTime(task.id)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveActualTime(task.id); if (e.key === "Escape") setEditingActualTimeTaskId(null); }} className="h-7 text-center text-xs" autoFocus />
                         ) : (
-                          <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{getActualMinutes(task)}</div>
+                          <div className="text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted rounded px-1 py-1" onClick={() => handleStartEditActualTime(task)}>{formatTime(getActualSeconds(task))}</div>
                         )}
                       </div>
                       {/* Actions - bigger buttons */}
@@ -2412,7 +2412,7 @@ export default function SchedulePage() {
                       </div>
                     </div>
                     <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
-                    <div className="text-center text-xs text-green-600">{getActualMinutes(task)}</div>
+                    <div className="text-center text-xs text-green-600">{formatTime(getActualSeconds(task))}</div>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "NEW")}><ArrowRight className="h-4 w-4 rotate-180" /></Button>
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -2449,7 +2449,7 @@ export default function SchedulePage() {
                       </div>
                     </div>
                     <div className="text-center text-xs text-muted-foreground">{task.plannedMinutes || 0}</div>
-                    <div className="text-center text-xs text-muted-foreground">{getActualMinutes(task)}</div>
+                    <div className="text-center text-xs text-muted-foreground">{formatTime(getActualSeconds(task))}</div>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleUpdateTaskStatus(task.id, "NEW")}><ArrowRight className="h-4 w-4 rotate-180" /></Button>
                       <Button size="sm" variant="ghost" className="h-9 px-2" onClick={() => handleDeleteTask(task.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>

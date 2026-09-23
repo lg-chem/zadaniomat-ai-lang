@@ -11,10 +11,11 @@ interface TaskTimerProps {
   taskTitle?: string
   plannedMinutes?: number | null
   actualMinutes?: number
+  actualExtraSeconds?: number
   compact?: boolean
 }
 
-export function TaskTimer({ taskId, taskTitle, plannedMinutes, actualMinutes, compact = false }: TaskTimerProps) {
+export function TaskTimer({ taskId, taskTitle, plannedMinutes, actualMinutes, actualExtraSeconds, compact = false }: TaskTimerProps) {
   const {
     isPaused,
     taskId: activeTaskId,
@@ -29,7 +30,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, actualMinutes, co
 
   const handleStart = () => {
     // A timer running for another task is stopped and saved first
-    startTaskTimer({ id: taskId, title: taskTitle || "Zadanie", plannedMinutes, actualMinutes })
+    startTaskTimer({ id: taskId, title: taskTitle || "Zadanie", plannedMinutes, actualMinutes, actualExtraSeconds })
   }
 
   const handlePause = () => {

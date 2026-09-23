@@ -7,6 +7,12 @@ interface TimerTask {
   title: string
   plannedMinutes?: number | null
   actualMinutes?: number | null
+  actualExtraSeconds?: number | null
+}
+
+// Time already worked on a task, in seconds
+export function taskWorkedSeconds(task: Pick<TimerTask, "actualMinutes" | "actualExtraSeconds">) {
+  return (task.actualMinutes || 0) * 60 + (task.actualExtraSeconds || 0)
 }
 
 // Fired after a session's time is saved, for pages that don't read tasks through SWR
@@ -30,13 +36,12 @@ export async function saveTimerSession(result: TimerSessionResult, options: { co
       })
       if (!res.ok) throw new Error("Failed to save time")
     } else {
-      // Round once per session: 15:20 -> 15 min, 14:40 -> 15 min
-      const minutes = Math.round(result.sessionSeconds / 60)
-      if (minutes > 0) {
+      // Saved to the second: 0:22 adds 22 s
+      if (result.sessionSeconds > 0) {
         const res = await fetch(`/api/tasks/${taskId}/time`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ duration: minutes }),
+          body: JSON.stringify({ durationSeconds: result.sessionSeconds }),
         })
         if (!res.ok) throw new Error("Failed to save time")
       }
@@ -102,6 +107,6 @@ export function startTaskTimer(task: TimerTask) {
     task.id,
     task.title,
     task.plannedMinutes || undefined,
-    task.actualMinutes || 0
+    taskWorkedSeconds(task)
   )
 }

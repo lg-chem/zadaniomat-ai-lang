@@ -233,6 +233,7 @@ CREATE TABLE "Task" (
     "priority" INTEGER NOT NULL DEFAULT 0,
     "plannedMinutes" INTEGER,
     "actualMinutes" INTEGER NOT NULL DEFAULT 0,
+    "actualExtraSeconds" INTEGER NOT NULL DEFAULT 0,
     "scheduledDate" DATE,
     "scheduledTime" TEXT,
     "orderInDay" INTEGER NOT NULL DEFAULT 0,
