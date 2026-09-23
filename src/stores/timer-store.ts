@@ -377,9 +377,8 @@ export const useTimerStore = create<TimerState>()(
         const old = (persistedState || {}) as Record<string, unknown>
         if (version >= 1) return old as Partial<TimerState>
 
-        // Old format: no start time was stored (the timer froze after a reload) and
-        // elapsedSeconds held the task's whole tracked time. Keep an active session
-        // as paused, so no worked time is lost.
+        // Old format: elapsedSeconds held the task's time tracked across timer
+        // sessions. Carry an active session over, so no worked time is lost.
         const kept = {
           isMinimized: old.isMinimized === true,
           position: (old.position as TimerState['position']) ?? null,
@@ -388,7 +387,7 @@ export const useTimerStore = create<TimerState>()(
 
         const workedSeconds = Number(old.elapsedSeconds) || 0
         const plannedSeconds = Number(old.plannedSeconds) || 0
-        return {
+        const session = {
           ...kept,
           ...idleSession,
           isRunning: true,
@@ -396,10 +395,33 @@ export const useTimerStore = create<TimerState>()(
           taskId: old.taskId,
           taskTitle: typeof old.taskTitle === 'string' ? old.taskTitle : null,
           plannedSeconds,
+          notifiedAtSeconds: plannedSeconds > 0 && workedSeconds >= plannedSeconds ? plannedSeconds : 0,
+        }
+
+        if (typeof old.sessionStartElapsed === 'number') {
+          // Stored where the session started and saved only the session's time -
+          // same as now, so keep it running from its persisted start time
+          const baseSeconds = old.sessionStartElapsed
+          const startedAt = typeof old.sessionStartTime === 'string' ? Date.parse(old.sessionStartTime) : NaN
+          const isCounting = !old.isPaused && !Number.isNaN(startedAt)
+          const bankedSeconds = isCounting ? Number(old.accumulatedSeconds) || 0 : workedSeconds
+          return {
+            ...session,
+            isPaused: !isCounting,
+            baseSeconds,
+            accumulatedSeconds: Math.max(0, bankedSeconds - baseSeconds),
+            runningSince: isCounting ? startedAt : null,
+            elapsedSeconds: Math.max(0, workedSeconds - baseSeconds),
+          }
+        }
+
+        // No start time was stored (the timer froze after a reload) and stop saved
+        // elapsedSeconds as the task's total - keep it paused and save it the same way
+        return {
+          ...session,
           accumulatedSeconds: workedSeconds,
           elapsedSeconds: workedSeconds,
           saveAsTotal: true,
-          notifiedAtSeconds: plannedSeconds > 0 && workedSeconds >= plannedSeconds ? plannedSeconds : 0,
         }
       },
     }
