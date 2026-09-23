@@ -132,7 +132,8 @@ export function FloatingTimer() {
   const hasPlan = plannedSeconds > 0
   const isOverPlan = hasPlan && workedSeconds >= plannedSeconds
   const progress = hasPlan ? Math.min(100, (workedSeconds / plannedSeconds) * 100) : 0
-  const timeClassName = isOverPlan ? 'text-orange-500' : isPaused ? 'text-muted-foreground' : ''
+  // Blue while counting, grey when paused, orange over plan
+  const timeClassName = isOverPlan ? 'text-orange-500' : isPaused ? 'text-muted-foreground' : 'text-primary'
 
   const pauseButton = isPaused ? (
     <Button size="sm" onClick={resumeTimer} className="flex-1">
