@@ -53,6 +53,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimerStore, formatMinutes } from "@/stores/timer-store"
+import { startTaskTimer, stopTimerForTask, discardTimerForTask } from "@/lib/timer-actions"
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
@@ -131,8 +132,10 @@ export default function SchedulePage() {
   // Helper to get real-time actual minutes for a task (includes running timer)
   const getActualMinutes = (task: Task) => {
     if (timerStore.taskId === task.id && timerStore.isRunning) {
-      // Timer is running for this task - show real-time value
-      return (task.actualMinutes || 0) + Math.floor(timerStore.elapsedSeconds / 60)
+      // Timer is running for this task - add the current session in real time
+      // (a session migrated from the old timer already holds the task's total)
+      const savedMinutes = timerStore.saveAsTotal ? 0 : task.actualMinutes || 0
+      return savedMinutes + Math.floor(timerStore.elapsedSeconds / 60)
     }
     return task.actualMinutes || 0
   }
@@ -475,11 +478,17 @@ export default function SchedulePage() {
       updateData.completedAt = new Date().toISOString()
     }
 
-    if (status === "IN_PROGRESS" && !timerStore.isRunning) {
+    // Read fresh timer state - this may run right after the timer was started
+    if (status === "IN_PROGRESS" && !useTimerStore.getState().isRunning) {
       const task = tasks.find((t) => t.id === taskId)
       if (task) {
-        timerStore.startTimer(taskId, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
+        startTaskTimer(task)
       }
+    }
+
+    // Leaving "in progress" - stop the task's timer and save its time
+    if (status !== "IN_PROGRESS") {
+      stopTimerForTask(taskId, { complete: status === "COMPLETED" })
     }
 
     try {
@@ -561,6 +570,8 @@ export default function SchedulePage() {
   const handleDeleteTask = (taskId: string) => {
     if (!confirm("Czy na pewno chcesz usunąć to zadanie?")) return
 
+    discardTimerForTask(taskId)
+
     // Optimistic update for task count
     decrementCount(dateString)
 
@@ -581,6 +592,9 @@ export default function SchedulePage() {
 
   const handleTransferTask = (taskId: string) => {
     const nextDay = format(addDays(selectedDate, 1), "yyyy-MM-dd")
+
+    // Task goes back to "new" - save the time worked on it so far
+    stopTimerForTask(taskId)
 
     // Optimistic update for task counts (decrement today, increment tomorrow)
     decrementCount(dateString)
@@ -611,7 +625,7 @@ export default function SchedulePage() {
   }
 
   const handleStartTimer = (task: Task) => {
-    timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
+    startTaskTimer(task)
     handleUpdateTaskStatus(task.id, "IN_PROGRESS")
   }
 
@@ -697,8 +711,8 @@ export default function SchedulePage() {
         timerStore.pauseTimer()
       }
     } else {
-      // Start new timer for this task
-      timerStore.startTimer(task.id, task.title, task.plannedMinutes || undefined, task.actualMinutes || 0)
+      // Start timer for this task (a timer of another task is stopped and saved)
+      startTaskTimer(task)
       handleUpdateTaskStatus(task.id, "IN_PROGRESS")
     }
   }

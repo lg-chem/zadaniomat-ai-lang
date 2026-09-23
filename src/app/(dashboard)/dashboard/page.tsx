@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { TaskItem } from "@/components/tasks/task-item"
 import { QuickAddTask } from "@/components/tasks/quick-add-task"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { TIMER_SESSION_SAVED_EVENT, discardTimerForTask, stopTimerForTask } from "@/lib/timer-actions"
 import dynamic from "next/dynamic"
 
 // Dynamically import FriendsPage to avoid circular dependencies
@@ -58,6 +59,12 @@ export default function DashboardPage() {
     fetchTasks()
   }, [fetchTasks])
 
+  // Refresh worked time after the timer saves a session
+  useEffect(() => {
+    window.addEventListener(TIMER_SESSION_SAVED_EVENT, fetchTasks)
+    return () => window.removeEventListener(TIMER_SESSION_SAVED_EVENT, fetchTasks)
+  }, [fetchTasks])
+
   const handleAddTask = async (title: string) => {
     try {
       const res = await fetch("/api/tasks", {
@@ -80,6 +87,11 @@ export default function DashboardPage() {
   }
 
   const handleStatusChange = async (id: string, status: string) => {
+    // Stop the task's timer (if running) and save its time
+    if (status !== "IN_PROGRESS") {
+      stopTimerForTask(id, { complete: status === "COMPLETED" })
+    }
+
     try {
       const res = await fetch(`/api/tasks/${id}`, {
         method: "PATCH",
@@ -98,23 +110,11 @@ export default function DashboardPage() {
     }
   }
 
-  const handleTimeAdd = async (id: string, duration: number) => {
-    try {
-      await fetch(`/api/tasks/${id}/time`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ duration }),
-      })
-      fetchTasks()
-    } catch (error) {
-      console.error("Error adding time:", error)
-    }
-  }
-
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" })
       if (res.ok) {
+        discardTimerForTask(id)
         setTasks((prev) => prev.filter((t) => t.id !== id))
       }
     } catch (error) {
@@ -237,7 +237,6 @@ export default function DashboardPage() {
                   key={task.id}
                   task={task}
                   onStatusChange={handleStatusChange}
-                  onTimeAdd={handleTimeAdd}
                   onDelete={handleDelete}
                 />
               ))
@@ -265,7 +264,6 @@ export default function DashboardPage() {
                   key={task.id}
                   task={task}
                   onStatusChange={handleStatusChange}
-                  onTimeAdd={handleTimeAdd}
                   onDelete={handleDelete}
                 />
               ))
