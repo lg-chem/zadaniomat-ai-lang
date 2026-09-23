@@ -30,7 +30,6 @@ interface Task {
 interface TaskItemProps {
   task: Task
   onStatusChange: (id: string, status: string) => void
-  onTimeAdd: (id: string, duration: number) => void
   onEdit?: (task: Task) => void
   onDelete?: (id: string) => void
 }
@@ -42,7 +41,7 @@ const priorityColors = {
   3: "border-l-red-500",
 }
 
-export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: TaskItemProps) {
+export function TaskItem({ task, onStatusChange, onEdit, onDelete }: TaskItemProps) {
   const [isHovered, setIsHovered] = useState(false)
 
   const isDone = task.status === "COMPLETED"
@@ -138,8 +137,10 @@ export function TaskItem({ task, onStatusChange, onTimeAdd, onEdit, onDelete }: 
         {!isDone && (
           <TaskTimer
             taskId={task.id}
+            taskTitle={task.title}
+            plannedMinutes={task.plannedMinutes}
+            actualMinutes={task.actualMinutes}
             compact
-            onStop={(duration) => onTimeAdd(task.id, duration)}
           />
         )}
 

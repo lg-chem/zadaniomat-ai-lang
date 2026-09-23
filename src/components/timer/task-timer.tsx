@@ -1,45 +1,35 @@
 "use client"
 
-import { useEffect } from "react"
 import { Play, Pause, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useTimerStore, formatTime } from "@/stores/timer-store"
+import { useTimerStore, formatTime, selectWorkedSeconds } from "@/stores/timer-store"
+import { startTaskTimer, stopActiveTimer } from "@/lib/timer-actions"
 import { cn } from "@/lib/utils"
 
 interface TaskTimerProps {
   taskId: string
   taskTitle?: string
-  plannedMinutes?: number
-  onStop?: (duration: number) => void
+  plannedMinutes?: number | null
+  actualMinutes?: number
   compact?: boolean
 }
 
-export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact = false }: TaskTimerProps) {
+export function TaskTimer({ taskId, taskTitle, plannedMinutes, actualMinutes, compact = false }: TaskTimerProps) {
   const {
-    isRunning,
     isPaused,
     taskId: activeTaskId,
-    elapsedSeconds,
-    startTimer,
     pauseTimer,
     resumeTimer,
-    stopTimer,
-    tick,
   } = useTimerStore()
+  const workedSeconds = useTimerStore(selectWorkedSeconds)
 
   const isActive = activeTaskId === taskId
 
-  // Note: Timer tick is handled by FloatingTimer only to avoid double counting
+  // Note: Timer tick is handled by FloatingTimer only
 
   const handleStart = () => {
-    if (isRunning && activeTaskId !== taskId) {
-      // Stop current timer first
-      const result = stopTimer()
-      if (result && onStop) {
-        onStop(result.durationSeconds)
-      }
-    }
-    startTimer(taskId, taskTitle || "Zadanie", plannedMinutes)
+    // A timer running for another task is stopped and saved first
+    startTaskTimer({ id: taskId, title: taskTitle || "Zadanie", plannedMinutes, actualMinutes })
   }
 
   const handlePause = () => {
@@ -50,11 +40,9 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
     }
   }
 
+  // Worked time of this session is added to the task
   const handleStop = () => {
-    const result = stopTimer()
-    if (result && onStop) {
-      onStop(result.durationSeconds)
-    }
+    stopActiveTimer()
   }
 
   if (compact) {
@@ -66,7 +54,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
               "font-mono text-sm",
               isPaused ? "text-muted-foreground" : "text-foreground"
             )}>
-              {formatTime(elapsedSeconds)}
+              {formatTime(workedSeconds)}
             </span>
             <Button
               variant="ghost"
@@ -91,7 +79,6 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
             size="icon"
             className="h-7 w-7"
             onClick={handleStart}
-            disabled={isRunning && activeTaskId !== taskId}
           >
             <Play className="h-3 w-3" />
           </Button>
@@ -112,7 +99,7 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
         "text-4xl font-mono font-bold",
         isActive && !isPaused ? "text-primary" : "text-muted-foreground"
       )}>
-        {isActive ? formatTime(elapsedSeconds) : "0:00"}
+        {isActive ? formatTime(workedSeconds) : "0:00"}
       </div>
 
       <div className="flex items-center gap-2">
@@ -148,7 +135,6 @@ export function TaskTimer({ taskId, taskTitle, plannedMinutes, onStop, compact =
           <Button
             size="lg"
             onClick={handleStart}
-            disabled={isRunning}
           >
             <Play className="h-5 w-5 mr-2" />
             Start

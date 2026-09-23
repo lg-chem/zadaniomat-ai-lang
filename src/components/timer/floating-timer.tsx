@@ -14,13 +14,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useTimerStore, formatTime, useTimerHydration } from "@/stores/timer-store"
+import { stopActiveTimer, completeActiveTimer } from "@/lib/timer-actions"
+import { cn } from "@/lib/utils"
 
-interface FloatingTimerProps {
-  onComplete?: (taskId: string, durationSeconds: number) => void
-  onStop?: (taskId: string, durationSeconds: number) => void
-}
+const EXTEND_OPTIONS = [5, 15, 30]
 
-export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
+export function FloatingTimer() {
   // Wait for hydration to prevent timer flash on page load
   const isHydrated = useTimerHydration()
 
@@ -29,24 +28,16 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     isPaused,
     isMinimized,
     position,
-    taskId,
     taskTitle,
-    mode,
     plannedSeconds,
+    baseSeconds,
     elapsedSeconds,
-    remainingSeconds,
-    isTimeUp,
     showNotification,
-    pendingStart,
     pauseTimer,
     resumeTimer,
     extendTimer,
-    stopTimer,
-    completeTask,
     tick,
     dismissNotification,
-    confirmPendingStart,
-    cancelPendingStart,
     toggleMinimize,
     setPosition,
   } = useTimerStore()
@@ -55,6 +46,8 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
   useEffect(() => {
     if (!isRunning || isPaused) return
 
+    // Time is computed from the wall clock, so sync right away (e.g. after a reload)
+    tick()
     const interval = setInterval(() => {
       tick()
     }, 1000)
@@ -73,31 +66,14 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     }
   }, [isRunning, isPaused, tick])
 
-  // Handle stop
+  // Stop - worked time of this session is added to the task
   const handleStop = () => {
-    const result = stopTimer()
-    if (result && onStop) {
-      onStop(result.taskId, result.durationSeconds)
-    }
+    stopActiveTimer()
   }
 
-  // Handle complete
+  // Complete - worked time is added and the task is marked as completed
   const handleComplete = () => {
-    const result = completeTask()
-    if (result && onComplete) {
-      onComplete(result.taskId, result.durationSeconds)
-    }
-  }
-
-  // Handle extend
-  const handleExtend = (minutes: number) => {
-    extendTimer(minutes)
-    dismissNotification()
-  }
-
-  // Handle pending start confirmation
-  const handleConfirmPendingStart = (minutes: number) => {
-    confirmPendingStart(minutes)
+    completeActiveTimer()
   }
 
   // Drag functionality
@@ -148,74 +124,27 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
     ? { left: position.x, top: position.y, right: 'auto' }
     : { top: '5rem', right: '1rem' }
 
-  // Show pending start dialog even if timer is not running
-  if (isHydrated && pendingStart) {
-    return (
-      <Dialog open={true} onOpenChange={() => cancelPendingStart()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-orange-500" />
-              Przekroczono zaplanowany czas
-            </DialogTitle>
-            <DialogDescription>
-              Zadanie &quot;{pendingStart.taskTitle}&quot; miało zaplanowane{" "}
-              <strong>{pendingStart.plannedMinutes} min</strong>, ale przepracowano już{" "}
-              <strong>{pendingStart.alreadyWorkedMinutes} min</strong>.
-              <br /><br />
-              Ile dodatkowych minut chcesz uruchomić?
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handleConfirmPendingStart(5)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">5 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleConfirmPendingStart(15)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">15 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleConfirmPendingStart(30)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">30 min</span>
-              </Button>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => cancelPendingStart()}>
-              Anuluj
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    )
-  }
-
   // Don't render until hydration is complete and timer is actually running
   if (!isHydrated || !isRunning) return null
 
-  // Calculate progress percentage
-  const progress = mode === 'countdown' && plannedSeconds > 0
-    ? ((plannedSeconds - remainingSeconds) / plannedSeconds) * 100
-    : 0
+  // Main display counts up the whole time worked on the task
+  const workedSeconds = baseSeconds + elapsedSeconds
+  const hasPlan = plannedSeconds > 0
+  const isOverPlan = hasPlan && workedSeconds >= plannedSeconds
+  const progress = hasPlan ? Math.min(100, (workedSeconds / plannedSeconds) * 100) : 0
+  const timeClassName = isOverPlan ? 'text-orange-500' : isPaused ? 'text-muted-foreground' : ''
 
-  // Display time based on mode
-  const displayTime = mode === 'countdown' ? remainingSeconds : elapsedSeconds
+  const pauseButton = isPaused ? (
+    <Button size="sm" onClick={resumeTimer} className="flex-1">
+      <Play className="h-4 w-4 mr-1" />
+      Wznów
+    </Button>
+  ) : (
+    <Button size="sm" variant="outline" onClick={pauseTimer} className="flex-1">
+      <Pause className="h-4 w-4 mr-1" />
+      Pauza
+    </Button>
+  )
 
   return (
     <>
@@ -234,19 +163,19 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
             >
               <GripVertical className="h-4 w-4" />
             </div>
-            <span className={`text-lg font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
-              {formatTime(displayTime)}
+            <span className={cn("text-lg font-mono font-bold", timeClassName)}>
+              {formatTime(workedSeconds)}
             </span>
 
-            {isPaused && !isTimeUp ? (
-              <Button size="icon" variant="ghost" onClick={resumeTimer} className="h-7 w-7">
+            {isPaused ? (
+              <Button size="icon" variant="ghost" onClick={resumeTimer} className="h-7 w-7" title="Wznów">
                 <Play className="h-4 w-4" />
               </Button>
-            ) : !isTimeUp ? (
-              <Button size="icon" variant="ghost" onClick={pauseTimer} className="h-7 w-7">
+            ) : (
+              <Button size="icon" variant="ghost" onClick={pauseTimer} className="h-7 w-7" title="Pauza">
                 <Pause className="h-4 w-4" />
               </Button>
-            ) : null}
+            )}
 
             <Button size="icon" variant="ghost" onClick={toggleMinimize} className="h-7 w-7">
               <Maximize2 className="h-4 w-4" />
@@ -280,47 +209,60 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
               </Button>
             </div>
 
-            {/* Timer display */}
+            {/* Timer display - time worked */}
             <div className="text-center">
-              <span className={`text-3xl font-mono font-bold ${isTimeUp ? 'text-destructive animate-pulse' : ''}`}>
-                {formatTime(displayTime)}
+              <span className={cn("text-3xl font-mono font-bold", timeClassName)}>
+                {formatTime(workedSeconds)}
               </span>
-              {mode === 'countdown' && plannedSeconds > 0 && (
-                <div className="text-xs text-muted-foreground mt-1">
-                  z {formatTime(plannedSeconds)} planowanych
-                </div>
-              )}
+              <div className="text-xs text-muted-foreground mt-1">
+                {isPaused && "Pauza · "}
+                {!hasPlan
+                  ? "przepracowano"
+                  : isOverPlan
+                    ? <span className="text-orange-500 font-medium">+{formatTime(workedSeconds - plannedSeconds)} ponad plan ({formatTime(plannedSeconds)})</span>
+                    : `zostało ${formatTime(plannedSeconds - workedSeconds)} z ${formatTime(plannedSeconds)}`}
+              </div>
             </div>
 
-            {/* Progress bar (only for countdown) */}
-            {mode === 'countdown' && plannedSeconds > 0 && (
-              <Progress value={progress} className="h-2" />
+            {/* Progress bar towards planned time */}
+            {hasPlan && (
+              <Progress value={progress} className={cn("h-2", isOverPlan && "[&>div]:bg-orange-500")} />
             )}
 
-            {/* Elapsed time info */}
-            <div className="text-xs text-muted-foreground text-center">
-              Przepracowano: {formatTime(elapsedSeconds)}
-            </div>
+            {/* Only this session's time is added to the task on stop */}
+            {baseSeconds > 0 && (
+              <div className="text-xs text-muted-foreground text-center">
+                Ta sesja: {formatTime(elapsedSeconds)}
+              </div>
+            )}
+
+            {/* Extend planned time - timer keeps counting either way */}
+            {hasPlan && (
+              <div className="flex items-center justify-center gap-1">
+                <span className="text-xs text-muted-foreground mr-1">Przedłuż:</span>
+                {EXTEND_OPTIONS.map((minutes) => (
+                  <Button
+                    key={minutes}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => extendTimer(minutes)}
+                    className="h-6 px-2 text-xs"
+                  >
+                    +{minutes}
+                  </Button>
+                ))}
+              </div>
+            )}
 
             {/* Controls */}
             <div className="flex items-center justify-center gap-2">
-              {isPaused && !isTimeUp ? (
-                <Button size="sm" onClick={resumeTimer} className="flex-1">
-                  <Play className="h-4 w-4 mr-1" />
-                  Wznów
-                </Button>
-              ) : !isTimeUp ? (
-                <Button size="sm" variant="outline" onClick={pauseTimer} className="flex-1">
-                  <Pause className="h-4 w-4 mr-1" />
-                  Pauza
-                </Button>
-              ) : null}
+              {pauseButton}
 
-              <Button size="sm" variant="destructive" onClick={handleStop}>
+              <Button size="sm" variant="destructive" onClick={handleStop} title="Zatrzymaj i zapisz czas">
                 <Square className="h-4 w-4" />
               </Button>
 
-              <Button size="sm" variant="default" onClick={handleComplete}>
+              <Button size="sm" variant="default" onClick={handleComplete} title="Zakończ zadanie">
                 <Check className="h-4 w-4" />
               </Button>
             </div>
@@ -328,59 +270,46 @@ export function FloatingTimer({ onComplete, onStop }: FloatingTimerProps) {
         </Card>
       )}
 
-      {/* Time Up Notification Dialog */}
-      <Dialog open={showNotification} onOpenChange={dismissNotification}>
+      {/* Planned time reached - timer keeps counting, closing this dialog just hides it */}
+      <Dialog open={showNotification} onOpenChange={(open) => !open && dismissNotification()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-orange-500" />
-              Czas minął!
+              Minął zaplanowany czas
             </DialogTitle>
             <DialogDescription>
-              Planowany czas na zadanie &quot;{taskTitle}&quot; dobiegł końca.
+              Zadanie &quot;{taskTitle}&quot; - przepracowano{" "}
+              <strong>{formatTime(workedSeconds)}</strong> (plan: {formatTime(plannedSeconds)}).
               <br />
-              Przepracowano: <strong>{formatTime(elapsedSeconds)}</strong>
+              Timer liczy dalej - możesz przedłużyć plan, pracować dalej albo zakończyć.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Co chcesz zrobić?
-            </p>
-
             {/* Extension options */}
             <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handleExtend(5)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">+5 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleExtend(15)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">+15 min</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleExtend(30)}
-                className="flex flex-col h-auto py-3"
-              >
-                <Plus className="h-4 w-4 mb-1" />
-                <span className="text-sm">+30 min</span>
-              </Button>
+              {EXTEND_OPTIONS.map((minutes) => (
+                <Button
+                  key={minutes}
+                  variant="outline"
+                  onClick={() => extendTimer(minutes)}
+                  className="flex flex-col h-auto py-3"
+                >
+                  <Plus className="h-4 w-4 mb-1" />
+                  <span className="text-sm">+{minutes} min</span>
+                </Button>
+              ))}
             </div>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="ghost" onClick={dismissNotification} className="flex-1">
+              Pracuj dalej
+            </Button>
             <Button variant="outline" onClick={handleStop} className="flex-1">
               <Square className="h-4 w-4 mr-2" />
-              Zatrzymaj timer
+              Zatrzymaj i zapisz
             </Button>
             <Button onClick={handleComplete} className="flex-1">
               <Check className="h-4 w-4 mr-2" />

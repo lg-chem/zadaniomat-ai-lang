@@ -287,38 +287,46 @@ interface WorkspaceState {
 **Stan:**
 ```typescript
 interface TimerState {
-  isRunning: boolean
+  isRunning: boolean          // aktywna sesja (liczy się albo pauza)
   isPaused: boolean
   isMinimized: boolean
   taskId: string | null
   taskTitle: string | null
-  mode: 'countdown' | 'stopwatch'
-  plannedSeconds: number
-  elapsedSeconds: number
-  remainingSeconds: number
+  plannedSeconds: number      // plan zadania + przedłużenia (0 = bez planu)
+  baseSeconds: number         // czas zadania sprzed tej sesji
+  accumulatedSeconds: number  // czas sesji sprzed ostatniego wznowienia
+  runningSince: number | null // timestamp ostatniego startu/wznowienia
+  elapsedSeconds: number      // czas bieżącej sesji
   // ... więcej pól
 }
 ```
 
 **Akcje:**
-- `startTimer(taskId, taskTitle, plannedMinutes?, alreadyWorkedMinutes?)` - rozpoczyna timer
+- `startTimer(taskId, taskTitle, plannedMinutes?, alreadyWorkedMinutes?)` - rozpoczyna sesję (dla tego samego zadania tylko wznawia)
 - `pauseTimer()` - pauzuje
 - `resumeTimer()` - wznawia
-- `stopTimer()` - zatrzymuje i zwraca `{ taskId, durationSeconds }`
-- `completeTask()` - kończy zadanie i czyści stan
-- `extendTimer(minutes)` - przedłuża czas
+- `stopTimer()` - zatrzymuje i zwraca `{ taskId, sessionSeconds }` - czas sesji do dodania do zadania
+- `completeTask()` - jak `stopTimer()`, dodatkowo czyści przedłużenia zadania
+- `extendTimer(minutes)` - przedłuża plan (od aktualnego czasu, jeśli plan już minął)
 - `tick()` - aktualizacja co sekundę (wywoływana przez setInterval)
 
 **Logika:**
-- Obsługuje countdown (planowany czas) i stopwatch (bez limitu)
-- Powiadomienia przeglądarki gdy czas minie
-- Persystowany w localStorage (`timer-storage`)
-- Zapamiętuje stan dla każdego zadania (można wznowić)
+- Czas liczony z zegara (`runningSince`) - działa po odświeżeniu strony i w tle
+- Po upływie planu: powiadomienie (przeglądarka + dźwięk + dialog), timer liczy dalej
+- Persystowany w localStorage (`timer-storage`, wersja 1 - migracja starego formatu)
+- Zapamiętuje przedłużenia planu dla każdego zadania
+
+**Zapis czasu:** `src/lib/timer-actions.ts`
+- `startTaskTimer(task)` - start timera; timer innego zadania najpierw zatrzymuje i zapisuje
+- `stopActiveTimer()` / `completeActiveTimer()` - zatrzymuje i dodaje czas sesji do zadania
+- `stopTimerForTask(taskId, { complete? })` - zatrzymuje timer, jeśli liczy dla tego zadania
+- `discardTimerForTask(taskId)` - porzuca timer usuniętego zadania
+- Czas sesji dodawany przez `POST /api/tasks/[id]/time` (inkrementacja `actualMinutes`)
 
 **Gdzie użyte:**
 - Floating timer widget
 - Karty zadań (przycisk start timera)
-- Panel zadania
+- Harmonogram
 
 **Helper functions:**
 - `formatTime(seconds)` - formatuje sekundy do `MM:SS` lub `HH:MM:SS`

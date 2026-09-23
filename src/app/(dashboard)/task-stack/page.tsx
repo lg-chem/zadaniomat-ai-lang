@@ -55,6 +55,7 @@ import { TeamTasksTab } from "@/components/teams/team-tasks-tab"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
 import { EditableDescription } from "@/components/tasks/editable-description"
 import useSWR from "swr"
+import { stopTimerForTask } from "@/lib/timer-actions"
 
 interface Task {
   id: string
@@ -204,6 +205,9 @@ export default function TaskStackPage() {
   }
 
   const handleCompleteTask = async (taskId: string) => {
+    // Save the time of a running timer for this task
+    stopTimerForTask(taskId, { complete: true })
+
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",

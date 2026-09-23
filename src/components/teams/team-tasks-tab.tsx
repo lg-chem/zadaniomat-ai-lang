@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
+import { stopTimerForTask } from "@/lib/timer-actions"
 import { AssignTaskDialog } from "@/components/teams/assign-task-dialog"
 import { TaskComments } from "@/components/tasks/task-comments"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
@@ -140,6 +141,11 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: string) => {
+    // Stop the task's timer (if running) and save its time
+    if (status !== "IN_PROGRESS") {
+      stopTimerForTask(taskId, { complete: status === "COMPLETED" })
+    }
+
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",

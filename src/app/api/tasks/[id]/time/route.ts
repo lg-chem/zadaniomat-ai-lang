@@ -17,9 +17,16 @@ export async function POST(
     const body = await req.json()
     const { duration, notes } = body
 
-    // Verify ownership
+    if (!Number.isInteger(duration) || duration <= 0) {
+      return NextResponse.json({ error: "Duration must be a positive number of minutes" }, { status: 400 })
+    }
+
+    // Verify the user owns or is assigned to the task
     const task = await prisma.task.findFirst({
-      where: { id, userId: session.user.id },
+      where: {
+        id,
+        OR: [{ userId: session.user.id }, { assignedToId: session.user.id }],
+      },
     })
 
     if (!task) {
