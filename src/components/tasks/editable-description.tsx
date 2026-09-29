@@ -1,93 +1,100 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Check, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { DescriptionField } from "@/components/editor/lazy"
+import type { SaveStatus } from "@/components/editor/document-editor-dialog"
+import { normalizeRichText } from "@/lib/rich-text"
 
 interface EditableDescriptionProps {
   taskId: string
   initialValue: string | null | undefined
   onSaved?: () => void
   placeholder?: string
-  rows?: number
+  // Task title, shown in the full screen document header
+  title?: string
 }
 
+const AUTOSAVE_DELAY = 1000
+
+// Task description with formatting, saved automatically while typing
 export function EditableDescription({
   taskId,
   initialValue,
   onSaved,
   placeholder = "Dodaj opis...",
-  rows = 2,
+  title,
 }: EditableDescriptionProps) {
   const [value, setValue] = useState(initialValue || "")
-  const [isSaving, setIsSaving] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
+  const [status, setStatus] = useState<SaveStatus>("idle")
+  const savedValueRef = useRef<string | null>(normalizeRichText(initialValue))
+  const pendingValueRef = useRef<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onSavedRef = useRef(onSaved)
+  onSavedRef.current = onSaved
 
-  // Sync with external value changes
+  // Take changes from outside (e.g. the full edit dialog), but not the echo of our own save
   useEffect(() => {
+    const incoming = normalizeRichText(initialValue)
+    if (pendingValueRef.current !== null || incoming === savedValueRef.current) return
+    savedValueRef.current = incoming
     setValue(initialValue || "")
-    setHasChanges(false)
   }, [initialValue])
 
-  const handleChange = (newValue: string) => {
-    setValue(newValue)
-    setHasChanges(newValue !== (initialValue || ""))
-  }
+  const save = useCallback(async () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    const next = pendingValueRef.current
+    if (next === null) return
+    pendingValueRef.current = null
+    const description = normalizeRichText(next)
+    if (description === savedValueRef.current) return
 
-  const handleSave = async () => {
-    if (!hasChanges) return
-
-    setIsSaving(true)
+    setStatus("saving")
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: value || null }),
+        body: JSON.stringify({ description }),
       })
-
-      if (res.ok) {
-        setHasChanges(false)
-        onSaved?.()
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      savedValueRef.current = description
+      setStatus("saved")
+      onSavedRef.current?.()
     } catch (error) {
       console.error("Error saving description:", error)
-    } finally {
-      setIsSaving(false)
+      // Keep the text so the next change or blur retries
+      if (pendingValueRef.current === null) pendingValueRef.current = next
+      setStatus("error")
     }
+  }, [taskId])
+
+  const handleChange = (html: string) => {
+    setValue(html)
+    pendingValueRef.current = html
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(save, AUTOSAVE_DELAY)
   }
 
+  // Don't lose the last keystrokes when the row is collapsed
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      if (pendingValueRef.current !== null) void save()
+    }
+  }, [save])
+
   return (
-    <div className="space-y-2">
-      <Textarea
-        value={value}
-        onChange={(e) => handleChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        className="text-sm"
-      />
-      {hasChanges && (
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="h-7 text-xs"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                Zapisuję...
-              </>
-            ) : (
-              <>
-                <Check className="h-3 w-3 mr-1" />
-                Zapisz opis
-              </>
-            )}
-          </Button>
-        </div>
-      )}
-    </div>
+    <DescriptionField
+      value={value}
+      onChange={handleChange}
+      onBlur={save}
+      onDocumentClose={save}
+      placeholder={placeholder}
+      title={title}
+      subtitle="Opis zadania"
+      status={status}
+    />
   )
 }

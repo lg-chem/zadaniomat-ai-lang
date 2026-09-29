@@ -50,10 +50,11 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { TeamTasksTab } from "@/components/teams/team-tasks-tab"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
 import { EditableDescription } from "@/components/tasks/editable-description"
+import { DescriptionField } from "@/components/editor/lazy"
+import { htmlToPlainText, normalizeRichText } from "@/lib/rich-text"
 import useSWR from "swr"
 import { stopTimerForTask } from "@/lib/timer-actions"
 
@@ -234,7 +235,7 @@ export default function TaskStackPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: editTitle,
-          description: editDescription || null,
+          description: normalizeRichText(editDescription),
         }),
       })
 
@@ -303,7 +304,7 @@ export default function TaskStackPage() {
 
           {task.description && expandedTaskId !== task.id && (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              {task.description}
+              {htmlToPlainText(task.description)}
             </p>
           )}
 
@@ -390,7 +391,7 @@ export default function TaskStackPage() {
               initialValue={task.description}
               onSaved={() => mutate()}
               placeholder="Dodaj opis zadania..."
-              rows={3}
+              title={task.title}
             />
           </div>
 
@@ -663,7 +664,7 @@ export default function TaskStackPage() {
 
                               {task.description && (
                                 <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                  {task.description}
+                                  {htmlToPlainText(task.description)}
                                 </p>
                               )}
 
@@ -755,7 +756,7 @@ export default function TaskStackPage() {
 
                               {task.description && (
                                 <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                  {task.description}
+                                  {htmlToPlainText(task.description)}
                                 </p>
                               )}
 
@@ -905,11 +906,12 @@ export default function TaskStackPage() {
 
             <div>
               <Label>Opis (opcjonalnie)</Label>
-              <Textarea
+              <DescriptionField
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
+                onChange={setEditDescription}
                 placeholder="Opis zadania..."
-                rows={3}
+                title={editTitle}
+                subtitle="Opis zadania · zapisze się po kliknięciu „Zapisz”"
               />
             </div>
           </div>

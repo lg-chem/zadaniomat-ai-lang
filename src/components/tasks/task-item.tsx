@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { TaskTimer } from "@/components/timer/task-timer"
 import { SubtaskProgress, Subtask } from "./subtask-list"
 import { cn } from "@/lib/utils"
+import { htmlToPlainText } from "@/lib/rich-text"
 
 interface Category {
   id: string
@@ -103,7 +104,7 @@ export function TaskItem({ task, onStatusChange, onEdit, onDelete }: TaskItemPro
 
         {task.description && (
           <p className="text-xs md:text-sm text-muted-foreground line-clamp-2 mt-0.5">
-            {task.description}
+            {htmlToPlainText(task.description)}
           </p>
         )}
 

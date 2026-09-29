@@ -208,3 +208,37 @@ export function useScheduleOverride(date: string | null) {
     removeOverride,
   }
 }
+
+interface BlocksRangeResponse {
+  templates: ScheduleBlock[]
+  overrides: { date: string; blocks: BlockData[] }[]
+}
+
+// Blocks for every day of a range (calendar): a day changed in the schedule wins over the weekly template
+export function useBlocksRange(range: { from: string; to: string } | null, enabled = true) {
+  const { workspace } = useWorkspaceStore()
+  const url =
+    range && enabled ? `/api/schedule-blocks?workspace=${workspace}&from=${range.from}&to=${range.to}` : null
+
+  const { data, error, isLoading, mutate } = useSWR<BlocksRangeResponse>(url, {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+  })
+
+  const blocksForDay = useCallback(
+    (day: string): { blocks: BlockData[]; isOverride: boolean } => {
+      if (!data) return { blocks: [], isOverride: false }
+      const override = data.overrides.find((o) => o.date === day)
+      if (override) return { blocks: override.blocks, isOverride: true }
+      const [y, m, d] = day.split('-').map(Number)
+      const dayOfWeek = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7
+      const blocks = data.templates
+        .filter((b) => b.dayOfWeek === dayOfWeek)
+        .map((b) => ({ ...b, description: b.description ?? undefined }))
+      return { blocks, isOverride: false }
+    },
+    [data]
+  )
+
+  return { blocksForDay, isLoading, isError: error, mutate }
+}

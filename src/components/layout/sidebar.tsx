@@ -108,6 +108,7 @@ const workNavItems = [
 const privateNavItems = [
   { href: "/backlog", label: "Backlog", icon: Inbox },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
+  { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/knowledge", label: "Wiedza", icon: BookOpen },
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },

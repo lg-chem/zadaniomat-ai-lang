@@ -15,6 +15,34 @@ export async function GET(req: Request) {
     const workspace = (searchParams.get("workspace") || "WORK") as "WORK" | "PRIVATE"
     const date = searchParams.get("date") // Optional: specific date for override check
     const dayOfWeek = searchParams.get("dayOfWeek") // Optional: filter by day (0-6)
+    const from = searchParams.get("from") // Optional: range of dates for the calendar
+    const to = searchParams.get("to")
+
+    // Range: weekly template plus the days that were changed, the client picks per day
+    if (from && to) {
+      const [templates, overrides] = await Promise.all([
+        prisma.weeklyScheduleBlock.findMany({
+          where: { userId: session.user.id, workspaceType: workspace, isActive: true },
+          orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }, { order: "asc" }],
+        }),
+        prisma.dailyScheduleOverride.findMany({
+          where: {
+            userId: session.user.id,
+            workspaceType: workspace,
+            date: { gte: new Date(from), lte: new Date(to) },
+          },
+          orderBy: { date: "asc" },
+        }),
+      ])
+
+      return NextResponse.json({
+        templates,
+        overrides: overrides.map((o) => ({
+          date: o.date.toISOString().slice(0, 10),
+          blocks: o.blocks,
+        })),
+      })
+    }
 
     // If specific date is provided, check for override first
     if (date) {

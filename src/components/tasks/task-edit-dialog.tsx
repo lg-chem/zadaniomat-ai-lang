@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -30,6 +29,8 @@ import {
 } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { SubtaskList, Subtask } from "./subtask-list"
+import { DescriptionField } from "@/components/editor/lazy"
+import { normalizeRichText } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 
 interface Category {
@@ -108,7 +109,7 @@ export function TaskEditDialog({
     try {
       await onSave(task.id, {
         title: title.trim(),
-        description: description.trim() || null,
+        description: normalizeRichText(description),
         categoryId: categoryId || null,
         priority: parseInt(priority),
         plannedMinutes: plannedMinutes ?? null,
@@ -134,7 +135,7 @@ export function TaskEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edytuj zadanie</DialogTitle>
           <DialogDescription>
@@ -158,13 +159,13 @@ export function TaskEditDialog({
 
             {/* Description */}
             <div className="space-y-2">
-              <Label htmlFor="description">Opis</Label>
-              <Textarea
-                id="description"
+              <Label>Opis</Label>
+              <DescriptionField
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={setDescription}
                 placeholder="Dodaj szczegóły zadania..."
-                rows={3}
+                title={title || task.title}
+                subtitle="Opis zadania · zapisze się po kliknięciu „Zapisz zmiany”"
               />
             </div>
 

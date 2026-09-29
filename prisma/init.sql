@@ -837,6 +837,30 @@ CREATE TABLE "DailyScheduleOverride" (
 CREATE UNIQUE INDEX "DailyScheduleOverride_userId_date_workspaceType_key" ON "DailyScheduleOverride"("userId", "date", "workspaceType");
 CREATE INDEX "DailyScheduleOverride_userId_workspaceType_date_idx" ON "DailyScheduleOverride"("userId", "workspaceType", "date");
 
+CREATE TABLE "CalendarEvent" (
+    "id" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "date" DATE NOT NULL,
+    "endDate" DATE,
+    "allDay" BOOLEAN NOT NULL DEFAULT false,
+    "startTime" TEXT,
+    "endTime" TEXT,
+    "color" TEXT,
+    "recurrenceRule" TEXT,
+    "recurrenceInterval" INTEGER NOT NULL DEFAULT 1,
+    "recurrenceDays" INTEGER[],
+    "recurrenceEnd" DATE,
+    "excludedDates" TEXT[],
+    "workspaceType" "WorkspaceType" NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "userId" TEXT NOT NULL,
+    "categoryId" TEXT,
+    CONSTRAINT "CalendarEvent_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "CalendarEvent_userId_workspaceType_date_idx" ON "CalendarEvent"("userId", "workspaceType", "date");
+
 -- ==================== FOREIGN KEYS ====================
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -918,3 +942,5 @@ ALTER TABLE "AdminReport" ADD CONSTRAINT "AdminReport_userId_fkey" FOREIGN KEY (
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "WeeklyScheduleBlock" ADD CONSTRAINT "WeeklyScheduleBlock_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "DailyScheduleOverride" ADD CONSTRAINT "DailyScheduleOverride_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;

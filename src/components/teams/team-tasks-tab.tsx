@@ -348,6 +348,7 @@ export function TeamTasksTab({ teamId, categories, members, isOwner, currentUser
                         initialValue={task.description}
                         onSaved={handleTaskSuccess}
                         placeholder="Dodaj opis zadania..."
+                        title={task.title}
                       />
                     </div>
 
