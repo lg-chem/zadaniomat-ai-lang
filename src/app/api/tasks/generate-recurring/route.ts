@@ -2,40 +2,9 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-
-// Helper to check if a task should occur on a given date based on recurrence rule
-function shouldTaskOccurOnDate(
-  task: { scheduledDate: Date | null; recurrenceRule: string | null },
-  targetDate: Date
-): boolean {
-  if (!task.scheduledDate || !task.recurrenceRule) return false
-
-  const startDate = new Date(task.scheduledDate)
-  const target = new Date(targetDate)
-
-  // Reset time parts for date comparison
-  startDate.setHours(0, 0, 0, 0)
-  target.setHours(0, 0, 0, 0)
-
-  // If target is before start date, no occurrence
-  if (target < startDate) return false
-
-  const daysDiff = Math.floor((target.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-
-  switch (task.recurrenceRule) {
-    case "DAILY":
-      return true // Every day after start
-    case "WEEKLY":
-      return daysDiff % 7 === 0 // Same day of week
-    case "WEEKDAYS":
-      const dayOfWeek = target.getDay()
-      return dayOfWeek >= 1 && dayOfWeek <= 5 // Mon-Fri
-    case "MONTHLY":
-      return startDate.getDate() === target.getDate() // Same day of month
-    default:
-      return false
-  }
-}
+import { isValidDay, toDayString } from "@/lib/calendar"
+import { taskOccursOn } from "@/lib/task-recurrence"
+import { loadRecurrenceContext } from "@/lib/recurring-tasks"
 
 export async function POST(req: Request) {
   try {
@@ -47,7 +16,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { date, workspace = "WORK" } = body
 
-    if (!date) {
+    if (!isValidDay(date)) {
       return NextResponse.json({ error: "Date is required" }, { status: 400 })
     }
 
@@ -69,8 +38,15 @@ export async function POST(req: Request) {
     })
 
     // Check which recurring tasks should occur on target date
-    const tasksToGenerate = recurringTasks.filter((task: typeof recurringTasks[number]) =>
-      shouldTaskOccurOnDate(task, targetDate)
+    // (rules and dates as "yyyy-MM-dd", see lib/task-recurrence)
+    const context = await loadRecurrenceContext(
+      session.user.id,
+      workspace === "PRIVATE" ? "PRIVATE" : "WORK",
+      recurringTasks.map((task) => task.recurrenceRule)
+    )
+    const tasksToGenerate = recurringTasks.filter(
+      (task) =>
+        task.scheduledDate && taskOccursOn(task.recurrenceRule, toDayString(task.scheduledDate), date, context)
     )
 
     // Check which tasks already exist for this date (to avoid duplicates)

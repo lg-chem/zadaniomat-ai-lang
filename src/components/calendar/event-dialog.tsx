@@ -43,6 +43,12 @@ import {
 } from "@/hooks/use-calendar-events"
 import { cn } from "@/lib/utils"
 import { useScopePrompt } from "./scope-dialog"
+import {
+  RecurrencePicker,
+  recurrenceForFrequency,
+  type RecurrenceValue,
+} from "@/components/tasks/recurrence-picker"
+import { serializeTaskRecurrence } from "@/lib/task-recurrence"
 
 export interface CalendarCategory {
   id: string
@@ -97,7 +103,8 @@ interface TaskForm {
   time: string
   plannedMinutes: string
   categoryId: string
-  recurrenceRule: string
+  repeat: boolean
+  recurrence: RecurrenceValue
 }
 
 const WEEKDAY_LETTERS = ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"]
@@ -107,14 +114,6 @@ const INTERVAL_UNITS: Record<string, string> = {
   MONTHLY: "mies.",
   YEARLY: "lat",
 }
-
-const TASK_RECURRENCE = [
-  { value: "none", label: "Nie powtarza się" },
-  { value: "DAILY", label: "Codziennie" },
-  { value: "WEEKDAYS", label: "Dni robocze" },
-  { value: "WEEKLY", label: "Co tydzień" },
-  { value: "MONTHLY", label: "Co miesiąc" },
-]
 
 function formFromOccurrence(occurrence: EventOccurrence): EventForm {
   const e = occurrence.event
@@ -167,7 +166,8 @@ function taskFormFromDraft(draft: EventDraft): TaskForm {
     time: draft.allDay ? "" : draft.startTime || "",
     plannedMinutes: String(duration > 0 ? duration : 25),
     categoryId: "",
-    recurrenceRule: "none",
+    repeat: false,
+    recurrence: { recurrence: recurrenceForFrequency("WEEKLY", draft.date), start: draft.date },
   }
 }
 
@@ -299,25 +299,38 @@ export function EventDialog({ open, onOpenChange, draft, occurrence, categories,
       toast.error("Dodaj tytuł zadania")
       return
     }
-    const isRecurring = taskForm.recurrenceRule !== "none"
+    const common = {
+      title: taskForm.title.trim(),
+      description: normalizeRichText(taskForm.description),
+      scheduledTime: taskForm.time || null,
+      plannedMinutes: parseInt(taskForm.plannedMinutes) || 25,
+      categoryId: taskForm.categoryId || null,
+    }
+    const isRecurring = taskForm.repeat
     setIsSaving(true)
     try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: taskForm.title.trim(),
-          description: normalizeRichText(taskForm.description),
-          scheduledDate: taskForm.date,
-          scheduledTime: taskForm.time || null,
-          plannedMinutes: parseInt(taskForm.plannedMinutes) || 25,
-          categoryId: taskForm.categoryId || null,
-          workspaceType: workspace,
-          status: "NEW",
-          isRecurring,
-          recurrenceRule: isRecurring ? taskForm.recurrenceRule : null,
-        }),
-      })
+      // A recurring task is put on its first matching day from the chosen date
+      const res = isRecurring
+        ? await fetch("/api/recurring", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...common,
+              recurrenceRule: serializeTaskRecurrence({ ...taskForm.recurrence.recurrence, anchor: null }),
+              startDate: taskForm.date,
+              workspace,
+            }),
+          })
+        : await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...common,
+              scheduledDate: taskForm.date,
+              workspaceType: workspace,
+              status: "NEW",
+            }),
+          })
       if (!res.ok) throw new Error()
       revalidateTasks()
       if (isRecurring) mutate((key) => typeof key === "string" && key.startsWith("/api/recurring"))
@@ -676,19 +689,21 @@ export function EventDialog({ open, onOpenChange, draft, occurrence, categories,
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <Repeat className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <Select value={taskForm.recurrenceRule} onValueChange={(recurrenceRule) => updateTask({ recurrenceRule })}>
-                    <SelectTrigger className="h-9 w-[210px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TASK_RECURRENCE.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Repeat className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 space-y-2">
+                    <label className="flex w-fit cursor-pointer items-center gap-2 pt-1 text-sm">
+                      <Switch checked={taskForm.repeat} onCheckedChange={(repeat) => updateTask({ repeat })} />
+                      Powtarzaj
+                    </label>
+                    {taskForm.repeat && (
+                      <RecurrencePicker
+                        value={{ ...taskForm.recurrence, start: taskForm.date }}
+                        onChange={(recurrence) => updateTask({ recurrence })}
+                        hideStart
+                        allowDeadlines={workspace === "WORK"}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-3">
                   <Tag className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground" />

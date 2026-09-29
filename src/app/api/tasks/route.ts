@@ -237,6 +237,7 @@ export async function POST(req: Request) {
       data: {
         title,
         description,
+        descriptionUpdatedAt: description ? new Date() : null,
         categoryId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
         scheduledTime,

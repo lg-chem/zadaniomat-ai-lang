@@ -1,10 +1,10 @@
 import type { Task } from "@/hooks/use-tasks"
+import { taskOccursOn } from "@/lib/task-recurrence"
 import type { BlockData } from "@/hooks/use-schedule-blocks"
 import {
   eventMinutes,
   isValidTime,
   occurrencesOnDay,
-  recurringTaskOccursOn,
   timeToMinutes,
   toDayString,
   type EventOccurrence,
@@ -151,7 +151,8 @@ export function buildDayItems({ days, today, occurrences, tasks, templates, filt
       for (const template of templates) {
         if (!template.scheduledDate) continue
         const startDay = toDayString(template.scheduledDate)
-        if (day === startDay || !recurringTaskOccursOn(template.recurrenceRule, startDay, day)) continue
+        // (rules tied to sprint / period dates aren't shown ahead)
+        if (day === startDay || !taskOccursOn(template.recurrenceRule, startDay, day)) continue
         const exists = dayTasks.some(
           (t) => t.title === template.title && (t.categoryId ?? null) === (template.categoryId ?? null)
         )

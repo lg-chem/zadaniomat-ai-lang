@@ -172,7 +172,10 @@ export async function PATCH(
         updateData.actualMinutes = actualMinutes
         updateData.actualExtraSeconds = 0
       }
-      if (description !== undefined) updateData.description = description
+      if (description !== undefined) {
+        updateData.description = description
+        updateData.descriptionUpdatedAt = new Date()
+      }
       // Allow assignees to schedule tasks in their own harmonogram
       if (scheduledDate !== undefined)
         updateData.scheduledDate = scheduledDate ? new Date(scheduledDate) : null
@@ -180,7 +183,11 @@ export async function PATCH(
     } else {
       // Owners can update everything
       if (title !== undefined) updateData.title = title
-      if (description !== undefined) updateData.description = description
+      if (description !== undefined) {
+        updateData.description = description
+        // Order of the notes feed
+        updateData.descriptionUpdatedAt = new Date()
+      }
       if (status !== undefined) {
         updateData.status = status
         if (status === "COMPLETED" && !existingTask.completedAt) {

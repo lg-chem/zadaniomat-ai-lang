@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { isValidDay, toDayString } from "@/lib/calendar"
+import { anchorRecurrence, nextOccurrences, parseTaskRecurrence, serializeTaskRecurrence } from "@/lib/task-recurrence"
+import { loadRecurrenceContext, utcTodayString } from "@/lib/recurring-tasks"
 
 export async function GET(req: Request) {
   try {
@@ -29,7 +32,26 @@ export async function GET(req: Request) {
       ],
     })
 
-    return NextResponse.json(tasks)
+    // Next days each task will show up in the schedule, and the day its rule counts from
+    const context = await loadRecurrenceContext(
+      session.user.id,
+      workspace,
+      tasks.map((task) => task.recurrenceRule)
+    )
+    const today = utcTodayString()
+    const withDates = tasks.map((task) => {
+      const taskDay = task.scheduledDate ? toDayString(task.scheduledDate) : today
+      const recurrence = parseTaskRecurrence(task.recurrenceRule, taskDay)
+      return {
+        ...task,
+        startDate: recurrence?.anchor ?? taskDay,
+        nextDates: recurrence
+          ? nextOccurrences(recurrence, taskDay > today ? taskDay : today, 5, context)
+          : [],
+      }
+    })
+
+    return NextResponse.json(withDates)
   } catch (error) {
     console.error("Error fetching recurring tasks:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
@@ -52,8 +74,9 @@ export async function POST(req: Request) {
       plannedMinutes,
       priority,
       categoryId,
-      workspace = "WORK",
+      startDate,
     } = body
+    const workspace = body.workspace === "PRIVATE" ? "PRIVATE" : "WORK"
 
     if (!title || !recurrenceRule) {
       return NextResponse.json(
@@ -62,17 +85,25 @@ export async function POST(req: Request) {
       )
     }
 
-    // For recurring tasks, set scheduledDate to today as a starting point
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    // The rule counts from the start day (today by default); the task itself is
+    // put on the first day it falls on, not on today
+    const today = utcTodayString()
+    const start = isValidDay(startDate) ? startDate : today
+    const recurrence = parseTaskRecurrence(recurrenceRule, start)
+    if (!recurrence) {
+      return NextResponse.json({ error: "Nieprawidłowa reguła powtarzania" }, { status: 400 })
+    }
+    const context = await loadRecurrenceContext(session.user.id, workspace, [recurrenceRule])
+    const { recurrence: anchored, firstDay } = anchorRecurrence(recurrence, start, context, today)
 
     const task = await prisma.task.create({
       data: {
         title,
         description,
+        descriptionUpdatedAt: description ? new Date() : null,
         isRecurring: true,
-        recurrenceRule,
-        scheduledDate: today,
+        recurrenceRule: serializeTaskRecurrence(anchored),
+        scheduledDate: new Date(`${firstDay}T00:00:00.000Z`),
         scheduledTime,
         plannedMinutes,
         priority: priority || 0,

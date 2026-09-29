@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
-import { format, addDays, addWeeks, addMonths, getDay } from "date-fns"
+import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Plus,
@@ -36,6 +36,17 @@ import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { DescriptionField } from "@/components/editor/lazy"
 import { htmlToPlainText, normalizeRichText } from "@/lib/rich-text"
+import {
+  RecurrencePicker,
+  defaultRecurrenceValue,
+  type RecurrenceValue,
+} from "@/components/tasks/recurrence-picker"
+import {
+  FREQUENCY_GROUPS,
+  describeTaskRecurrence,
+  parseTaskRecurrence,
+  serializeTaskRecurrence,
+} from "@/lib/task-recurrence"
 
 interface Category {
   id: string
@@ -54,19 +65,21 @@ interface RecurringTask {
   priority: number
   category?: Category | null
   workspaceType: string
+  // From the API: the day the rule counts from and the next days it lands on
+  startDate?: string
+  nextDates?: string[]
 }
 
-const RECURRENCE_OPTIONS = [
-  { value: "DAILY", label: "Codziennie" },
-  { value: "WEEKLY", label: "Co tydzień" },
-  { value: "WEEKDAYS", label: "Dni robocze (pon-pt)" },
-  { value: "MONTHLY", label: "Co miesiąc" },
-  { value: "SPRINT_END_7", label: "7 dni przed końcem sprintu" },
-  { value: "SPRINT_END_3", label: "3 dni przed końcem sprintu" },
-  { value: "SPRINT_END_1", label: "Dzień przed końcem sprintu" },
-  { value: "PERIOD_END_14", label: "14 dni przed końcem okresu" },
-  { value: "PERIOD_END_7", label: "7 dni przed końcem okresu" },
-]
+const taskDay = (task: RecurringTask) => (task.scheduledDate ? task.scheduledDate.slice(0, 10) : undefined)
+const parseTaskRule = (task: RecurringTask) => parseTaskRecurrence(task.recurrenceRule, taskDay(task))
+
+// Rule for the API; the server sets the start (DTSTART) itself
+const ruleFromValue = (value: RecurrenceValue) => serializeTaskRecurrence({ ...value.recurrence, anchor: null })
+
+const fromDay = (day: string) => {
+  const [y, m, d] = day.split("-").map(Number)
+  return new Date(y, m - 1, d)
+}
 
 const PRIORITY_OPTIONS = [
   { value: 0, label: "Brak", color: "bg-muted" },
@@ -86,7 +99,6 @@ export default function RecurringPage() {
   const [newTask, setNewTask] = useState({
     title: "",
     description: "",
-    recurrenceRule: "DAILY",
     scheduledTime: "",
     plannedMinutes: "",
     priority: 0,
@@ -98,12 +110,15 @@ export default function RecurringPage() {
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
-    recurrenceRule: "DAILY",
     scheduledTime: "",
     plannedMinutes: "",
     priority: 0,
     categoryId: "",
   })
+
+  // When the task repeats (new / edited task)
+  const [newRecurrence, setNewRecurrence] = useState<RecurrenceValue>(() => defaultRecurrenceValue())
+  const [editRecurrence, setEditRecurrence] = useState<RecurrenceValue>(() => defaultRecurrenceValue())
 
   // Expanded task detail
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
@@ -141,7 +156,7 @@ export default function RecurringPage() {
   }, [fetchTasks, fetchCategories])
 
   const handleCreateTask = async () => {
-    if (!newTask.title.trim() || !newTask.recurrenceRule) return
+    if (!newTask.title.trim()) return
 
     try {
       const res = await fetch("/api/recurring", {
@@ -150,6 +165,8 @@ export default function RecurringPage() {
         body: JSON.stringify({
           ...newTask,
           description: normalizeRichText(newTask.description),
+          recurrenceRule: ruleFromValue(newRecurrence),
+          startDate: newRecurrence.start,
           workspace,
           plannedMinutes: newTask.plannedMinutes ? parseInt(newTask.plannedMinutes) : null,
         }),
@@ -159,12 +176,12 @@ export default function RecurringPage() {
         setNewTask({
           title: "",
           description: "",
-          recurrenceRule: "DAILY",
           scheduledTime: "",
           plannedMinutes: "",
           priority: 0,
           categoryId: "",
         })
+        setNewRecurrence(defaultRecurrenceValue())
         setIsDialogOpen(false)
         toast.success("Zadanie cykliczne utworzone")
       } else {
@@ -213,10 +230,12 @@ export default function RecurringPage() {
   // Edit handlers
   const handleStartEdit = (task: RecurringTask) => {
     setEditingTask(task)
+    const recurrence = parseTaskRule(task)
+    const start = task.startDate ?? recurrence?.anchor ?? taskDay(task)
+    setEditRecurrence(recurrence && start ? { recurrence, start } : defaultRecurrenceValue())
     setEditForm({
       title: task.title,
       description: task.description || "",
-      recurrenceRule: task.recurrenceRule,
       scheduledTime: task.scheduledTime || "",
       plannedMinutes: task.plannedMinutes?.toString() || "",
       priority: task.priority,
@@ -234,7 +253,8 @@ export default function RecurringPage() {
         body: JSON.stringify({
           title: editForm.title,
           description: normalizeRichText(editForm.description),
-          recurrenceRule: editForm.recurrenceRule,
+          recurrenceRule: ruleFromValue(editRecurrence),
+          startDate: editRecurrence.start,
           scheduledTime: editForm.scheduledTime || null,
           plannedMinutes: editForm.plannedMinutes ? parseInt(editForm.plannedMinutes) : null,
           priority: editForm.priority,
@@ -254,54 +274,22 @@ export default function RecurringPage() {
     }
   }
 
-  // Generate next scheduled dates
-  const getNextDates = (rule: string, count: number = 5): Date[] => {
-    const dates: Date[] = []
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    if (rule === "DAILY") {
-      for (let i = 0; i < count; i++) {
-        dates.push(addDays(today, i))
-      }
-    } else if (rule === "WEEKDAYS") {
-      let current = today
-      while (dates.length < count) {
-        const dayOfWeek = getDay(current)
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-          dates.push(new Date(current))
-        }
-        current = addDays(current, 1)
-      }
-    } else if (rule === "WEEKLY") {
-      for (let i = 0; i < count; i++) {
-        dates.push(addWeeks(today, i))
-      }
-    } else if (rule === "MONTHLY") {
-      for (let i = 0; i < count; i++) {
-        dates.push(addMonths(today, i))
-      }
-    }
-
-    return dates
-  }
-
-  const getRecurrenceLabel = (rule: string) => {
-    const option = RECURRENCE_OPTIONS.find(o => o.value === rule)
-    return option?.label || rule
-  }
-
   const getPriorityOption = (priority: number) => {
     return PRIORITY_OPTIONS.find(o => o.value === priority) || PRIORITY_OPTIONS[0]
   }
 
-  // Group tasks by recurrence type
-  const groupedTasks = tasks.reduce((acc, task) => {
-    const rule = task.recurrenceRule
-    if (!acc[rule]) acc[rule] = []
-    acc[rule].push(task)
-    return acc
-  }, {} as Record<string, RecurringTask[]>)
+  // Group tasks by how often they repeat
+  const groupedTasks = FREQUENCY_GROUPS.map((group) => ({
+    label: group.label,
+    tasks: tasks.filter((task) => {
+      const freq = parseTaskRule(task)?.freq
+      return !!freq && group.freq.includes(freq)
+    }),
+  }))
+  const unknownRuleTasks = tasks.filter((task) => !parseTaskRule(task))
+  if (unknownRuleTasks.length > 0) groupedTasks.push({ label: "Inne", tasks: unknownRuleTasks })
+  const countFreq = (...freqs: string[]) =>
+    tasks.filter((task) => freqs.includes(parseTaskRule(task)?.freq ?? "")).length
 
   if (isLoading) {
     return (
@@ -340,22 +328,26 @@ export default function RecurringPage() {
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Codzienne</div>
-            <div className="text-2xl font-bold">{tasks.filter(t => t.recurrenceRule === "DAILY").length}</div>
+            <div className="text-2xl font-bold">{countFreq("DAILY", "WEEKDAYS")}</div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Tygodniowe</div>
-            <div className="text-2xl font-bold">{tasks.filter(t => t.recurrenceRule === "WEEKLY").length}</div>
+            <div className="text-2xl font-bold">{countFreq("WEEKLY")}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Miesięczne</div>
+            <div className="text-2xl font-bold">{countFreq("MONTHLY")}</div>
           </div>
         </CardContent>
       </Card>
 
       {/* Tasks by Category */}
-      {Object.entries(groupedTasks).map(([rule, ruleTasks]) => (
-        <Card key={rule}>
+      {groupedTasks.filter((group) => group.tasks.length > 0).map(({ label, tasks: ruleTasks }) => (
+        <Card key={label}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base md:text-lg flex items-center gap-2">
               <Repeat className="h-5 w-5" />
-              {getRecurrenceLabel(rule)}
+              {label}
               <Badge variant="secondary">{ruleTasks.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -374,7 +366,8 @@ export default function RecurringPage() {
               {ruleTasks.map((task) => {
                 const priorityOption = getPriorityOption(task.priority)
                 const isExpanded = expandedTaskId === task.id
-                const nextDates = getNextDates(task.recurrenceRule)
+                const nextDates = task.nextDates ?? []
+                const recurrence = parseTaskRule(task)
 
                 return (
                   <div key={task.id} className="border-b last:border-b-0">
@@ -394,6 +387,12 @@ export default function RecurringPage() {
                           )}
                           <div>
                             <div className="font-medium">{task.title}</div>
+                            {recurrence && (
+                              <div className="text-xs font-medium text-primary flex items-center gap-1 mt-0.5">
+                                <Repeat className="h-3 w-3" />
+                                {describeTaskRecurrence(recurrence)}
+                              </div>
+                            )}
                             {task.description && (
                               <div className="text-sm text-muted-foreground truncate">
                                 {htmlToPlainText(task.description)}
@@ -470,11 +469,18 @@ export default function RecurringPage() {
                           <span className="text-sm font-medium">Następne wystąpienia:</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {nextDates.map((date, idx) => (
-                            <Badge key={idx} variant="secondary" className="text-xs">
-                              {format(date, "EEEE, d MMM", { locale: pl })}
+                          {nextDates.map((date) => (
+                            <Badge key={date} variant="secondary" className="text-xs">
+                              {format(fromDay(date), "EEEE, d MMM", { locale: pl })}
                             </Badge>
                           ))}
+                          {nextDates.length === 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {recurrence?.freq === "SPRINT_END" || recurrence?.freq === "PERIOD_END"
+                                ? "Brak zaplanowanych sprintów / okresów w module Cele"
+                                : "Brak kolejnych terminów"}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
@@ -497,7 +503,7 @@ export default function RecurringPage() {
 
       {/* Add Task Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Nowe zadanie cykliczne</DialogTitle>
           </DialogHeader>
@@ -522,33 +528,9 @@ export default function RecurringPage() {
               />
             </div>
 
-            <div>
-              <Label>Powtarzalność</Label>
-              <Select
-                value={newTask.recurrenceRule}
-                onValueChange={(v) => setNewTask({ ...newTask, recurrenceRule: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RECURRENCE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {newTask.recurrenceRule.includes("SPRINT") && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Zadanie pojawi się automatycznie przed końcem aktywnego sprintu
-                </p>
-              )}
-              {newTask.recurrenceRule.includes("PERIOD") && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Zadanie pojawi się automatycznie przed końcem aktywnego okresu
-                </p>
-              )}
+            <div className="space-y-1.5">
+              <Label>Kiedy się powtarza</Label>
+              <RecurrencePicker value={newRecurrence} onChange={setNewRecurrence} allowDeadlines={workspace === "WORK"} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -626,7 +608,7 @@ export default function RecurringPage() {
 
       {/* Edit Task Dialog */}
       <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Edytuj zadanie cykliczne</DialogTitle>
           </DialogHeader>
@@ -651,23 +633,14 @@ export default function RecurringPage() {
               />
             </div>
 
-            <div>
-              <Label>Powtarzalność</Label>
-              <Select
-                value={editForm.recurrenceRule}
-                onValueChange={(v) => setEditForm({ ...editForm, recurrenceRule: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RECURRENCE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-1.5">
+              <Label>Kiedy się powtarza</Label>
+              <RecurrencePicker value={editRecurrence} onChange={setEditRecurrence} allowDeadlines={workspace === "WORK"} />
+              {editingTask && taskDay(editingTask) && (taskDay(editingTask) as string) < format(new Date(), "yyyy-MM-dd") && (
+                <p className="text-xs text-muted-foreground">
+                  Już wykonane powtórzenia zostają na swoich dniach — zmiana dotyczy kolejnych.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

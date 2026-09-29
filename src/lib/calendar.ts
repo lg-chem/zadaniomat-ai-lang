@@ -257,29 +257,6 @@ export function describeRecurrence(
   return text
 }
 
-// ---------- Recurring tasks ----------
-
-// Same rules as the task generator (/api/tasks/generate-recurring)
-export function recurringTaskOccursOn(rule: string | null | undefined, startDay: string, day: string): boolean {
-  if (!rule) return false
-  const start = dayNumber(startDay)
-  const target = dayNumber(day)
-  if (target < start) return false
-
-  switch (rule) {
-    case "DAILY":
-      return true
-    case "WEEKLY":
-      return (target - start) % 7 === 0
-    case "WEEKDAYS":
-      return weekdayOf(target) < 5
-    case "MONTHLY":
-      return dateParts(start).day === dateParts(target).day
-    default:
-      return false
-  }
-}
-
 // ---------- Layout of overlapping items in a day column ----------
 
 export interface TimedLayoutInput {

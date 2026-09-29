@@ -31,6 +31,7 @@ import {
   Layers,
   Lightbulb,
   Flag,
+  StickyNote,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -100,6 +101,7 @@ const workNavItems = [
   { href: "/ideas", label: "Rozkminki", icon: Lightbulb, id: "ideas" },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays, id: "schedule" },
   { href: "/calendar", label: "Kalendarz", icon: Calendar, id: "calendar" },
+  { href: "/notes", label: "Notatki", icon: StickyNote, id: "notes" },
   { href: "/goals", label: "Cele", icon: Target, id: "goals" },
   { href: "/recurring", label: "Cykliczne", icon: Repeat2, id: "recurring" },
   { href: "/stats", label: "Statystyki", icon: BarChart3, id: "stats" },
@@ -109,6 +111,7 @@ const privateNavItems = [
   { href: "/backlog", label: "Backlog", icon: Inbox },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/calendar", label: "Kalendarz", icon: Calendar },
+  { href: "/notes", label: "Notatki", icon: StickyNote },
   { href: "/knowledge", label: "Wiedza", icon: BookOpen },
   { href: "/habits", label: "Nawyki", icon: Repeat },
   { href: "/challenges", label: "Wyzwania", icon: Flame },
