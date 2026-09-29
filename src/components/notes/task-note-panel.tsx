@@ -143,6 +143,8 @@ export function TaskNotePanel({ task, onBack }: TaskNotePanelProps) {
         taskId={task.id}
         initialValue={task.description}
         title={task.title}
+        // Fresh snippet and order in the list next to it
+        onSaved={() => mutate((key) => typeof key === "string" && key.startsWith("/api/tasks/notes"))}
         placeholder="Opis zadania…"
         contentClassName="min-h-[40vh] max-h-none text-[15px]"
       />
