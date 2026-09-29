@@ -297,6 +297,7 @@ CREATE TABLE "Task" (
     "recurrenceRule" TEXT,
     "workspaceType" "WorkspaceType" NOT NULL,
     "metadata" JSONB,
+    "descriptionUpdatedAt" TIMESTAMP(3),
     "completedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -861,6 +862,19 @@ CREATE TABLE "CalendarEvent" (
 );
 CREATE INDEX "CalendarEvent_userId_workspaceType_date_idx" ON "CalendarEvent"("userId", "workspaceType", "date");
 
+CREATE TABLE "Note" (
+    "id" TEXT NOT NULL,
+    "title" TEXT NOT NULL DEFAULT '',
+    "content" TEXT,
+    "isPinned" BOOLEAN NOT NULL DEFAULT false,
+    "workspaceType" "WorkspaceType" NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "userId" TEXT NOT NULL,
+    CONSTRAINT "Note_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "Note_userId_workspaceType_updatedAt_idx" ON "Note"("userId", "workspaceType", "updatedAt");
+
 -- ==================== FOREIGN KEYS ====================
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -944,3 +958,4 @@ ALTER TABLE "WeeklyScheduleBlock" ADD CONSTRAINT "WeeklyScheduleBlock_userId_fke
 ALTER TABLE "DailyScheduleOverride" ADD CONSTRAINT "DailyScheduleOverride_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Note" ADD CONSTRAINT "Note_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

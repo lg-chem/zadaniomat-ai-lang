@@ -14,6 +14,7 @@ const DEFAULT_SIDEBAR_CONFIG = [
   { id: "schedule", label: "Harmonogram", enabled: true, order: 6 },
   { id: "calendar", label: "Kalendarz", enabled: true, order: 7 },
   { id: "goals", label: "Cele", enabled: true, order: 8 },
+  { id: "notes", label: "Notatki", enabled: true, order: 9 },
   { id: "recurring", label: "Cykliczne", enabled: true, order: 10 },
   { id: "stats", label: "Statystyki", enabled: true, order: 11 },
   // AI Chat tabs (prefixed with ai-tab-)

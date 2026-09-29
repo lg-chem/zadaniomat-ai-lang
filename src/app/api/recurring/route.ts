@@ -100,6 +100,7 @@ export async function POST(req: Request) {
       data: {
         title,
         description,
+        descriptionUpdatedAt: description ? new Date() : null,
         isRecurring: true,
         recurrenceRule: serializeTaskRecurrence(anchored),
         scheduledDate: new Date(`${firstDay}T00:00:00.000Z`),

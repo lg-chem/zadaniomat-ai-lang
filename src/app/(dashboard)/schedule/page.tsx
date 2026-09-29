@@ -230,6 +230,24 @@ export default function SchedulePage() {
   // Expanded task state (for inline editing)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
+  // Task to open from a link (/schedule?date=...&task=id, e.g. from Notatki)
+  const [linkedTaskId, setLinkedTaskId] = useState<string | null>(null)
+  useEffect(() => {
+    setLinkedTaskId(new URLSearchParams(window.location.search).get("task"))
+  }, [])
+  useEffect(() => {
+    if (!linkedTaskId || !tasks.some((t) => t.id === linkedTaskId)) return
+    setExpandedTaskId(linkedTaskId)
+    setLinkedTaskId(null)
+    // Wait for the expanded row to render, then bring it into view
+    setTimeout(() => {
+      const row = Array.from(document.querySelectorAll<HTMLElement>(`[data-task-id="${linkedTaskId}"]`)).find(
+        (el) => el.offsetParent !== null
+      )
+      row?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 150)
+  }, [linkedTaskId, tasks])
+
   // Sprint goals expansion and tasks state
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null)
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null)
@@ -1778,7 +1796,7 @@ export default function SchedulePage() {
                   <span className="text-sm font-medium text-blue-700">W trakcie ({taskGroups.IN_PROGRESS.length})</span>
                 </div>
                 {taskGroups.IN_PROGRESS.map((task) => (
-                  <Card key={task.id} className="border-l-2 border-l-blue-500">
+                  <Card key={task.id} data-task-id={task.id} className="border-l-2 border-l-blue-500 scroll-mt-24">
                     <CardContent className="p-3">
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
@@ -1857,7 +1875,7 @@ export default function SchedulePage() {
                   <span className="text-sm font-medium text-slate-600">Nowe ({taskGroups.NEW.length})</span>
                 </div>
                 {taskGroups.NEW.map((task) => (
-                  <Card key={task.id}>
+                  <Card key={task.id} data-task-id={task.id} className="scroll-mt-24">
                     <CardContent className="p-3">
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
@@ -2189,7 +2207,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.IN_PROGRESS.map((task) => (
-                  <div key={task.id} className="border-b border-l-2 border-l-blue-500">
+                  <div key={task.id} data-task-id={task.id} className="border-b border-l-2 border-l-blue-500 scroll-mt-24">
                     <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
                       <div>
                         <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>
@@ -2301,7 +2319,7 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {taskGroups.NEW.map((task) => (
-                  <div key={task.id} className="border-b hover:bg-muted/20 transition-colors">
+                  <div key={task.id} data-task-id={task.id} className="border-b hover:bg-muted/20 transition-colors scroll-mt-24">
                     <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 items-center">
                       <div>
                         <Select value={task.categoryId || "none"} onValueChange={(value) => handleUpdateTaskCategory(task.id, value === "none" ? "" : value)}>

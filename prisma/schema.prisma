@@ -51,6 +51,7 @@ model User {
   weeklyScheduleBlocks WeeklyScheduleBlock[]
   dailyScheduleOverrides DailyScheduleOverride[]
   calendarEvents CalendarEvent[]
+  notes         Note[]
 
   // Organization relations
   ownedOrganizations    Organization[]       @relation("OwnedOrganizations")
@@ -406,7 +407,8 @@ model Task {
   isRecurring    Boolean       @default(false)
   recurrenceRule String?       // RRULE format
   workspaceType  WorkspaceType
-  metadata       Json?         // For future extensions
+  metadata       Json?         // For future extensions (noteId: created from that note)
+  descriptionUpdatedAt DateTime? // Last change of the description (notes feed order)
   completedAt    DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -1348,4 +1350,23 @@ model CalendarEvent {
   category           Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([userId, workspaceType, date])
+}
+
+// ==================== NOTES ====================
+
+// Quick notes not tied to a task. Tasks created from a note keep its id in Task.metadata.noteId.
+model Note {
+  id            String        @id @default(cuid())
+  title         String        @default("")
+  content       String?       @db.Text // HTML from the rich text editor
+  isPinned      Boolean       @default(false)
+  workspaceType WorkspaceType
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceType, updatedAt])
 }

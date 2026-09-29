@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { EditorContent } from "@tiptap/react"
+import { useEffect, useState } from "react"
+import { EditorContent, type Editor } from "@tiptap/react"
 import { cn } from "@/lib/utils"
 import { EditorToolbar } from "./editor-toolbar"
 import { DocumentEditorDialog, SaveStatusLabel, type SaveStatus } from "./document-editor-dialog"
@@ -20,6 +20,8 @@ interface DescriptionFieldProps {
   status?: SaveStatus
   className?: string
   contentClassName?: string
+  // Access to the editor, e.g. to read the selected text
+  onEditorReady?: (editor: Editor | null) => void
 }
 
 // Description box with formatting that can be opened as a full screen document
@@ -34,6 +36,7 @@ export function DescriptionField({
   status,
   className,
   contentClassName,
+  onEditorReady,
 }: DescriptionFieldProps) {
   const [isDocumentOpen, setIsDocumentOpen] = useState(false)
   // While the full screen page is open the small editor keeps its content and catches up on close
@@ -45,6 +48,11 @@ export function DescriptionField({
     placeholder,
     contentClassName: cn("min-h-[88px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm", contentClassName),
   })
+
+  useEffect(() => {
+    onEditorReady?.(editor)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
 
   return (
     <div className={cn("space-y-1", className)}>

@@ -206,6 +206,20 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 
 ---
 
+### `useNotes` / `useTaskNotes` / `useNoteActions`
+**Lokalizacja:** `src/hooks/use-notes.ts`
+
+**Logika:**
+- `useNotes(q)` - notatki (`/api/notes`), przypięte na górze, potem ostatnio zmienione
+- `useTaskNotes(q)` - zadania z opisem (`/api/tasks/notes`), wg `Task.descriptionUpdatedAt`
+- `useNoteDetail(id)` - notatka + zadania z niej utworzone
+- `useNoteActions()` - `createNote`, `updateNote` (optymistycznie na liście), `deleteNote`, `createTaskFromNote`
+
+**Gdzie użyte:**
+- `/notes` (`src/components/notes/*`)
+
+---
+
 ### `useOverdueTasks`
 **Lokalizacja:** `src/hooks/use-overdue-tasks.ts`
 
@@ -549,6 +563,14 @@ export const swrConfig: SWRConfiguration = {
 | `/api/tasks/[id]/subtasks` | GET/POST | Podzadania |
 | `/api/tasks/reorder` | POST | Zmiana kolejności |
 
+### Notes
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/api/notes?workspace&q` | GET/POST | Notatki (wyszukiwanie w tytule i treści) / nowa notatka |
+| `/api/notes/[id]` | GET/PATCH/DELETE | Notatka (+ zadania z niej, `Task.metadata.noteId`) / zmiana tytułu, treści, przypięcia / usunięcie |
+| `/api/notes/[id]/tasks` | POST | Zadanie z notatki lub jej fragmentu |
+| `/api/tasks/notes?workspace&q` | GET | Zadania z opisem, ostatnio pisane pierwsze (kopie opisów zadań cyklicznych raz) |
+
 ### Calendar events
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
@@ -651,7 +673,10 @@ export const swrConfig: SWRConfiguration = {
 - `src/components/schedule/` - harmonogram
 - `src/components/quarter/` - ekran Cele: karty celów, oś kwartału, rytuały, dialogi (cel, plan sprintu, zamknięcie sprintu, check-in, przegląd kwartału), archiwum
 - `src/components/editor/` - edytor opisów (TipTap): `DescriptionField` (pole z formatowaniem + „Pełny ekran”), `DocumentEditorDialog` (strona jak w Google Docs: konspekt z nagłówków, liczba słów, szablony, tabele, zakreślacz), `RichTextView` (podgląd przez schemat edytora - bez surowego HTML). Importuj z `editor/lazy` (ładowane dopiero przy użyciu)
-- `src/components/tasks/editable-description.tsx` - opis zadania z autozapisem (1 s po pisaniu, przy wyjściu z pola i zamknięciu pełnego ekranu)
+- `src/components/editor/autosave-rich-text.tsx` - pole z formatowaniem i autozapisem (1 s po pisaniu, przy wyjściu z pola i zamknięciu pełnego ekranu); `onSave` decyduje, gdzie zapisać
+- `src/components/tasks/editable-description.tsx` - opis zadania (`AutosaveRichText` + PATCH zadania)
+- `src/components/notes/` - Notatki: `NotePanel` (tytuł, treść, „Utwórz zadanie” z całej notatki lub zaznaczenia), `TaskNotePanel` (opis zadania z timerem, Gotowe, link do harmonogramu), `CreateTaskFromNoteDialog`
+- Harmonogram otwiera zadanie z linku `/schedule?date=…&task=id` (rozwija i przewija do niego)
 - `src/components/calendar/` - kalendarz: `TimeGrid` (dzień/tydzień: przeciąganie po siatce = nowe wydarzenie, przesuwanie i zmiana długości wydarzeń i zadań, bloki w tle, linia „teraz”), `MonthView` (przeciąganie między dniami), `EventDialog` (Wydarzenie / Zadanie, powtarzanie, kolor, opis), `ItemPreviewDialog`, `useScopePrompt` (to / to i następne / wszystkie), `DayEventsCard` (wydarzenia dnia w Harmonogramie)
 
 ---
@@ -777,6 +802,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-09-30 | Notatki (`/notes`, model `Note`, `Task.descriptionUpdatedAt`, `useNotes`, `/api/notes/*`, `/api/tasks/notes`), `AutosaveRichText` | Claude |
 | 2026-09-29 | Zadania cykliczne: wybór dnia miesiąca / dni tygodnia / co N / od-do / weekend (`lib/task-recurrence`, `RecurrencePicker`); reguły „przed końcem sprintu/okresu” w końcu generują zadania | Claude |
 | 2026-09-29 | Kalendarz jak Google Calendar (dzień/tydzień/miesiąc, wydarzenia cykliczne `CalendarEvent`, bloki, zadania, przeciąganie), edytor opisów z pełnym ekranem (`components/editor`, `lib/rich-text`), `useCalendarEvents`, `useBlocksRange`, `/api/calendar-events/*` | Claude |
 | 2026-09-23 | Nowy moduł Cele: kwartały kalendarzowe, KR, check-iny, plan/retro sprintu (`useQuarter`, `lib/quarters`, `/api/quarters/*`); usunięto `useGoals` i stronę Sprinty | Claude |
