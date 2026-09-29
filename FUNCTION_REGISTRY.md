@@ -497,6 +497,19 @@ export const swrConfig: SWRConfiguration = {
 
 ---
 
+### `task-recurrence` (zadania cykliczne)
+**Lokalizacja:** `src/lib/task-recurrence.ts` (klient + serwer), `src/lib/recurring-tasks.ts` (tylko serwer: daty sprintów/okresów)
+
+**Logika:**
+- Reguła w `Task.recurrenceRule`: stare tokeny (`DAILY`, `WEEKDAYS`, `WEEKLY`, `MONTHLY`, `SPRINT_END_n`, `PERIOD_END_n`, dzień z daty zadania) albo podzbiór RRULE, np. `FREQ=MONTHLY;BYMONTHDAY=10;DTSTART=20261010;X-WEEKEND=BEFORE`
+- Obsługuje: co N dni / tygodni (wybrane dni) / miesięcy / lat, dzień miesiąca (−1 = ostatni, krótszy miesiąc → ostatni dzień), n-ty dzień tygodnia, pierwszy/ostatni dzień roboczy, przesunięcie z weekendu na piątek przed / poniedziałek po, datę końca, N dni przed końcem sprintu/okresu
+- `parseTaskRecurrence` / `serializeTaskRecurrence`, `taskOccursOn`, `nextOccurrences`, `anchorRecurrence` (start reguły = pierwszy pasujący dzień; zadanie-szablon stawiane na pierwszym terminie), `describeTaskRecurrence` (opis po polsku)
+
+**Gdzie użyte:**
+- `/api/tasks/generate-recurring`, `/api/recurring` (GET zwraca `startDate` i `nextDates`), strona Cykliczne, kalendarz (podgląd przyszłych zadań), `RecurrencePicker` (`src/components/tasks/recurrence-picker.tsx`)
+
+---
+
 ### `rich-text`
 **Lokalizacja:** `src/lib/rich-text.ts`
 
@@ -764,6 +777,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-09-29 | Zadania cykliczne: wybór dnia miesiąca / dni tygodnia / co N / od-do / weekend (`lib/task-recurrence`, `RecurrencePicker`); reguły „przed końcem sprintu/okresu” w końcu generują zadania | Claude |
 | 2026-09-29 | Kalendarz jak Google Calendar (dzień/tydzień/miesiąc, wydarzenia cykliczne `CalendarEvent`, bloki, zadania, przeciąganie), edytor opisów z pełnym ekranem (`components/editor`, `lib/rich-text`), `useCalendarEvents`, `useBlocksRange`, `/api/calendar-events/*` | Claude |
 | 2026-09-23 | Nowy moduł Cele: kwartały kalendarzowe, KR, check-iny, plan/retro sprintu (`useQuarter`, `lib/quarters`, `/api/quarters/*`); usunięto `useGoals` i stronę Sprinty | Claude |
 | 2026-01-09 | Dodano system toastów (sonner), lazy loading, A11y | Claude |

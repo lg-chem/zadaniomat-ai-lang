@@ -27,6 +27,7 @@ import {
 import { RichTextView } from "@/components/editor/lazy"
 import { describeRecurrence, formatDayLong } from "@/lib/calendar"
 import { isEmptyRichText } from "@/lib/rich-text"
+import { describeTaskRule } from "@/lib/task-recurrence"
 import type { Task } from "@/hooks/use-tasks"
 import { formatMinutes, formatRange, type BlockItem, type CalendarItem } from "./items"
 
@@ -38,13 +39,6 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   COMPLETED: "Zakończone",
   CANCELLED: "Anulowane",
   TO_TRANSFER: "Do przeniesienia",
-}
-
-const TASK_RECURRENCE_LABELS: Record<string, string> = {
-  DAILY: "Codziennie",
-  WEEKDAYS: "W dni robocze",
-  WEEKLY: "Co tydzień",
-  MONTHLY: "Co miesiąc",
 }
 
 function weekdayName(day: string) {
@@ -227,7 +221,7 @@ function ItemPreview({
       <Header color={item.color} title={template.title} subtitle={`Zadanie cykliczne · ${dayLabel}`} dashed />
       <div className="space-y-3">
         <Row icon={Repeat}>
-          {TASK_RECURRENCE_LABELS[template.recurrenceRule] ?? template.recurrenceRule}
+          {describeTaskRule(template.recurrenceRule, template.scheduledDate?.slice(0, 10))}
           {!item.allDay && ` · ${formatRange(item.start, item.end)}`}
           <p className="mt-1 text-xs text-muted-foreground">
             Pojawi się w harmonogramie, gdy otworzysz ten dzień.

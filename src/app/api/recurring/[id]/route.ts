@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { isValidDay, toDayString } from "@/lib/calendar"
+import { anchorRecurrence, parseTaskRecurrence, serializeTaskRecurrence } from "@/lib/task-recurrence"
+import { loadRecurrenceContext, utcTodayString } from "@/lib/recurring-tasks"
 
 export async function PATCH(
   req: Request,
@@ -33,12 +36,34 @@ export async function PATCH(
       priority,
       categoryId,
       isRecurring,
+      startDate,
     } = body
 
     const updateData: Record<string, unknown> = {}
     if (title !== undefined) updateData.title = title
     if (description !== undefined) updateData.description = description
-    if (recurrenceRule !== undefined) updateData.recurrenceRule = recurrenceRule
+
+    // New rule or start: count from the start again; a task that hasn't come up yet
+    // moves to the first matching day (past ones stay where they were done)
+    if (recurrenceRule !== undefined || startDate !== undefined) {
+      const today = utcTodayString()
+      const taskDay = existing.scheduledDate ? toDayString(existing.scheduledDate) : today
+      const rule = recurrenceRule ?? existing.recurrenceRule
+      const current = parseTaskRecurrence(existing.recurrenceRule, taskDay)
+      const start = isValidDay(startDate) ? startDate : current?.anchor ?? taskDay
+      const recurrence = parseTaskRecurrence(rule, start)
+      if (!recurrence) {
+        return NextResponse.json({ error: "Nieprawidłowa reguła powtarzania" }, { status: 400 })
+      }
+      const context = await loadRecurrenceContext(
+        session.user.id,
+        existing.workspaceType,
+        [rule]
+      )
+      const { recurrence: anchored, firstDay } = anchorRecurrence(recurrence, start, context, today)
+      updateData.recurrenceRule = serializeTaskRecurrence(anchored)
+      if (taskDay >= today) updateData.scheduledDate = new Date(`${firstDay}T00:00:00.000Z`)
+    }
     if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime
     if (plannedMinutes !== undefined) updateData.plannedMinutes = plannedMinutes
     if (priority !== undefined) updateData.priority = priority
