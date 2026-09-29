@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { DescriptionField } from "@/components/editor/lazy"
+import { htmlToPlainText, normalizeRichText } from "@/lib/rich-text"
 
 interface Category {
   id: string
@@ -147,6 +149,7 @@ export default function RecurringPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newTask,
+          description: normalizeRichText(newTask.description),
           workspace,
           plannedMinutes: newTask.plannedMinutes ? parseInt(newTask.plannedMinutes) : null,
         }),
@@ -230,7 +233,7 @@ export default function RecurringPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: editForm.title,
-          description: editForm.description || null,
+          description: normalizeRichText(editForm.description),
           recurrenceRule: editForm.recurrenceRule,
           scheduledTime: editForm.scheduledTime || null,
           plannedMinutes: editForm.plannedMinutes ? parseInt(editForm.plannedMinutes) : null,
@@ -393,7 +396,7 @@ export default function RecurringPage() {
                             <div className="font-medium">{task.title}</div>
                             {task.description && (
                               <div className="text-sm text-muted-foreground truncate">
-                                {task.description}
+                                {htmlToPlainText(task.description)}
                               </div>
                             )}
                             {task.scheduledTime && (
@@ -510,10 +513,12 @@ export default function RecurringPage() {
 
             <div>
               <Label>Opis (opcjonalnie)</Label>
-              <Input
+              <DescriptionField
                 value={newTask.description}
-                onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                placeholder="Szczegóły zadania..."
+                onChange={(html) => setNewTask((prev) => ({ ...prev, description: html }))}
+                placeholder="Szczegóły zadania, plan, checklista..."
+                title={newTask.title || "Zadanie cykliczne"}
+                subtitle="Opis zadania cyklicznego · kopiowany do każdego powtórzenia"
               />
             </div>
 
@@ -637,10 +642,12 @@ export default function RecurringPage() {
 
             <div>
               <Label>Opis (opcjonalnie)</Label>
-              <Input
+              <DescriptionField
                 value={editForm.description}
-                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                placeholder="Szczegóły zadania..."
+                onChange={(html) => setEditForm((prev) => ({ ...prev, description: html }))}
+                placeholder="Szczegóły zadania, plan, checklista..."
+                title={editForm.title || "Zadanie cykliczne"}
+                subtitle="Opis zadania cyklicznego · kopiowany do każdego powtórzenia"
               />
             </div>
 

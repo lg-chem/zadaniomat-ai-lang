@@ -178,10 +178,31 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 **Logika:**
 - Pobiera bloki czasowe harmonogramu
 - Używane w planowaniu tygodniowym
+- `useDayBlocks(date)` / `useScheduleOverride(date)` - bloki jednego dnia (zmiana dnia wygrywa z szablonem)
+- `useBlocksRange({ from, to })` - szablon + zmienione dni dla zakresu, `blocksForDay(day)` zwraca bloki dnia
 
 **Gdzie użyte:**
-- Widok kalendarza/harmonogramu
-- Time blocking
+- Harmonogram (bloki dnia), Ustawienia → szablon tygodnia
+- Kalendarz (tło w widoku dnia i tygodnia)
+
+---
+
+### `useCalendarEvents` + `useCalendarEventActions`
+**Lokalizacja:** `src/hooks/use-calendar-events.ts`
+
+**Zależności:**
+- `useSWR` / `useSWRConfig`
+- `useWorkspaceStore` (FRIENDS traktowany jak WORK)
+- `lib/calendar` (`expandEvents`)
+
+**Logika:**
+- `useCalendarEvents({ from, to })` - wydarzenia z zakresu; cykliczne rozwinięte do wystąpień (`occurrences`)
+- `useCalendarEventActions()` - `createEvent`, `updateEvent(event, input, { scope, occurrenceDate })`, `deleteEvent(event, { scope, date })`; po zmianie odświeża każdy załadowany zakres (kalendarz + harmonogram)
+- Wydarzenia jednorazowe aktualizowane optymistycznie, cykliczne czekają na serwer (podział serii)
+- `useRevalidateTasks()` - odświeża wszystkie listy zadań po zmianie z kalendarza
+
+**Gdzie użyte:**
+- `/calendar`, `DayEventsCard` w Harmonogramie, `EventDialog`
 
 ---
 
@@ -463,6 +484,32 @@ export const swrConfig: SWRConfiguration = {
 
 ---
 
+### `calendar` / `calendar-events`
+**Lokalizacja:** `src/lib/calendar.ts` (czyste funkcje, klient + serwer), `src/lib/calendar-events.ts` (tylko serwer)
+
+**Logika:**
+- Dni jako `yyyy-MM-dd`, arytmetyka w UTC (`dayNumber`, `addDaysToDay`, `weekdayOf` - 0 = poniedziałek)
+- `eventOccursOn` / `expandEvents` - powtarzanie: DAILY, WEEKDAYS, WEEKLY (dni tygodnia), MONTHLY, YEARLY, co N, data końca, wykluczone dni
+- `describeRecurrence` - opis po polsku („Co 2 tyg. w: pon, śr”)
+- `recurringTaskOccursOn` - te same reguły co `/api/tasks/generate-recurring` (podgląd zadań cyklicznych w kalendarzu)
+- `layoutTimedItems` - kolumny dla nachodzących na siebie wydarzeń
+- `calendar-events.ts`: walidacja (zod), `normalizeFields`, `shiftSeries` (przesunięcie serii), `serializeEvent`
+
+---
+
+### `rich-text`
+**Lokalizacja:** `src/lib/rich-text.ts`
+
+**Logika:**
+- Opisy z edytora zapisywane jako HTML; stare opisy to zwykły tekst
+- `toEditorHtml` - zwykły tekst → HTML (listy `-`, `1.`, `[ ]`, nagłówki `#`, puste linie)
+- `htmlToPlainText` - podglądy (`line-clamp`), AI; `normalizeRichText` - pusty edytor = `null`
+
+**Gdzie użyte:**
+- Edytor opisu, podglądy opisów (Stos zadań, TaskItem, Cykliczne, Harmonogram), API wydarzeń
+
+---
+
 ### `ai-prompts`
 **Lokalizacja:** `src/lib/ai-prompts.ts`
 
@@ -480,7 +527,7 @@ export const swrConfig: SWRConfiguration = {
 ### Tasks
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/tasks` | GET | Lista zadań (filtry: date, from, to, workspace) |
+| `/api/tasks` | GET | Lista zadań (filtry: date, from/to lub startDate/endDate, workspace) |
 | `/api/tasks` | POST | Tworzenie zadania |
 | `/api/tasks/[id]` | GET | Szczegóły zadania |
 | `/api/tasks/[id]` | PATCH | Aktualizacja zadania |
@@ -488,6 +535,15 @@ export const swrConfig: SWRConfiguration = {
 | `/api/tasks/[id]/time` | POST | Dodanie czasu pracy |
 | `/api/tasks/[id]/subtasks` | GET/POST | Podzadania |
 | `/api/tasks/reorder` | POST | Zmiana kolejności |
+
+### Calendar events
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/api/calendar-events?workspace&from&to` | GET | Wydarzenia, które mogą mieć wystąpienia w zakresie (klient rozwija cykliczne) |
+| `/api/calendar-events` | POST | Nowe wydarzenie (jednorazowe lub cykliczne) |
+| `/api/calendar-events/[id]` | PATCH | Zmiana; dla cyklicznych `scope`: `this` (osobne wydarzenie + wykluczenie dnia), `following` (podział serii), `all` + `occurrenceDate` |
+| `/api/calendar-events/[id]?scope&date` | DELETE | Usunięcie wydarzenia / wystąpienia / tego i następnych |
+| `/api/schedule-blocks?workspace&from&to` | GET | Szablon bloków + zmienione dni dla zakresu (kalendarz) |
 
 ### Goals
 | Endpoint | Metoda | Opis |
@@ -581,6 +637,9 @@ export const swrConfig: SWRConfiguration = {
 - `src/components/teams/` - komponenty zespołowe
 - `src/components/schedule/` - harmonogram
 - `src/components/quarter/` - ekran Cele: karty celów, oś kwartału, rytuały, dialogi (cel, plan sprintu, zamknięcie sprintu, check-in, przegląd kwartału), archiwum
+- `src/components/editor/` - edytor opisów (TipTap): `DescriptionField` (pole z formatowaniem + „Pełny ekran”), `DocumentEditorDialog` (strona jak w Google Docs: konspekt z nagłówków, liczba słów, szablony, tabele, zakreślacz), `RichTextView` (podgląd przez schemat edytora - bez surowego HTML). Importuj z `editor/lazy` (ładowane dopiero przy użyciu)
+- `src/components/tasks/editable-description.tsx` - opis zadania z autozapisem (1 s po pisaniu, przy wyjściu z pola i zamknięciu pełnego ekranu)
+- `src/components/calendar/` - kalendarz: `TimeGrid` (dzień/tydzień: przeciąganie po siatce = nowe wydarzenie, przesuwanie i zmiana długości wydarzeń i zadań, bloki w tle, linia „teraz”), `MonthView` (przeciąganie między dniami), `EventDialog` (Wydarzenie / Zadanie, powtarzanie, kolor, opis), `ItemPreviewDialog`, `useScopePrompt` (to / to i następne / wszystkie), `DayEventsCard` (wydarzenia dnia w Harmonogramie)
 
 ---
 
@@ -673,6 +732,8 @@ const FloatingChat = dynamic(
 )
 ```
 
+Edytor opisów (TipTap) - `src/components/editor/lazy.tsx` eksportuje `DescriptionField` i `RichTextView` przez `next/dynamic`, żeby Harmonogram, Stos zadań i Kalendarz nie ładowały edytora od razu.
+
 ### Kiedy używać lazy loading
 - Komponenty które nie są widoczne od razu (modals, floating elements)
 - Ciężkie komponenty (wykresy, edytory)
@@ -703,6 +764,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-09-29 | Kalendarz jak Google Calendar (dzień/tydzień/miesiąc, wydarzenia cykliczne `CalendarEvent`, bloki, zadania, przeciąganie), edytor opisów z pełnym ekranem (`components/editor`, `lib/rich-text`), `useCalendarEvents`, `useBlocksRange`, `/api/calendar-events/*` | Claude |
 | 2026-09-23 | Nowy moduł Cele: kwartały kalendarzowe, KR, check-iny, plan/retro sprintu (`useQuarter`, `lib/quarters`, `/api/quarters/*`); usunięto `useGoals` i stronę Sprinty | Claude |
 | 2026-01-09 | Dodano system toastów (sonner), lazy loading, A11y | Claude |
 | 2026-01-09 | Utworzenie dokumentu | Claude |

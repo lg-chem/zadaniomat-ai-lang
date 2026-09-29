@@ -13,8 +13,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const workspace = searchParams.get("workspace") || "WORK"
     const date = searchParams.get("date")
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
+    // from/to are what useTasks sends for a range
+    const startDate = searchParams.get("startDate") || searchParams.get("from")
+    const endDate = searchParams.get("endDate") || searchParams.get("to")
     const status = searchParams.get("status")
     const categoryId = searchParams.get("categoryId")
     const includeAssigned = searchParams.get("includeAssigned") === "true"

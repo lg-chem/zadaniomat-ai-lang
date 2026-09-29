@@ -50,6 +50,7 @@ model User {
   adminReports  AdminReport[]
   weeklyScheduleBlocks WeeklyScheduleBlock[]
   dailyScheduleOverrides DailyScheduleOverride[]
+  calendarEvents CalendarEvent[]
 
   // Organization relations
   ownedOrganizations    Organization[]       @relation("OwnedOrganizations")
@@ -248,6 +249,7 @@ model Category {
   habits        Habit[]
   knowledgeCategories KnowledgeCategory[]
   ideaCategories IdeaCategory[] @relation("LinkedIdeaCategories")
+  calendarEvents CalendarEvent[]
 
   // Organization (team) category - null means personal category
   // DEPRECATED: use organizations relation instead (many-to-many)
@@ -1313,5 +1315,37 @@ model DailyScheduleOverride {
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date, workspaceType])
+  @@index([userId, workspaceType, date])
+}
+
+// ==================== CALENDAR EVENTS ====================
+
+// Events in the calendar (meetings, appointments, time blocks, reminders).
+// A recurring event is stored once; occurrences are computed for the visible range.
+model CalendarEvent {
+  id                 String        @id @default(cuid())
+  title              String
+  description        String?       @db.Text // HTML from the rich text editor
+  date               DateTime      @db.Date // Day of the (first) occurrence
+  endDate            DateTime?     @db.Date // Last day of a multi-day all-day event
+  allDay             Boolean       @default(false)
+  startTime          String?       // HH:mm, null for all-day events
+  endTime            String?       // HH:mm
+  color              String?       // Own color; the category color is used when empty
+  recurrenceRule     String?       // DAILY | WEEKDAYS | WEEKLY | MONTHLY | YEARLY
+  recurrenceInterval Int           @default(1) // Every N days / weeks / months / years
+  recurrenceDays     Int[]         // WEEKLY: days of the week (0=Monday ... 6=Sunday)
+  recurrenceEnd      DateTime?     @db.Date // No occurrences after this day
+  excludedDates      String[]      // yyyy-MM-dd occurrences deleted or edited separately
+  workspaceType      WorkspaceType
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  // Relations
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId         String?
+  category           Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
   @@index([userId, workspaceType, date])
 }

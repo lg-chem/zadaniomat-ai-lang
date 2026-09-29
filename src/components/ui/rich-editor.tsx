@@ -195,6 +195,8 @@ export function RichEditor({
         heading: {
           levels: [2, 3],
         },
+        // Link is configured separately below (StarterKit v3 ships its own)
+        link: false,
       }),
       Link.configure({
         openOnClick: false,
@@ -212,12 +214,13 @@ export function RichEditor({
     ],
     content,
     editable,
+    immediatelyRender: false,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML())
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[150px] p-3",
+        class: "rich-text text-sm focus:outline-none min-h-[150px] p-3",
       },
     },
   })
@@ -254,7 +257,7 @@ export function RichContent({ content, className }: { content: string; className
   // HTML content - render safely
   return (
     <div
-      className={cn("prose prose-sm dark:prose-invert max-w-none", className)}
+      className={cn("rich-text text-sm", className)}
       dangerouslySetInnerHTML={{ __html: content }}
     />
   )

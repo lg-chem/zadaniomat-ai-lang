@@ -68,6 +68,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { TaskEditDialog } from "@/components/tasks/task-edit-dialog"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
 import { EditableDescription } from "@/components/tasks/editable-description"
+import { DayEventsCard } from "@/components/calendar/day-events-card"
 import { ChevronDown, ChevronUp } from "lucide-react"
 
 type RecurrenceRule = "DAILY" | "WEEKLY" | "WEEKDAYS" | "MONTHLY" | null
@@ -143,6 +144,15 @@ export default function SchedulePage() {
 
   const [selectedDate, setSelectedDate] = useState(new Date())
   const dateString = format(selectedDate, "yyyy-MM-dd")
+
+  // Open the day picked in the calendar (/schedule?date=yyyy-MM-dd)
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("date")
+    if (!param || !/^\d{4}-\d{2}-\d{2}$/.test(param)) return
+    const [year, month, day] = param.split("-").map(Number)
+    const date = new Date(year, month - 1, day)
+    if (!isNaN(date.getTime())) setSelectedDate(date)
+  }, [])
 
   // Use SWR hooks for data fetching with cache
   const { tasks, isLoading: tasksLoading, mutate: mutateTasks, optimisticAdd, optimisticDelete, optimisticUpdate } = useTasks({ date: dateString })
@@ -1179,6 +1189,9 @@ export default function SchedulePage() {
         </CardContent>
       </Card>
 
+      {/* Calendar events of the day */}
+      <DayEventsCard date={dateString} />
+
       {/* Daily Schedule Blocks */}
       {dayBlocks.length > 0 && (
         <Card>
@@ -1820,6 +1833,7 @@ export default function SchedulePage() {
                                 taskId={task.id}
                                 initialValue={task.description}
                                 onSaved={() => mutateTasks()}
+                                title={task.title}
                               />
                             </div>
                             <div>
@@ -1900,6 +1914,7 @@ export default function SchedulePage() {
                                 taskId={task.id}
                                 initialValue={task.description}
                                 onSaved={() => mutateTasks()}
+                                title={task.title}
                               />
                             </div>
                             <div>
@@ -2258,6 +2273,7 @@ export default function SchedulePage() {
                             initialValue={task.description}
                             onSaved={() => mutateTasks()}
                             placeholder="Dodaj opis zadania..."
+                            title={task.title}
                           />
                         </div>
                         <div>
@@ -2370,6 +2386,7 @@ export default function SchedulePage() {
                             initialValue={task.description}
                             onSaved={() => mutateTasks()}
                             placeholder="Dodaj opis zadania..."
+                            title={task.title}
                           />
                         </div>
                         <div>
