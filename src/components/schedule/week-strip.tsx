@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useEffect } from "react"
-import { format, addDays, subDays, isSameDay, isToday } from "date-fns"
+import { format, addDays, subDays, isSameDay, isToday, startOfDay, differenceInCalendarDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -22,11 +22,17 @@ export function WeekStrip({ selectedDate, onDateSelect, taskCounts }: WeekStripP
   const scrollRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef<HTMLButtonElement>(null)
 
-  // Generate 14 days: 7 days before today + today + 6 days after
+  // Generate 14 days: 7 days before today + today + 6 days after.
+  // A day picked further away (calendar, notes links) moves the strip around that day.
+  const selectedKey = format(selectedDate, "yyyy-MM-dd")
   const days = useMemo(() => {
-    const today = new Date()
-    return Array.from({ length: 14 }, (_, i) => subDays(today, 7 - i))
-  }, [])
+    const today = startOfDay(new Date())
+    const selected = startOfDay(selectedDate)
+    const offset = differenceInCalendarDays(selected, today)
+    const anchor = offset >= -7 && offset <= 6 ? today : selected
+    return Array.from({ length: 14 }, (_, i) => subDays(anchor, 7 - i))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey])
 
   const getTaskCount = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd")
