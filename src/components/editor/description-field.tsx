@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils"
 import { EditorToolbar } from "./editor-toolbar"
 import { DocumentEditorDialog, SaveStatusLabel, type SaveStatus } from "./document-editor-dialog"
 import { useRichTextEditor } from "./rich-text-editor"
+import { TaskRefsLayer } from "./task-refs-layer"
+import { useTaskFromText } from "@/components/tasks/create-task-from-text-dialog"
+import type { TaskTextSource } from "@/hooks/use-notes"
 
 interface DescriptionFieldProps {
   value: string | null | undefined
@@ -22,6 +25,8 @@ interface DescriptionFieldProps {
   contentClassName?: string
   // Access to the editor, e.g. to read the selected text
   onEditorReady?: (editor: Editor | null) => void
+  // Where the text lives; enables "Zadanie" - a task from the selection, linked in the text
+  taskSource?: TaskTextSource
 }
 
 // Description box with formatting that can be opened as a full screen document
@@ -37,6 +42,7 @@ export function DescriptionField({
   className,
   contentClassName,
   onEditorReady,
+  taskSource,
 }: DescriptionFieldProps) {
   const [isDocumentOpen, setIsDocumentOpen] = useState(false)
   // While the full screen page is open the small editor keeps its content and catches up on close
@@ -48,6 +54,10 @@ export function DescriptionField({
     placeholder,
     contentClassName: cn("min-h-[88px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm", contentClassName),
   })
+
+  const taskFromText = useTaskFromText(editor, taskSource)
+  const startTask = taskFromText.start
+  const createTask = startTask ? () => startTask() : undefined
 
   useEffect(() => {
     onEditorReady?.(editor)
@@ -61,6 +71,7 @@ export function DescriptionField({
           <EditorToolbar
             editor={editor}
             variant="compact"
+            onCreateTask={createTask}
             onExpand={() => {
               setValueAtOpen(value)
               setIsDocumentOpen(true)
@@ -70,6 +81,7 @@ export function DescriptionField({
         <div onClick={() => editor && !editor.isFocused && editor.commands.focus()} className="cursor-text">
           <EditorContent editor={editor} />
         </div>
+        <TaskRefsLayer editor={editor} onCreateTask={createTask} hideBubble={taskFromText.isOpen || isDocumentOpen} />
       </div>
       {status && status !== "idle" && (
         <div className="flex justify-end">
@@ -88,7 +100,9 @@ export function DescriptionField({
         value={value}
         onChange={onChange}
         status={status}
+        taskSource={taskSource}
       />
+      {taskFromText.dialog}
     </div>
   )
 }

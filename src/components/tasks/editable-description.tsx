@@ -43,6 +43,7 @@ export function EditableDescription({
       title={title}
       subtitle="Opis zadania"
       contentClassName={contentClassName}
+      taskSource={{ kind: "task", id: taskId }}
     />
   )
 }

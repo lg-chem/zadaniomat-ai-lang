@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { EditorToolbar } from "./editor-toolbar"
 import { useRichTextEditor } from "./rich-text-editor"
+import { TaskRefsLayer } from "./task-refs-layer"
+import { useTaskFromText } from "@/components/tasks/create-task-from-text-dialog"
+import type { TaskTextSource } from "@/hooks/use-notes"
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error"
 
@@ -45,6 +48,7 @@ interface DocumentEditorDialogProps {
   onChange: (html: string) => void
   placeholder?: string
   status?: SaveStatus
+  taskSource?: TaskTextSource
 }
 
 // Full screen "Google Docs" style page for writing longer descriptions and plans
@@ -71,6 +75,7 @@ function DocumentEditorBody({
   onChange,
   placeholder = "Zacznij pisać… Wpisz # i spację dla nagłówka, - dla listy, [ ] dla checkboxa",
   status,
+  taskSource,
   onClose,
 }: Omit<DocumentEditorDialogProps, "open" | "onOpenChange"> & { onClose: () => void }) {
   const editor = useRichTextEditor({
@@ -80,6 +85,9 @@ function DocumentEditorBody({
     autofocus: "end",
     contentClassName: "rich-text-document min-h-[60vh]",
   })
+  const taskFromText = useTaskFromText(editor, taskSource)
+  const startTask = taskFromText.start
+  const createTask = startTask ? () => startTask() : undefined
 
   // Same as the toolbar: read the editor from the closure, not from the (possibly stale) snapshot
   const info = useEditorState({
@@ -134,7 +142,7 @@ function DocumentEditorBody({
 
       {/* Toolbar */}
       <div className="shrink-0 overflow-x-auto border-b bg-background px-2 py-1 scrollbar-hide">
-        <EditorToolbar editor={editor} variant="full" className="mx-auto w-max flex-nowrap" />
+        <EditorToolbar editor={editor} variant="full" onCreateTask={createTask} className="mx-auto w-max flex-nowrap" />
       </div>
 
       {/* Page */}
@@ -181,6 +189,8 @@ function DocumentEditorBody({
               <EditorContent editor={editor} />
             </div>
           </div>
+          <TaskRefsLayer editor={editor} onCreateTask={createTask} hideBubble={taskFromText.isOpen} />
+          {taskFromText.dialog}
 
           <div className="hidden w-56 shrink-0 xl:block" aria-hidden />
         </div>

@@ -23,6 +23,7 @@ import {
   ChevronDown,
   Maximize2,
   LayoutTemplate,
+  ListPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -85,6 +86,25 @@ function ToolbarButton({
 
 function Divider() {
   return <div className="mx-1 h-5 w-px shrink-0 bg-border" />
+}
+
+// Task from the selected text, or from the line with the cursor
+function CreateTaskButton({ onClick, size }: { onClick: () => void; size: "sm" | "md" }) {
+  return (
+    <button
+      type="button"
+      title="Zrób zadanie z zaznaczonego tekstu (albo z linijki z kursorem)"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
+        size === "sm" ? "h-7 px-1.5 text-xs" : "h-8 px-2 text-sm"
+      )}
+    >
+      <ListPlus className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />
+      Zadanie
+    </button>
+  )
 }
 
 function LinkButton({ editor, active, size }: { editor: Editor; active: boolean; size: "sm" | "md" }) {
@@ -166,10 +186,12 @@ interface EditorToolbarProps {
   editor: Editor | null
   variant?: "full" | "compact"
   onExpand?: () => void
+  // Shows "Zadanie": a task from the selection, linked in the text
+  onCreateTask?: () => void
   className?: string
 }
 
-export function EditorToolbar({ editor, variant = "full", onExpand, className }: EditorToolbarProps) {
+export function EditorToolbar({ editor, variant = "full", onExpand, onCreateTask, className }: EditorToolbarProps) {
   // Reads the editor from props: the snapshot keeps `null` until the first transaction
   // after the editor is created, which would hide the toolbar until the user types
   const state = useEditorState({
@@ -239,6 +261,12 @@ export function EditorToolbar({ editor, variant = "full", onExpand, className }:
           <ListChecks className="h-3.5 w-3.5" />
         </ToolbarButton>
         <LinkButton editor={editor} active={state.link} size="sm" />
+        {onCreateTask && (
+          <>
+            <Divider />
+            <CreateTaskButton size="sm" onClick={onCreateTask} />
+          </>
+        )}
         {onExpand && (
           <button
             type="button"
@@ -399,6 +427,13 @@ export function EditorToolbar({ editor, variant = "full", onExpand, className }:
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {onCreateTask && (
+        <>
+          <Divider />
+          <CreateTaskButton size="md" onClick={onCreateTask} />
+        </>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import type { Editor } from "@tiptap/react"
 import { formatDistanceToNow } from "date-fns"
@@ -9,18 +9,16 @@ import { toast } from "sonner"
 import { ArrowLeft, CheckCircle2, Circle, ListPlus, Pin, PinOff, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AutosaveRichText } from "@/components/editor/autosave-rich-text"
+import { useTaskFromText } from "@/components/tasks/create-task-from-text-dialog"
 import { useNoteActions, useNoteDetail, type Note } from "@/hooks/use-notes"
 import { htmlToPlainText } from "@/lib/rich-text"
 import { formatDayShort } from "@/lib/task-recurrence"
 import { cn } from "@/lib/utils"
-import type { TaskFromNoteDraft } from "./create-task-from-note-dialog"
-import { textToHtml } from "./create-task-from-note-dialog"
 
 interface NotePanelProps {
   note: Note
   onBack: () => void
   onDeleted: () => void
-  onCreateTask: (draft: TaskFromNoteDraft) => void
   autoFocusTitle?: boolean
 }
 
@@ -33,11 +31,13 @@ export function noteDisplayTitle(note: Pick<Note, "title" | "content">): string 
 }
 
 // One note: title, text with formatting (saved automatically), tasks made from it
-export function NotePanel({ note, onBack, onDeleted, onCreateTask, autoFocusTitle }: NotePanelProps) {
+export function NotePanel({ note, onBack, onDeleted, autoFocusTitle }: NotePanelProps) {
   const { updateNote, deleteNote } = useNoteActions()
   const { note: detail } = useNoteDetail(note.id)
   const [title, setTitle] = useState(note.title)
-  const editorRef = useRef<Editor | null>(null)
+  const [editor, setEditor] = useState<Editor | null>(null)
+  const taskSource = useMemo(() => ({ kind: "note" as const, id: note.id }), [note.id])
+  const taskFromText = useTaskFromText(editor, taskSource)
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingTitle = useRef<string | null>(null)
 
@@ -64,30 +64,10 @@ export function NotePanel({ note, onBack, onDeleted, onCreateTask, autoFocusTitl
     [note.id, updateNote]
   )
 
+  // Selected fragment (linked in the text), otherwise the whole note
   const handleCreateTask = () => {
-    const editor = editorRef.current
-    let selected = ""
-    if (editor && !editor.state.selection.empty) {
-      const { from, to } = editor.state.selection
-      selected = editor.state.doc.textBetween(from, to, "\n").trim()
-    }
-
-    if (selected) {
-      const [first, ...rest] = selected.split("\n").map((line) => line.trim()).filter(Boolean)
-      onCreateTask({
-        noteId: note.id,
-        title: first.slice(0, 200),
-        description: rest.length ? textToHtml(rest.join("\n")) : null,
-        descriptionLabel: "Dodaj pozostałe zaznaczone linie do opisu",
-      })
-      return
-    }
-
-    onCreateTask({
-      noteId: note.id,
-      title: noteDisplayTitle({ title, content: note.content }).slice(0, 200),
-      description: note.content,
-      descriptionLabel: "Skopiuj treść notatki do opisu zadania",
+    taskFromText.start?.({
+      whole: { title: noteDisplayTitle({ title, content: note.content }), description: note.content },
     })
   }
 
@@ -152,7 +132,7 @@ export function NotePanel({ note, onBack, onDeleted, onCreateTask, autoFocusTitl
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault()
-            editorRef.current?.commands.focus("start")
+            editor?.commands.focus("start")
           }
         }}
         placeholder="Tytuł"
@@ -191,13 +171,14 @@ export function NotePanel({ note, onBack, onDeleted, onCreateTask, autoFocusTitl
         subtitle="Notatka"
         className="flex-1"
         contentClassName="min-h-[45vh] max-h-none text-[15px]"
-        onEditorReady={(editor) => {
-          editorRef.current = editor
-        }}
+        onEditorReady={setEditor}
+        taskSource={taskSource}
       />
       <p className="text-xs text-muted-foreground">
-        Zaznacz linijkę lub fragment i kliknij „Utwórz zadanie”, żeby zrobić z niego zadanie w harmonogramie.
+        Zaznacz fragment albo kliknij w linijkę i wybierz „Zadanie” - powstanie zadanie w harmonogramie, a tekst dostanie
+        kółko, które odhaczy się, gdy zadanie zrobisz.
       </p>
+      {taskFromText.dialog}
     </div>
   )
 }

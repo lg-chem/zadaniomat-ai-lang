@@ -399,6 +399,53 @@ html {
 .rich-text.ProseMirror:focus {
   outline: none;
 }
+/* Text turned into a task: round icon in front, crossed out when the task is done */
+.rich-text .task-ref-text {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: hsl(var(--work) / 0.55);
+  text-underline-offset: 3px;
+}
+.rich-text .task-ref-done,
+.rich-text .task-ref-cancelled {
+  text-decoration-line: line-through;
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
+  color: hsl(var(--muted-foreground));
+}
+.rich-text .task-ref-missing {
+  text-decoration-color: hsl(var(--muted-foreground) / 0.5);
+}
+.rich-text .task-ref-check {
+  position: relative;
+  display: inline-flex;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.3em;
+  vertical-align: -0.18em;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Bigger area to tap on a phone */
+.rich-text .task-ref-check::before {
+  content: "";
+  position: absolute;
+  inset: -0.4em;
+}
+.rich-text .task-ref-check svg {
+  width: 100%;
+  height: 100%;
+}
+.rich-text .task-ref-check:hover,
+.rich-text .task-ref-check-open {
+  color: hsl(var(--work));
+}
+.rich-text .task-ref-check-done {
+  color: #16a34a;
+}
 /* Full screen document: bigger, calmer typography */
 .rich-text-document {
   font-size: 15px;
