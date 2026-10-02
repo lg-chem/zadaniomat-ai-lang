@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
 import { createEditorExtensions } from "./extensions"
+import { TaskRefsLayer } from "./task-refs-layer"
 import { toEditorHtml } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 
@@ -77,5 +78,10 @@ export function RichTextView({ value, className }: RichTextViewProps) {
   if (!editor) {
     return <div className={cn("rich-text whitespace-pre-wrap text-muted-foreground", className)} />
   }
-  return <EditorContent editor={editor} />
+  return (
+    <>
+      <EditorContent editor={editor} />
+      <TaskRefsLayer editor={editor} />
+    </>
+  )
 }

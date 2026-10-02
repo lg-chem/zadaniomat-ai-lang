@@ -213,7 +213,7 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 - `useNotes(q)` - notatki (`/api/notes`), przypięte na górze, potem ostatnio zmienione
 - `useTaskNotes(q)` - zadania z opisem (`/api/tasks/notes`), wg `Task.descriptionUpdatedAt`
 - `useNoteDetail(id)` - notatka + zadania z niej utworzone
-- `useNoteActions()` - `createNote`, `updateNote` (optymistycznie na liście), `deleteNote`, `createTaskFromNote`
+- `useNoteActions()` - `createNote`, `updateNote` (optymistycznie na liście), `deleteNote`, `createTaskFromText(source, input)` - zadanie z notatki (`{ kind: "note" }`) albo z opisu innego zadania (`{ kind: "task" }`)
 
 **Gdzie użyte:**
 - `/notes` (`src/components/notes/*`)
@@ -568,7 +568,9 @@ export const swrConfig: SWRConfiguration = {
 |----------|--------|------|
 | `/api/notes?workspace&q` | GET/POST | Notatki (wyszukiwanie w tytule i treści) / nowa notatka |
 | `/api/notes/[id]` | GET/PATCH/DELETE | Notatka (+ zadania z niej, `Task.metadata.noteId`) / zmiana tytułu, treści, przypięcia / usunięcie |
-| `/api/notes/[id]/tasks` | POST | Zadanie z notatki lub jej fragmentu |
+| `/api/notes/[id]/tasks` | POST | Zadanie z notatki lub jej fragmentu (`Task.metadata.noteId`) |
+| `/api/tasks/[id]/from-description` | POST | Własne zadanie z linijki/fragmentu opisu zadania (`Task.metadata.sourceTaskId`) |
+| `/api/tasks/refs?ids=a,b` | GET | Status zadań podlinkowanych w tekście (tylko własne/przypisane; brak = usunięte) |
 | `/api/tasks/notes?workspace&q` | GET | Zadania z opisem, ostatnio pisane pierwsze (kopie opisów zadań cyklicznych raz) |
 
 ### Calendar events
@@ -675,7 +677,10 @@ export const swrConfig: SWRConfiguration = {
 - `src/components/editor/` - edytor opisów (TipTap): `DescriptionField` (pole z formatowaniem + „Pełny ekran”), `DocumentEditorDialog` (strona jak w Google Docs: konspekt z nagłówków, liczba słów, szablony, tabele, zakreślacz), `RichTextView` (podgląd przez schemat edytora - bez surowego HTML). Importuj z `editor/lazy` (ładowane dopiero przy użyciu)
 - `src/components/editor/autosave-rich-text.tsx` - pole z formatowaniem i autozapisem (1 s po pisaniu, przy wyjściu z pola i zamknięciu pełnego ekranu); `onSave` decyduje, gdzie zapisać
 - `src/components/tasks/editable-description.tsx` - opis zadania (`AutosaveRichText` + PATCH zadania)
-- `src/components/notes/` - Notatki: `NotePanel` (tytuł, treść, „Utwórz zadanie” z całej notatki lub zaznaczenia), `TaskNotePanel` (opis zadania z timerem, Gotowe, link do harmonogramu), `CreateTaskFromNoteDialog`
+- `src/components/notes/` - Notatki: `NotePanel` (tytuł, treść, „Utwórz zadanie” z całej notatki lub zaznaczenia), `TaskNotePanel` (opis zadania z timerem, Gotowe, link do harmonogramu)
+- `src/components/tasks/create-task-from-text-dialog.tsx` - `CreateTaskFromTextDialog` + `useTaskFromText(editor, source)`: zadanie z zaznaczenia albo linijki z kursorem; tekst dostaje odnośnik do zadania
+- `src/components/editor/task-ref.ts` - znacznik `taskRef` (`<span data-task-id>`): w HTML tylko id zadania, status czytany na żywo (kółko przed tekstem, przekreślenie po zrobieniu); `task-ref-text.ts` - `textForTask`, `addTaskRef`, `removeTaskRef` (bez ładowania edytora)
+- `src/components/editor/task-refs-layer.tsx` - `TaskRefsLayer`: pobiera statusy (`/api/tasks/refs`, odświeżane z kluczami `/api/tasks*`), karta po kliknięciu kółka (Gotowe/Przywróć, Otwórz, Odłącz), przycisk „Zrób zadanie” pod zaznaczeniem. Jest w `DescriptionField`, `DocumentEditorDialog` i `RichTextView`; „Zadanie” w pasku edytora włącza `taskSource` (notatki i opisy zadań przez `EditableDescription`)
 - Harmonogram otwiera zadanie z linku `/schedule?date=…&task=id` (rozwija i przewija do niego)
 - `src/components/calendar/` - kalendarz: `TimeGrid` (dzień/tydzień: przeciąganie po siatce = nowe wydarzenie, przesuwanie i zmiana długości wydarzeń i zadań, bloki w tle, linia „teraz”), `MonthView` (przeciąganie między dniami), `EventDialog` (Wydarzenie / Zadanie, powtarzanie, kolor, opis), `ItemPreviewDialog`, `useScopePrompt` (to / to i następne / wszystkie), `DayEventsCard` (wydarzenia dnia w Harmonogramie)
 
@@ -802,6 +807,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-10-02 | Zadanie z zaznaczonego tekstu notatki / opisu zadania z odnośnikiem w tekście, który odhacza się po zrobieniu zadania (`taskRef`, `TaskRefsLayer`, `useTaskFromText`, `/api/tasks/refs`, `/api/tasks/[id]/from-description`, `lib/task-from-text`) | Claude |
 | 2026-09-30 | Notatki (`/notes`, model `Note`, `Task.descriptionUpdatedAt`, `useNotes`, `/api/notes/*`, `/api/tasks/notes`), `AutosaveRichText` | Claude |
 | 2026-09-29 | Zadania cykliczne: wybór dnia miesiąca / dni tygodnia / co N / od-do / weekend (`lib/task-recurrence`, `RecurrencePicker`); reguły „przed końcem sprintu/okresu” w końcu generują zadania | Claude |
 | 2026-09-29 | Kalendarz jak Google Calendar (dzień/tydzień/miesiąc, wydarzenia cykliczne `CalendarEvent`, bloki, zadania, przeciąganie), edytor opisów z pełnym ekranem (`components/editor`, `lib/rich-text`), `useCalendarEvents`, `useBlocksRange`, `/api/calendar-events/*` | Claude |

@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import type { Editor } from "@tiptap/react"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import { CheckSquare, Clock, Tag } from "lucide-react"
@@ -23,21 +24,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useNoteActions } from "@/hooks/use-notes"
+import { useNoteActions, type NoteTask, type TaskTextSource } from "@/hooks/use-notes"
+import { useCategories } from "@/hooks/use-categories"
+import { addTaskRef, textForTask, type TaskRefRange } from "@/components/editor/task-ref-text"
 import { escapeHtml } from "@/lib/rich-text"
 
-export interface TaskFromNoteDraft {
-  noteId: string
+export interface TaskFromTextDraft {
+  source: TaskTextSource
   title: string
-  // Text that can go into the task description (selected fragment or the whole note)
+  // Text that can go into the task description (rest of the selection or the whole note)
   description: string | null
   descriptionLabel: string
+  // Text in the editor that gets a link to the new task
+  range: TaskRefRange | null
 }
 
-interface CreateTaskFromNoteDialogProps {
-  draft: TaskFromNoteDraft | null
+interface CreateTaskFromTextDialogProps {
+  draft: TaskFromTextDraft | null
   onClose: () => void
-  categories: { id: string; name: string; color: string }[]
+  onCreated?: (task: NoteTask, draft: TaskFromTextDraft) => void
 }
 
 // Plain text of a selection → paragraphs for the task description
@@ -50,9 +55,10 @@ export function textToHtml(text: string): string {
     .join("")
 }
 
-export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateTaskFromNoteDialogProps) {
+export function CreateTaskFromTextDialog({ draft, onClose, onCreated }: CreateTaskFromTextDialogProps) {
   const router = useRouter()
-  const { createTaskFromNote } = useNoteActions()
+  const { createTaskFromText } = useNoteActions()
+  const { categories } = useCategories()
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
@@ -75,7 +81,7 @@ export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateT
     if (!draft || !title.trim()) return
     setIsSaving(true)
     try {
-      const task = await createTaskFromNote(draft.noteId, {
+      const task = await createTaskFromText(draft.source, {
         title: title.trim(),
         description: withDescription ? draft.description : null,
         scheduledDate: date || null,
@@ -83,6 +89,7 @@ export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateT
         plannedMinutes: parseInt(minutes) || 25,
         categoryId: categoryId || null,
       })
+      onCreated?.(task, draft)
       const day = date || format(new Date(), "yyyy-MM-dd")
       toast.success(`Dodano zadanie „${task.title}”`, {
         action: {
@@ -98,15 +105,21 @@ export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateT
     }
   }
 
+  const fromNote = draft?.source.kind !== "task"
+
   return (
     <Dialog open={!!draft} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckSquare className="h-5 w-5" />
-            Zadanie z notatki
+            {fromNote ? "Zadanie z notatki" : "Zadanie z opisu"}
           </DialogTitle>
-          <DialogDescription>Trafi do harmonogramu wybranego dnia. Notatka zostaje bez zmian.</DialogDescription>
+          <DialogDescription>
+            {draft?.range
+              ? "Trafi do harmonogramu wybranego dnia. Tekst dostanie odnośnik do zadania i odhaczy się, gdy je zrobisz."
+              : "Trafi do harmonogramu wybranego dnia. Notatka zostaje bez zmian."}
+          </DialogDescription>
         </DialogHeader>
 
         <form
@@ -117,8 +130,8 @@ export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateT
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="note-task-title">Tytuł zadania</Label>
-            <Input id="note-task-title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Label htmlFor="text-task-title">Tytuł zadania</Label>
+            <Input id="text-task-title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -143,7 +156,7 @@ export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateT
             <div className="flex items-center gap-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
               <Select value={categoryId || "none"} onValueChange={(v) => setCategoryId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-9 w-[260px]">
+                <SelectTrigger className="h-9 w-full max-w-[260px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -182,4 +195,67 @@ export function CreateTaskFromNoteDialog({ draft, onClose, categories }: CreateT
       </DialogContent>
     </Dialog>
   )
+}
+
+interface StartOptions {
+  // Without a selection: the whole text instead of the line with the cursor
+  whole?: { title: string; description: string | null }
+}
+
+// "Make a task" for an editor: from the selection or the line with the cursor.
+// The text gets a link to the new task. Render `dialog` next to the editor.
+export function useTaskFromText(editor: Editor | null, source: TaskTextSource | undefined) {
+  const [draft, setDraft] = useState<TaskFromTextDraft | null>(null)
+  const sourceKind = source?.kind
+  const sourceId = source?.id
+
+  const start = useCallback(
+    ({ whole }: StartOptions = {}) => {
+      if (!sourceKind || !sourceId) return
+      const taskSource: TaskTextSource = { kind: sourceKind, id: sourceId }
+      const range = editor && !editor.isDestroyed ? textForTask(editor.state, { line: !whole }) : null
+
+      if (range) {
+        const [first, ...rest] = range.text.split("\n").map((line) => line.trim()).filter(Boolean)
+        setDraft({
+          source: taskSource,
+          title: first.slice(0, 200),
+          description: rest.length ? textToHtml(rest.join("\n")) : null,
+          descriptionLabel: "Dodaj pozostałe zaznaczone linie do opisu",
+          range,
+        })
+        return
+      }
+
+      if (whole) {
+        setDraft({
+          source: taskSource,
+          title: whole.title.slice(0, 200),
+          description: whole.description,
+          descriptionLabel: "Skopiuj treść notatki do opisu zadania",
+          range: null,
+        })
+        return
+      }
+
+      toast.info("Zaznacz tekst albo kliknij w linijkę, z której ma powstać zadanie")
+    },
+    [editor, sourceKind, sourceId]
+  )
+
+  const handleCreated = useCallback(
+    (task: NoteTask, created: TaskFromTextDraft) => {
+      if (!created.range || !editor) return
+      if (!addTaskRef(editor, created.range, task.id)) {
+        toast.info("Zadanie dodane, ale tekst w międzyczasie się zmienił - odnośnik nie został wstawiony")
+      }
+    },
+    [editor]
+  )
+
+  const dialog = source ? (
+    <CreateTaskFromTextDialog draft={draft} onClose={() => setDraft(null)} onCreated={handleCreated} />
+  ) : null
+
+  return { start: source ? start : undefined, dialog, isOpen: !!draft }
 }

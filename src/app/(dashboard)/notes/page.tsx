@@ -9,12 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NotePanel, noteDisplayTitle } from "@/components/notes/note-panel"
 import { TaskNotePanel } from "@/components/notes/task-note-panel"
-import {
-  CreateTaskFromNoteDialog,
-  type TaskFromNoteDraft,
-} from "@/components/notes/create-task-from-note-dialog"
 import { useNoteActions, useNotes, useTaskNotes, type Note, type TaskNote } from "@/hooks/use-notes"
-import { useCategories } from "@/hooks/use-categories"
 import { useTimerStore } from "@/stores/timer-store"
 import { htmlToPlainText, plainTextToHtml } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
@@ -52,13 +47,11 @@ export default function NotesPage() {
   const [newNoteId, setNewNoteId] = useState<string | null>(null)
   const [capture, setCapture] = useState("")
   const [isCapturing, setIsCapturing] = useState(false)
-  const [taskDraft, setTaskDraft] = useState<TaskFromNoteDraft | null>(null)
   // Keeps the open item on screen when a search hides it from the list
   const lastSelected = useRef<FeedItem | null>(null)
 
   const { notes, isLoading: notesLoading } = useNotes(search)
   const { taskNotes, isLoading: tasksLoading } = useTaskNotes(search)
-  const { categories } = useCategories()
   const { createNote } = useNoteActions()
   const timerTaskId = useTimerStore((s) => (s.isRunning ? s.taskId : null))
   const timerPaused = useTimerStore((s) => s.isPaused)
@@ -278,7 +271,6 @@ export default function NotesPage() {
                 lastSelected.current = null
                 setSelected(null)
               }}
-              onCreateTask={setTaskDraft}
             />
           )}
           {current?.kind === "task" && (
@@ -292,8 +284,6 @@ export default function NotesPage() {
           )}
         </main>
       </div>
-
-      <CreateTaskFromNoteDialog draft={taskDraft} onClose={() => setTaskDraft(null)} categories={categories} />
     </div>
   )
 }

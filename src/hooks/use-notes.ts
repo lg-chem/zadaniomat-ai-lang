@@ -30,6 +30,9 @@ export interface TaskNote extends Task {
   updatedAt: string
 }
 
+// Text a task can be made from: a note or another task's description
+export type TaskTextSource = { kind: "note" | "task"; id: string }
+
 export interface NoteTaskInput {
   title: string
   description?: string | null
@@ -143,21 +146,22 @@ export function useNoteActions() {
     [revalidate]
   )
 
-  const createTaskFromNote = useCallback(
-    async (noteId: string, input: NoteTaskInput) => {
-      const res = await fetch(`${NOTES_KEY}/${noteId}/tasks`, {
+  const createTaskFromText = useCallback(
+    async (source: TaskTextSource, input: NoteTaskInput) => {
+      const url = source.kind === "note" ? `${NOTES_KEY}/${source.id}/tasks` : `/api/tasks/${source.id}/from-description`
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       })
       if (!res.ok) throw new Error(await readError(res, "Nie udało się utworzyć zadania"))
       const task = (await res.json()) as NoteTask
-      mutate(`${NOTES_KEY}/${noteId}`)
+      if (source.kind === "note") mutate(`${NOTES_KEY}/${source.id}`)
       mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
       return task
     },
     [mutate]
   )
 
-  return { createNote, updateNote, deleteNote, createTaskFromNote }
+  return { createNote, updateNote, deleteNote, createTaskFromText }
 }

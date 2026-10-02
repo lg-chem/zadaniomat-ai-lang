@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react"
 import { DescriptionField } from "@/components/editor/lazy"
 import type { SaveStatus } from "@/components/editor/document-editor-dialog"
 import { normalizeRichText } from "@/lib/rich-text"
+import type { TaskTextSource } from "@/hooks/use-notes"
 
 interface AutosaveRichTextProps {
   // Saved value (from the server)
@@ -18,6 +19,8 @@ interface AutosaveRichTextProps {
   className?: string
   contentClassName?: string
   onEditorReady?: (editor: Editor | null) => void
+  // Enables making tasks from the text (see DescriptionField)
+  taskSource?: TaskTextSource
 }
 
 const AUTOSAVE_DELAY = 1000
@@ -34,6 +37,7 @@ export function AutosaveRichText({
   className,
   contentClassName,
   onEditorReady,
+  taskSource,
 }: AutosaveRichTextProps) {
   const [value, setValue] = useState(savedValue || "")
   const [status, setStatus] = useState<SaveStatus>("idle")
@@ -106,6 +110,7 @@ export function AutosaveRichText({
       className={className}
       contentClassName={contentClassName}
       onEditorReady={onEditorReady}
+      taskSource={taskSource}
     />
   )
 }
