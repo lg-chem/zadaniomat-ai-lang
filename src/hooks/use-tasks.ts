@@ -1,6 +1,7 @@
 import useSWR from 'swr'
 import { useCallback } from 'react'
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { trackTaskWrite } from '@/lib/task-writes'
 
 export type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 
@@ -71,48 +72,49 @@ export function useTasks(options: UseTasksOptions = {}) {
       updates: Partial<Task>,
       serverUpdate: () => Promise<void>
     ) => {
-      // Get current data
-      const currentTasks = data ?? []
+      let currentTasks: Task[] | undefined
 
-      // Optimistically update the UI
-      const optimisticData = currentTasks.map((task) =>
-        task.id === taskId ? { ...task, ...updates } : task
-      )
+      // Optimistically update the cache - from its current value, so a change made
+      // since the last render (e.g. a stopped timer's time) isn't overwritten
+      mutate((current) => {
+        currentTasks = current
+        return current?.map((task) => (task.id === taskId ? { ...task, ...updates } : task))
+      }, { revalidate: false })
 
-      // Update the cache optimistically
-      await mutate(optimisticData, false)
-
-      try {
-        // Perform the actual update
-        await serverUpdate()
-        // Revalidate to ensure consistency
-        mutate()
-      } catch (error) {
-        // Rollback on error
-        mutate(currentTasks, false)
-        throw error
-      }
+      // Task lists are refreshed once it's saved
+      await trackTaskWrite(async () => {
+        try {
+          await serverUpdate()
+        } catch (error) {
+          // Rollback on error
+          mutate(currentTasks, { revalidate: false })
+          throw error
+        }
+      })
     },
-    [data, mutate]
+    [mutate]
   )
 
   // Optimistic delete helper
   const optimisticDelete = useCallback(
     async (taskId: string, serverDelete: () => Promise<void>) => {
-      const currentTasks = data ?? []
-      const optimisticData = currentTasks.filter((task) => task.id !== taskId)
+      let currentTasks: Task[] | undefined
 
-      await mutate(optimisticData, false)
+      mutate((current) => {
+        currentTasks = current
+        return current?.filter((task) => task.id !== taskId)
+      }, { revalidate: false })
 
-      try {
-        await serverDelete()
-        mutate()
-      } catch (error) {
-        mutate(currentTasks, false)
-        throw error
-      }
+      await trackTaskWrite(async () => {
+        try {
+          await serverDelete()
+        } catch (error) {
+          mutate(currentTasks, { revalidate: false })
+          throw error
+        }
+      })
     },
-    [data, mutate]
+    [mutate]
   )
 
   // Optimistic add helper
