@@ -1,6 +1,7 @@
 import { mutate } from "swr"
 import { toast } from "sonner"
 import { useTimerStore, type TimerSessionResult } from "@/stores/timer-store"
+import { isTasksKey, trackTaskWrite } from "@/lib/task-writes"
 
 interface TimerTask {
   id: string
@@ -18,49 +19,94 @@ export function taskWorkedSeconds(task: Pick<TimerTask, "actualMinutes" | "actua
 // Fired after a session's time is saved, for pages that don't read tasks through SWR
 export const TIMER_SESSION_SAVED_EVENT = "timer-session-saved"
 
+type CachedTask = TimerTask & { status?: string; completedAt?: string | null }
+
+// The task as it will be once the session is saved - same math as the server
+function withSavedSession(task: CachedTask, result: TimerSessionResult, complete: boolean): CachedTask {
+  let actualMinutes: number
+  let actualExtraSeconds: number
+  if (result.totalSeconds !== undefined) {
+    // Session migrated from the old timer - saved as whole minutes
+    actualMinutes = Math.round(result.totalSeconds / 60)
+    actualExtraSeconds = 0
+  } else {
+    const totalSeconds = taskWorkedSeconds(task) + result.sessionSeconds
+    actualMinutes = Math.floor(totalSeconds / 60)
+    actualExtraSeconds = totalSeconds % 60
+  }
+
+  return {
+    ...task,
+    actualMinutes,
+    actualExtraSeconds,
+    ...(complete && { status: "COMPLETED", completedAt: task.completedAt || new Date().toISOString() }),
+  }
+}
+
+// Shows the saved session in every cached task list right away,
+// instead of waiting for the server and a refetch
+function showSessionInTaskLists(result: TimerSessionResult, complete: boolean) {
+  const update = (item: unknown) =>
+    item && typeof item === "object" && (item as CachedTask).id === result.taskId
+      ? withSavedSession(item as CachedTask, result, complete)
+      : item
+
+  mutate(isTasksKey, (data: unknown) => (Array.isArray(data) ? data.map(update) : update(data)), {
+    revalidate: false,
+  })
+}
+
+async function sendTaskRequest(url: string, method: string, body: object, errorMessage: string) {
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(errorMessage)
+}
+
 // Saves a finished timer session: adds the worked time to the task
 // and optionally marks the task as completed
 export async function saveTimerSession(result: TimerSessionResult, options: { complete?: boolean } = {}) {
   const { taskId } = result
+  const complete = options.complete === true
+
+  showSessionInTaskLists(result, complete)
 
   try {
-    if (result.totalSeconds !== undefined) {
-      // Session migrated from the old timer - it holds the task's total time
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    await trackTaskWrite(async () => {
+      const requests: Promise<void>[] = []
+
+      if (result.totalSeconds !== undefined) {
+        // Session migrated from the old timer - it holds the task's total time
+        requests.push(sendTaskRequest(`/api/tasks/${taskId}`, "PATCH", {
           actualMinutes: Math.round(result.totalSeconds / 60),
-          ...(options.complete && { status: "COMPLETED" }),
-        }),
-      })
-      if (!res.ok) throw new Error("Failed to save time")
-    } else {
-      // Saved to the second: 0:22 adds 22 s
-      if (result.sessionSeconds > 0) {
-        const res = await fetch(`/api/tasks/${taskId}/time`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ durationSeconds: result.sessionSeconds }),
-        })
-        if (!res.ok) throw new Error("Failed to save time")
+          ...(complete && { status: "COMPLETED" }),
+        }, "Failed to save time"))
+      } else {
+        // Saved to the second: 0:22 adds 22 s
+        if (result.sessionSeconds > 0) {
+          requests.push(sendTaskRequest(`/api/tasks/${taskId}/time`, "POST", {
+            durationSeconds: result.sessionSeconds,
+          }, "Failed to save time"))
+        }
+
+        // Sent alongside the time, not after it - they change different fields
+        if (complete) {
+          requests.push(sendTaskRequest(`/api/tasks/${taskId}`, "PATCH", {
+            status: "COMPLETED",
+          }, "Failed to complete task"))
+        }
       }
 
-      if (options.complete) {
-        const res = await fetch(`/api/tasks/${taskId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "COMPLETED" }),
-        })
-        if (!res.ok) throw new Error("Failed to complete task")
-      }
-    }
+      // Wait for every request, so the lists refresh only once all of them are saved
+      const failed = (await Promise.allSettled(requests)).find((r) => r.status === "rejected")
+      if (failed) throw (failed as PromiseRejectedResult).reason
+    })
   } catch (error) {
     console.error("Error saving timer session:", error)
     toast.error("Nie udało się zapisać czasu pracy")
   } finally {
-    // Refresh tasks data so UI updates immediately
-    mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
     window.dispatchEvent(new CustomEvent(TIMER_SESSION_SAVED_EVENT, { detail: { taskId } }))
   }
 }

@@ -29,6 +29,7 @@
 **Logika:**
 - Pobiera zadania z API `/api/tasks` z filtrowaniem po dacie i workspace
 - Implementuje optimistic updates (`optimisticUpdate`, `optimisticDelete`, `optimisticAdd`)
+- `optimisticUpdate` / `optimisticDelete` zmieniają cache od jego bieżącej wartości (nie nadpisują np. czasu z timera) i zapisują przez `trackTaskWrite`
 - Automatycznie rollbackuje w przypadku błędu serwera
 
 **Gdzie użyte:**
@@ -364,6 +365,10 @@ interface TimerState {
 - `stopTimerForTask(taskId, { complete? })` - zatrzymuje timer, jeśli liczy dla tego zadania
 - `discardTimerForTask(taskId)` - porzuca timer usuniętego zadania
 - Czas sesji dodawany co do sekundy przez `POST /api/tasks/[id]/time` (`durationSeconds`) - pełne minuty w `actualMinutes`, reszta w `actualExtraSeconds`
+- Nowy czas (i status po zakończeniu) widać w listach zadań od razu - optymistycznie w cache SWR; czas i status wysyłane równolegle
+
+**Odświeżanie list zadań:** `src/lib/task-writes.ts`
+- `trackTaskWrite(write)` - zapisuje zmianę już pokazaną w listach; listy `/api/tasks*` odświeża dopiero, gdy żaden inny zapis zadania nie trwa (bez migania pół-zapisanego stanu, np. czas zapisany, a status jeszcze nie)
 
 **Gdzie użyte:**
 - Floating timer widget
