@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
 import { toast } from "sonner"
-import { format, addDays, subDays, isBefore, startOfDay } from "date-fns"
+import { format, addDays, subDays, isBefore, isToday, startOfDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import {
   Plus,
@@ -54,6 +54,7 @@ import { Label } from "@/components/ui/label"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimerStore, formatMinutes, formatTime } from "@/stores/timer-store"
 import { startTaskTimer, stopTimerForTask, discardTimerForTask, taskWorkedSeconds } from "@/lib/timer-actions"
+import { resolveTaskId } from "@/lib/task-writes"
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks"
 import { useCategories, type Category } from "@/hooks/use-categories"
 import { useSprints } from "@/hooks/use-sprints"
@@ -63,6 +64,7 @@ import { useOverdueTasks } from "@/hooks/use-overdue-tasks"
 import { useDayBlocks, useScheduleOverride, type BlockData } from "@/hooks/use-schedule-blocks"
 import { prefetchAdjacentDays } from "@/hooks/use-prefetch"
 import { WeekStrip } from "@/components/schedule/week-strip"
+import { QuickAddBar, type QuickAddTaskData } from "@/components/schedule/quick-add-bar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { TaskEditDialog } from "@/components/tasks/task-edit-dialog"
@@ -119,6 +121,12 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   TO_TRANSFER: "bg-orange-100 text-orange-800",
 }
 
+// A task added a moment ago may still be saving - its changes go to its real id
+const taskUrl = async (taskId: string) => `/api/tasks/${(await resolveTaskId(taskId)) ?? taskId}`
+
+// Overdue tasks shown before "Pokaż wszystkie"
+const OVERDUE_PREVIEW = 3
+
 const RECURRENCE_OPTIONS = [
   { value: "none", label: "Brak" },
   { value: "DAILY", label: "Codziennie" },
@@ -171,15 +179,8 @@ export default function SchedulePage() {
 
   const isLoading = tasksLoading || categoriesLoading
 
-  // Inline add task state
-  const [newTask, setNewTask] = useState({
-    title: "",
-    categoryId: "",
-    plannedMinutes: "25",
-    recurrenceRule: "none",
-  })
-  const [isAddingTask, setIsAddingTask] = useState(false)
-  const newTaskRef = useRef<HTMLInputElement>(null)
+  // Quick add bar at the top - focused from the empty list
+  const quickAddRef = useRef<HTMLInputElement>(null)
 
   // Dialog for adding task with custom date
   const [customDateTask, setCustomDateTask] = useState<{
@@ -223,6 +224,9 @@ export default function SchedulePage() {
 
   // Transfer overdue task state (separate from copy)
   const [transferTaskId, setTransferTaskId] = useState<string | null>(null)
+
+  // Overdue list shows a few tasks until expanded - so the day's tasks aren't pushed far down
+  const [showAllOverdue, setShowAllOverdue] = useState(false)
 
   // Full task edit dialog state
   const [editingFullTask, setEditingFullTask] = useState<Task | null>(null)
@@ -329,20 +333,22 @@ export default function SchedulePage() {
     }
   }, [expandedGoalId, goalTasksMap, fetchGoalTasks])
 
+  // "dziś", "jutro" or "3 listopada" - the day tasks are added to
+  const dayLabel = isToday(selectedDate)
+    ? "dziś"
+    : isToday(subDays(selectedDate, 1))
+      ? "jutro"
+      : format(selectedDate, "d MMMM", { locale: pl })
+
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1))
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1))
   const handleToday = () => setSelectedDate(new Date())
 
-  const handleCreateTask = () => {
-    if (!newTask.title.trim()) return
+  // Adds a task to the day being viewed
+  const handleCreateTask = (taskData: QuickAddTaskData) => {
+    if (!taskData.title.trim()) return
 
-    const isRecurring = newTask.recurrenceRule !== "none"
-    const category = categories.find(c => c.id === newTask.categoryId)
-
-    // Clear form immediately for instant feedback
-    const taskData = { ...newTask }
-    setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
-    setIsAddingTask(false)
+    const category = categories.find(c => c.id === taskData.categoryId)
 
     // Optimistic update for task count (instant)
     incrementCount(dateString)
@@ -355,8 +361,8 @@ export default function SchedulePage() {
         plannedMinutes: parseInt(taskData.plannedMinutes) || 25,
         scheduledDate: dateString,
         status: "NEW" as const,
-        isRecurring,
-        recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+        isRecurring: false,
+        recurrenceRule: null,
         category: category ? { id: category.id, name: category.name, color: category.color } : undefined,
       },
       async () => {
@@ -371,8 +377,8 @@ export default function SchedulePage() {
             orderInDay: tasks.length,
             workspaceType: workspace,
             status: "NEW",
-            isRecurring,
-            recurrenceRule: isRecurring ? taskData.recurrenceRule : null,
+            isRecurring: false,
+            recurrenceRule: null,
           }),
         })
         if (!res.ok) throw new Error('Failed to create task')
@@ -522,7 +528,7 @@ export default function SchedulePage() {
 
     try {
       await optimisticUpdate(taskId, { status }, async () => {
-        const res = await fetch(`/api/tasks/${taskId}`, {
+        const res = await fetch(await taskUrl(taskId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updateData),
@@ -541,7 +547,7 @@ export default function SchedulePage() {
     }
 
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: editingTitle }),
@@ -555,7 +561,7 @@ export default function SchedulePage() {
 
   const handleUpdateTaskCategory = async (taskId: string, categoryId: string) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categoryId: categoryId || null }),
@@ -568,7 +574,7 @@ export default function SchedulePage() {
 
   const handleUpdateTaskTime = async (taskId: string, minutes: string) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plannedMinutes: parseInt(minutes) || 25 }),
@@ -582,7 +588,7 @@ export default function SchedulePage() {
   const handleUpdateTaskRecurrence = async (taskId: string, recurrence: string) => {
     const isRecurring = recurrence !== "none"
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -605,7 +611,7 @@ export default function SchedulePage() {
     decrementCount(dateString)
 
     optimisticDelete(taskId, async () => {
-      const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+      const res = await fetch(await taskUrl(taskId), { method: "DELETE" })
       if (!res.ok) throw new Error('Failed to delete task')
     })
       .then(() => {
@@ -631,7 +637,7 @@ export default function SchedulePage() {
 
     // Use optimistic delete since task will disappear from current day
     optimisticDelete(taskId, async () => {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -664,15 +670,13 @@ export default function SchedulePage() {
       action()
     }
     if (e.key === "Escape") {
-      setIsAddingTask(false)
       setEditingTaskId(null)
-      setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
     }
   }
 
-  const handleAddRowClick = () => {
-    setIsAddingTask(true)
-    setTimeout(() => newTaskRef.current?.focus(), 0)
+  // "Inny termin" - the dialog starts with what was typed and the day being viewed
+  const handleOpenOtherDate = (taskData: QuickAddTaskData) => {
+    setCustomDateTask({ open: true, ...taskData, scheduledDate: dateString })
   }
 
   const handleStartEdit = (task: Task) => {
@@ -693,7 +697,7 @@ export default function SchedulePage() {
       return
     }
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plannedMinutes: parseInt(editingTime) || 25 }),
@@ -718,7 +722,7 @@ export default function SchedulePage() {
       return
     }
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(await taskUrl(taskId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actualMinutes: parseInt(editingActualTime) || 0 }),
@@ -1186,6 +1190,15 @@ export default function SchedulePage() {
           </div>
         </div>
       </div>
+
+      {/* Add a task to the day being viewed - right under the days, no scrolling */}
+      <QuickAddBar
+        ref={quickAddRef}
+        dayLabel={dayLabel}
+        categories={categories}
+        onAdd={handleCreateTask}
+        onOtherDate={handleOpenOtherDate}
+      />
 
       {/* Stats bar */}
       <Card>
@@ -1717,41 +1730,44 @@ export default function SchedulePage() {
       {/* Overdue Tasks - Must be resolved */}
       {overdueTasks.length > 0 && (
         <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20">
-          <CardHeader className="pb-3">
+          <CardHeader className="p-4 pb-3 md:p-6 md:pb-3">
             <CardTitle className="text-base md:text-lg flex items-center gap-2 text-red-700 dark:text-red-400">
-              <AlertTriangle className="h-5 w-5" />
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
               Zaległe zadania ({overdueTasks.length})
             </CardTitle>
-            <p className="text-sm text-red-600/80 dark:text-red-400/80">
+            <p className="text-xs sm:text-sm text-red-600/80 dark:text-red-400/80">
               Te zadania mają termin z przeszłości. Przenieś je na inny dzień, oznacz jako zakończone lub anuluj.
             </p>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {overdueTasks.map((task) => (
+          <CardContent className="space-y-2 p-3 pt-0 md:p-6 md:pt-0">
+            {(showAllOverdue ? overdueTasks : overdueTasks.slice(0, OVERDUE_PREVIEW)).map((task) => (
               <div
                 key={task.id}
-                className="flex items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 rounded-lg border border-red-200"
+                className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 bg-white dark:bg-slate-900 rounded-lg border border-red-200"
               >
+                {/* Title gets the full width on a phone - actions go below it */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
                     {task.category && (
-                      <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: task.category.color }} />
+                      <div className="h-2.5 w-2.5 rounded-full flex-shrink-0 mt-[7px]" style={{ backgroundColor: task.category.color }} />
                     )}
-                    <span className="font-medium truncate">{task.title}</span>
-                    <Badge variant="outline" className="text-[10px] text-red-600 border-red-300">
-                      {task.scheduledDate ? format(new Date(task.scheduledDate), "d MMM", { locale: pl }) : "?"}
-                    </Badge>
+                    <span className="font-medium text-sm sm:text-base break-words line-clamp-2 sm:line-clamp-1" title={task.title}>
+                      {task.title}
+                    </span>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {task.plannedMinutes && <span>{task.plannedMinutes} min</span>}
-                    {task.category && <span className="ml-2">• {task.category.name}</span>}
+                  <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-medium text-red-600 dark:text-red-400">
+                      {task.scheduledDate ? format(new Date(task.scheduledDate), "d MMM", { locale: pl }) : "Bez daty"}
+                    </span>
+                    {task.plannedMinutes && <span>• {task.plannedMinutes} min</span>}
+                    {task.category && <span className="truncate max-w-full">• {task.category.name}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {/* Transfer to another day */}
                   <Popover open={transferTaskId === task.id} onOpenChange={(open) => setTransferTaskId(open ? task.id : null)}>
                     <PopoverTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-8 text-xs">
+                      <Button size="sm" variant="outline" className="h-8 text-xs flex-1 sm:flex-none">
                         <ArrowRight className="h-3 w-3 mr-1" />
                         Przenieś
                       </Button>
@@ -1766,16 +1782,43 @@ export default function SchedulePage() {
                       />
                     </PopoverContent>
                   </Popover>
-                  <Button size="sm" variant="outline" onClick={() => handleOverdueAction(task.id, "complete")} className="h-8 text-xs">
+                  <Button size="sm" variant="outline" onClick={() => handleOverdueAction(task.id, "complete")} className="h-8 text-xs flex-1 sm:flex-none">
                     <Check className="h-3 w-3 mr-1" />
                     Gotowe
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleOverdueAction(task.id, "cancel")} className="h-8 text-xs text-muted-foreground">
-                    <X className="h-3 w-3" />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleOverdueAction(task.id, "cancel")}
+                    className="h-8 w-8 p-0 text-muted-foreground flex-shrink-0"
+                    title="Anuluj zadanie"
+                    aria-label="Anuluj zadanie"
+                  >
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             ))}
+            {overdueTasks.length > OVERDUE_PREVIEW && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-red-700 hover:text-red-800 hover:bg-red-100/60 dark:text-red-400 dark:hover:bg-red-950/40"
+                onClick={() => setShowAllOverdue((v) => !v)}
+              >
+                {showAllOverdue ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-1" />
+                    Zwiń
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 mr-1" />
+                    Pokaż wszystkie ({overdueTasks.length})
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1783,7 +1826,7 @@ export default function SchedulePage() {
       {/* Task Table - Spreadsheet style */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base md:text-lg">Zadania na dziś</CardTitle>
+          <CardTitle className="text-base md:text-lg">Zadania na {dayLabel}</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Mobile View - Cards grouped by status */}
@@ -2029,89 +2072,10 @@ export default function SchedulePage() {
                 ))}
               </div>
             )}
-
-            {/* Mobile Add Task Button/Form */}
-            {isAddingTask ? (
-              <Card className="border-primary">
-                <CardContent className="p-3 space-y-3">
-                  <Input
-                    ref={newTaskRef}
-                    placeholder="Nazwa zadania..."
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                    onKeyDown={(e) => handleKeyDown(e, handleCreateTask)}
-                    autoFocus
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select
-                      value={newTask.categoryId || "none"}
-                      onValueChange={(value) => setNewTask({ ...newTask, categoryId: value === "none" ? "" : value })}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Kategoria" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Brak kategorii</SelectItem>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            <div className="flex items-center gap-2">
-                              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
-                              {cat.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      min="5"
-                      step="5"
-                      value={newTask.plannedMinutes}
-                      onChange={(e) => setNewTask({ ...newTask, plannedMinutes: e.target.value })}
-                      placeholder="min"
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={handleCreateTask} disabled={!newTask.title.trim()} className="flex-1">
-                      <Check className="h-4 w-4 mr-2" />
-                      Dodaj
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsAddingTask(false)
-                        setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleAddRowClick}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Dodaj zadanie
-                </Button>
-                <Button
-                  onClick={() => setCustomDateTask((prev) => ({ ...prev, open: true, scheduledDate: format(new Date(), "yyyy-MM-dd") }))}
-                  variant="outline"
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Inny termin
-                </Button>
-              </div>
-            )}
           </div>
 
-          {/* Desktop View - Table */}
-          <div className="border rounded-lg overflow-hidden hidden md:block">
+          {/* Desktop View - Table (an empty day shows just the message below) */}
+          <div className={`border rounded-lg overflow-hidden hidden ${tasks.length > 0 || categoriesNeedingTemplates.length > 0 ? "md:block" : ""}`}>
             {/* Table Header */}
             <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
               <div>Kategoria</div>
@@ -2495,119 +2459,23 @@ export default function SchedulePage() {
                 ))}
               </>
             )}
-
-            {/* Add New Task Row */}
-            {isAddingTask ? (
-              <div className="grid grid-cols-[140px_minmax(120px,1fr)_55px_55px_auto] gap-2 p-3 items-center bg-primary/5">
-                {/* Category Select */}
-                <div>
-                  <Select
-                    value={newTask.categoryId || "none"}
-                    onValueChange={(value) =>
-                      setNewTask({ ...newTask, categoryId: value === "none" ? "" : value })
-                    }
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Kategoria..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        <span className="text-muted-foreground">Brak kategorii</span>
-                      </SelectItem>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: category.color }}
-                            />
-                            {category.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Title Input */}
-                <div>
-                  <Input
-                    ref={newTaskRef}
-                    placeholder="Wpisz nazwę zadania..."
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                    onKeyDown={(e) => handleKeyDown(e, handleCreateTask)}
-                    className="h-8"
-                  />
-                </div>
-
-                {/* Planned Time Input */}
-                <div>
-                  <Input
-                    type="number"
-                    min="5"
-                    step="5"
-                    value={newTask.plannedMinutes}
-                    onChange={(e) => setNewTask({ ...newTask, plannedMinutes: e.target.value })}
-                    onKeyDown={(e) => handleKeyDown(e, handleCreateTask)}
-                    className="h-8 text-center text-xs"
-                  />
-                </div>
-
-                {/* Actual Time - empty for new */}
-                <div className="text-center text-xs text-muted-foreground">-</div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-9 px-3"
-                    onClick={handleCreateTask}
-                    disabled={!newTask.title.trim()}
-                  >
-                    <Check className="h-4 w-4 mr-1 text-green-500" />
-                    Dodaj
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 px-2"
-                    onClick={() => {
-                      setIsAddingTask(false)
-                      setNewTask({ title: "", categoryId: "", plannedMinutes: "25", recurrenceRule: "none" })
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center">
-                <button
-                  onClick={handleAddRowClick}
-                  className="flex-1 p-3 text-left text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Dodaj zadanie...
-                </button>
-                <button
-                  onClick={() => setCustomDateTask((prev) => ({ ...prev, open: true, scheduledDate: format(new Date(), "yyyy-MM-dd") }))}
-                  className="p-3 text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2 border-l"
-                >
-                  <Calendar className="h-4 w-4" />
-                  Inny termin
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Empty state */}
-          {tasks.length === 0 && categoriesNeedingTemplates.length === 0 && !isAddingTask && (
+          {tasks.length === 0 && categoriesNeedingTemplates.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
               <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Brak zadań na ten dzień</p>
-              <p className="text-sm">Kliknij "Dodaj zadanie" aby zaplanować dzień</p>
+              <button
+                type="button"
+                className="text-sm text-primary hover:underline"
+                onClick={() => {
+                  quickAddRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+                  quickAddRef.current?.focus({ preventScroll: true })
+                }}
+              >
+                Dodaj pierwsze zadanie
+              </button>
             </div>
           )}
         </CardContent>

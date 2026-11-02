@@ -77,16 +77,17 @@ export function DayEventsCard({ date }: { date: string }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-2">
+        {/* Wraps on a narrow phone instead of pushing the buttons off screen */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-            <CalendarDays className="h-5 w-5" />
+            <CalendarDays className="h-5 w-5 flex-shrink-0" />
             Wydarzenia
             {items.length > 0 && <span className="text-sm font-normal text-muted-foreground">({items.length})</span>}
           </CardTitle>
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="outline" onClick={openCreate}>
-              <CalendarPlus className="mr-1 h-4 w-4" />
-              Wydarzenie
+            <Button size="sm" variant="outline" onClick={openCreate} aria-label="Dodaj wydarzenie">
+              <CalendarPlus className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Wydarzenie</span>
             </Button>
             <Button size="sm" variant="ghost" asChild>
               <Link href={`/calendar?view=day&date=${date}`}>Kalendarz</Link>
