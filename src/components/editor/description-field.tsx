@@ -27,6 +27,9 @@ interface DescriptionFieldProps {
   onEditorReady?: (editor: Editor | null) => void
   // Where the text lives; enables "Zadanie" - a task from the selection, linked in the text
   taskSource?: TaskTextSource
+  // page - just the text on the page (no frame, toolbar or status): the screen around
+  // it shows them, e.g. the phone note editor with its toolbar above the keyboard
+  variant?: "box" | "page"
 }
 
 // Description box with formatting that can be opened as a full screen document
@@ -43,6 +46,7 @@ export function DescriptionField({
   contentClassName,
   onEditorReady,
   taskSource,
+  variant = "box",
 }: DescriptionFieldProps) {
   const [isDocumentOpen, setIsDocumentOpen] = useState(false)
   // While the full screen page is open the small editor keeps its content and catches up on close
@@ -63,6 +67,18 @@ export function DescriptionField({
     onEditorReady?.(editor)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
+
+  if (variant === "page") {
+    return (
+      <div className={className}>
+        <div onClick={() => editor && !editor.isFocused && editor.commands.focus()} className="cursor-text">
+          <EditorContent editor={editor} />
+        </div>
+        <TaskRefsLayer editor={editor} onCreateTask={createTask} hideBubble={taskFromText.isOpen} />
+        {taskFromText.dialog}
+      </div>
+    )
+  }
 
   return (
     <div className={cn("space-y-1", className)}>

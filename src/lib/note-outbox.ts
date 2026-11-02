@@ -219,6 +219,13 @@ export function startNoteSync(refreshNotes: (isKey: (key: unknown) => boolean) =
     if (document.visibilityState === "visible") void sendIfWaiting()
   }
 
+  // Asks the browser not to clear the app's data when the phone runs low on space -
+  // notes waiting to be sent live there (an installed app gets it without asking)
+  navigator.storage
+    ?.persisted?.()
+    .then((persisted) => (persisted ? true : navigator.storage.persist?.()))
+    .catch(() => {})
+
   navigator.serviceWorker.addEventListener("message", handleMessage)
   window.addEventListener("online", sendIfWaiting)
   document.addEventListener("visibilitychange", handleVisible)

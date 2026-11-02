@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { differenceInDays, format, formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
-import { CheckCircle2, Circle, CloudOff, Loader2, Pin, Play, Plus, Search, StickyNote } from "lucide-react"
+import { CheckCircle2, Circle, CloudOff, Loader2, Pin, Play, Plus, Search, Share2, StickyNote, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NotePanel, noteDisplayTitle } from "@/components/notes/note-panel"
@@ -13,6 +14,8 @@ import { useNoteActions, useNotes, useTaskNotes, type Note, type TaskNote } from
 import { useTimerStore } from "@/stores/timer-store"
 import { useNoteOutboxStore } from "@/lib/note-outbox"
 import { useOnline } from "@/hooks/use-online"
+import { useIsCompactScreen, useIsTouch } from "@/hooks/use-media-query"
+import { useVisualViewport } from "@/hooks/use-visual-viewport"
 import { htmlToPlainText, plainTextToHtml } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +44,32 @@ function snippet(html: string | null | undefined, skipFirstLine = false) {
 
 const isDesktop = () => typeof window !== "undefined" && window.innerWidth >= 1024
 
+// The open item is kept in the address (?note= / ?taskNote=): links open it,
+// and on a phone Android's back gesture closes it instead of leaving Notes
+function selectionFromUrl(): Selected {
+  const params = new URLSearchParams(window.location.search)
+  const note = params.get("note")
+  if (note) return { kind: "note", id: note }
+  const task = params.get("taskNote")
+  if (task) return { kind: "task", id: task }
+  return null
+}
+
+const selectionUrl = (item: NonNullable<Selected>) =>
+  `/notes?${item.kind === "note" ? "note" : "taskNote"}=${encodeURIComponent(item.id)}`
+
+// Text shared to the app from another one (Android "Udostępnij" → Zadaniomat)
+function sharedText(params: URLSearchParams) {
+  const title = params.get("title")?.trim()
+  const text = params.get("text")?.trim()
+  const url = params.get("url")?.trim()
+  const parts: string[] = []
+  if (title && title !== text) parts.push(title)
+  if (text) parts.push(text)
+  if (url && !text?.includes(url)) parts.push(url)
+  return parts.join("\n")
+}
+
 export default function NotesPage() {
   const [query, setQuery] = useState("")
   const [search, setSearch] = useState("")
@@ -48,9 +77,12 @@ export default function NotesPage() {
   const [selected, setSelected] = useState<Selected>(null)
   const [newNoteId, setNewNoteId] = useState<string | null>(null)
   const [capture, setCapture] = useState("")
-  const [isCapturing, setIsCapturing] = useState(false)
+  const [isShared, setIsShared] = useState(false)
   // Keeps the open item on screen when a search hides it from the list
   const lastSelected = useRef<FeedItem | null>(null)
+  const captureRef = useRef<HTMLTextAreaElement>(null)
+  // An open note added its own entry to the history (phone) - closing goes back over it
+  const pushedEntry = useRef(false)
 
   const { notes, isLoading: notesLoading } = useNotes(search)
   const { taskNotes, isLoading: tasksLoading } = useTaskNotes(search)
@@ -60,11 +92,55 @@ export default function NotesPage() {
   const online = useOnline()
   const waitingCount = useNoteOutboxStore((s) => s.entries.length)
   const syncResult = useNoteOutboxStore((s) => s.lastResult)
+  const isCompact = useIsCompactScreen()
+  const isTouch = useIsTouch()
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearch(query), 300)
     return () => clearTimeout(timeout)
   }, [query])
+
+  // Item from the address (a link, or back / forward), and text shared from another app
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const shared = sharedText(params)
+    if (shared) {
+      setCapture(shared)
+      setIsShared(true)
+      window.history.replaceState(null, "", "/notes")
+      setTimeout(() => captureRef.current?.focus(), 150)
+    } else {
+      setSelected(selectionFromUrl())
+    }
+
+    const handlePopState = () => {
+      pushedEntry.current = false
+      setSelected(selectionFromUrl())
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
+  const openItem = useCallback((item: NonNullable<Selected>) => {
+    setSelected(item)
+    const url = selectionUrl(item)
+    if (isDesktop() || pushedEntry.current) {
+      window.history.replaceState(null, "", url)
+    } else {
+      window.history.pushState(null, "", url)
+      pushedEntry.current = true
+    }
+  }, [])
+
+  const closeItem = useCallback(() => {
+    // Same as the phone's back gesture - the history stays as it was
+    if (pushedEntry.current) {
+      window.history.back()
+      return
+    }
+    setSelected(null)
+    window.history.replaceState(null, "", "/notes")
+  }, [])
 
   const feed = useMemo(() => {
     const items: FeedItem[] = []
@@ -93,49 +169,76 @@ export default function NotesPage() {
     if (!selected && feed.length > 0 && isDesktop()) setSelected({ kind: feed[0].kind, id: feed[0].id })
   }, [feed, selected])
 
-  const addNote = async (text?: string) => {
+  // Phone: the open note covers the whole screen, sized to the space above the keyboard
+  const isFullScreen = isCompact && !!current
+  const viewport = useVisualViewport(isFullScreen)
+  useEffect(() => {
+    if (!isFullScreen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [isFullScreen])
+
+  // Shown and opened right away - saving goes on in the background
+  const addNote = async (text?: string, { open = true }: { open?: boolean } = {}) => {
     const lines = (text ?? "").split("\n")
     const title = (lines[0] ?? "").trim().slice(0, 300)
     const rest = lines.slice(1).join("\n").trim()
-    try {
-      const note = await createNote({ title, content: rest ? plainTextToHtml(rest) : null })
-      lastSelected.current = { kind: "note", id: note.id, date: note.updatedAt, note }
-      setSelected({ kind: "note", id: note.id })
-      if (!text) setNewNoteId(note.id)
-      return note
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się dodać notatki")
-      return null
-    }
+    const note = await createNote({ title, content: rest ? plainTextToHtml(rest) : null })
+    lastSelected.current = { kind: "note", id: note.id, date: note.updatedAt, note }
+    if (!text) setNewNoteId(note.id)
+    if (open) openItem({ kind: "note", id: note.id })
+    return note
   }
 
   const submitCapture = async () => {
     const text = capture.trim()
-    if (!text || isCapturing) return
+    if (!text) return
     // Clear right away so the next note can be typed while this one saves
     setCapture("")
-    setIsCapturing(true)
-    const note = await addNote(text)
-    if (note?.pending) toast.success("Zapisano na telefonie - wyślę, gdy będzie internet")
-    else if (note) toast.success("Zapisano notatkę")
-    else setCapture((current) => (current ? `${text}\n${current}` : text))
-    setIsCapturing(false)
+    setIsShared(false)
+    // Phone: stay in the list with the keyboard open - many short notes in a row
+    const stay = isCompact
+    const note = await addNote(text, { open: !stay })
+    if (stay) captureRef.current?.focus()
+    toast.success(note.pending ? "Zapisano na telefonie - wyślę, gdy będzie internet" : "Zapisano notatkę", {
+      ...(stay && { action: { label: "Otwórz", onClick: () => openItem({ kind: "note", id: note.id }) } }),
+    })
   }
 
   const isLoading = (notesLoading || tasksLoading) && feed.length === 0
 
+  const panel = current?.kind === "note" ? (
+    <NotePanel
+      key={current.note.id}
+      note={current.note}
+      layout={isCompact ? "screen" : "pane"}
+      autoFocusTitle={newNoteId === current.note.id}
+      discardIfEmpty={newNoteId === current.note.id}
+      onBack={closeItem}
+      onDeleted={() => {
+        lastSelected.current = null
+        closeItem()
+      }}
+    />
+  ) : current?.kind === "task" ? (
+    <TaskNotePanel key={current.task.id} task={current.task} onBack={closeItem} />
+  ) : null
+
   return (
-    <div className="flex h-[calc(100dvh-8.75rem)] min-h-[520px] flex-col gap-3 animate-fade-in md:h-[calc(100dvh-4rem)]">
+    <div className="flex flex-col gap-3 pb-24 animate-fade-in lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:pb-0">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="mr-auto">
+      <div className="flex items-center gap-3">
+        <div className="mr-auto min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
-            <StickyNote className="h-7 w-7 text-amber-500" />
+            <StickyNote className="h-6 w-6 text-amber-500 md:h-7 md:w-7" />
             Notatki
           </h1>
-          <p className="text-sm text-muted-foreground">Twoje notatki i opisy zadań w jednym miejscu</p>
+          <p className="hidden text-sm text-muted-foreground sm:block">Twoje notatki i opisy zadań w jednym miejscu</p>
         </div>
-        <Button onClick={() => addNote()}>
+        <Button onClick={() => addNote()} className="h-10 shrink-0">
           <Plus className="mr-1.5 h-4 w-4" />
           Nowa notatka
         </Button>
@@ -145,7 +248,7 @@ export default function NotesPage() {
       {(!online || waitingCount > 0) && (
         <div
           className={cn(
-            "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm",
+            "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs sm:text-sm",
             !online || syncResult === "auth"
               ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
               : "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
@@ -158,7 +261,7 @@ export default function NotesPage() {
           )}
           <span>
             {!online
-              ? `Brak internetu. Nowe notatki i zmiany zapiszą się na telefonie i wyślą same, gdy wróci połączenie${
+              ? `Brak internetu. Notatki zapisują się na telefonie i wyślą same, gdy wróci połączenie${
                   waitingCount > 0 ? ` (czeka: ${waitingCount})` : ""
                 }.`
               : syncResult === "auth"
@@ -170,16 +273,66 @@ export default function NotesPage() {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 gap-4">
+      <div className="flex gap-4 lg:min-h-0 lg:flex-1">
         {/* List */}
-        <aside className={cn("flex min-h-0 w-full shrink-0 flex-col gap-3 lg:w-[380px]", current && "hidden lg:flex")}>
+        <aside className="flex w-full shrink-0 flex-col gap-3 lg:min-h-0 lg:w-[380px]">
+          {/* Quick capture - first thing on the page */}
+          <div className="rounded-xl border bg-amber-50/60 p-2 focus-within:ring-2 focus-within:ring-amber-300/60 dark:bg-amber-950/20">
+            {isShared && (
+              <div className="mb-1 flex items-center gap-1 px-1 text-xs text-amber-800 dark:text-amber-300">
+                <Share2 className="h-3.5 w-3.5" />
+                Udostępnione z innej aplikacji - dopisz coś i zapisz
+              </div>
+            )}
+            <textarea
+              ref={captureRef}
+              value={capture}
+              onChange={(e) => setCapture(e.target.value)}
+              onKeyDown={(e) => {
+                // On a phone Enter makes a new line - there's a button to save
+                if (e.key === "Enter" && !e.shiftKey && !isTouch) {
+                  e.preventDefault()
+                  void submitCapture()
+                }
+              }}
+              rows={2}
+              enterKeyHint={isTouch ? "enter" : "send"}
+              placeholder={isTouch ? "Zanotuj coś…" : "Zanotuj coś szybko… (Enter – zapisz, Shift+Enter – nowa linia)"}
+              aria-label="Szybka notatka"
+              className="block max-h-[40vh] min-h-[3.25rem] w-full resize-none bg-transparent px-1 py-1 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground lg:text-sm"
+            />
+            {capture.trim() && (
+              <div className="mt-1 flex items-center gap-2">
+                <span className="mr-auto px-1 text-xs text-muted-foreground">Pierwsza linia to tytuł</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 text-muted-foreground"
+                  // Keeps the keyboard open
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setCapture("")
+                    setIsShared(false)
+                  }}
+                  aria-label="Wyczyść"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <Button className="h-10 px-5" onMouseDown={(e) => e.preventDefault()} onClick={submitCapture}>
+                  Zapisz
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Szukaj w notatkach i opisach…"
-              className="pl-9"
+              className="h-10 pl-9 text-base lg:text-sm"
             />
           </div>
 
@@ -190,7 +343,7 @@ export default function NotesPage() {
                 type="button"
                 onClick={() => setFilter(f.value)}
                 className={cn(
-                  "rounded px-3 py-1 text-sm font-medium transition-colors",
+                  "rounded px-3 py-1.5 text-sm font-medium transition-colors",
                   filter === f.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                 )}
               >
@@ -199,31 +352,8 @@ export default function NotesPage() {
             ))}
           </div>
 
-          {/* Quick capture */}
-          <div className="rounded-lg border bg-amber-50/60 p-2 focus-within:ring-2 focus-within:ring-amber-300/60 dark:bg-amber-950/20">
-            <textarea
-              value={capture}
-              onChange={(e) => setCapture(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  void submitCapture()
-                }
-              }}
-              rows={capture.includes("\n") ? 4 : 2}
-              placeholder="Zanotuj coś szybko… (Enter – zapisz, Shift+Enter – nowa linia)"
-              className="w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
-            />
-            {capture.trim() && (
-              <div className="flex justify-end">
-                <Button size="sm" className="h-7" onClick={submitCapture} disabled={isCapturing}>
-                  Zapisz notatkę
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pb-2 pr-1">
+          {/* Phone: the page scrolls; wide screen: the list scrolls next to the open item */}
+          <div className="space-y-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-2 lg:pr-1">
             {isLoading && (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -237,9 +367,9 @@ export default function NotesPage() {
               </div>
             )}
             {feed.map((item) => {
-              const isSelected = current?.kind === item.kind && current.id === item.id
+              const isSelected = !isCompact && current?.kind === item.kind && current.id === item.id
               const base = cn(
-                "w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50",
+                "w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 active:bg-muted",
                 isSelected && "border-primary/60 bg-primary/5 hover:bg-primary/5"
               )
 
@@ -247,7 +377,7 @@ export default function NotesPage() {
                 const note = item.note
                 const hasTitle = !!note.title.trim()
                 return (
-                  <button key={`note-${note.id}`} type="button" className={base} onClick={() => setSelected({ kind: "note", id: note.id })}>
+                  <button key={`note-${note.id}`} type="button" className={base} onClick={() => openItem({ kind: "note", id: note.id })}>
                     <div className="flex items-center gap-2">
                       <StickyNote className="h-4 w-4 shrink-0 text-amber-500" />
                       <span className="truncate font-medium">{noteDisplayTitle(note)}</span>
@@ -271,7 +401,7 @@ export default function NotesPage() {
               const color = task.category?.color || "#64748b"
               const running = timerTaskId === task.id
               return (
-                <button key={`task-${task.id}`} type="button" className={base} onClick={() => setSelected({ kind: "task", id: task.id })}>
+                <button key={`task-${task.id}`} type="button" className={base} onClick={() => openItem({ kind: "task", id: task.id })}>
                   <div className="flex items-center gap-2">
                     {done ? (
                       <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color }} />
@@ -299,31 +429,34 @@ export default function NotesPage() {
           </div>
         </aside>
 
-        {/* Open item */}
-        <main className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg border bg-background", !current && "hidden lg:block")}>
-          {current?.kind === "note" && (
-            <NotePanel
-              key={current.note.id}
-              note={current.note}
-              autoFocusTitle={newNoteId === current.note.id}
-              onBack={() => setSelected(null)}
-              onDeleted={() => {
-                lastSelected.current = null
-                setSelected(null)
-              }}
-            />
-          )}
-          {current?.kind === "task" && (
-            <TaskNotePanel key={current.task.id} task={current.task} onBack={() => setSelected(null)} />
-          )}
-          {!current && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
-              <StickyNote className="h-10 w-10 opacity-40" />
-              <p className="text-sm">Wybierz notatkę z listy albo zapisz nową.</p>
-            </div>
-          )}
-        </main>
+        {/* Open item - wide screen: next to the list */}
+        {!isCompact && (
+          <main className="hidden min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg border bg-background lg:block">
+            {panel ?? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
+                <StickyNote className="h-10 w-10 opacity-40" />
+                <p className="text-sm">Wybierz notatkę z listy albo zapisz nową.</p>
+              </div>
+            )}
+          </main>
+        )}
       </div>
+
+      {/* Phone: the open item over the whole screen, above the menus and floating buttons */}
+      {isFullScreen &&
+        createPortal(
+          <div
+            className="fixed inset-x-0 top-0 z-50 bg-background"
+            style={{ top: viewport?.offsetTop ?? 0, height: viewport?.height ?? "100dvh" }}
+          >
+            {current?.kind === "task" ? (
+              <div className="h-full overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">{panel}</div>
+            ) : (
+              panel
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

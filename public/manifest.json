@@ -10,6 +10,11 @@
   "scope": "/",
   "lang": "pl",
   "categories": ["productivity", "business"],
+  "share_target": {
+    "action": "/notes",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  },
   "icons": [
     {
       "src": "/icons/icon-72x72.png",

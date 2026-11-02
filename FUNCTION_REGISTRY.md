@@ -217,6 +217,14 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 - `useNoteDetail(id)` - notatka + zadania z niej utworzone
 - `useNoteActions()` - `createNote`, `updateNote` (optymistycznie na liście), `deleteNote`, `createTaskFromText(source, input)` - zadanie z notatki (`{ kind: "note" }`) albo z opisu innego zadania (`{ kind: "task" }`)
 
+**Szybkość i telefon:**
+- `createNote` od razu zwraca notatkę i pokazuje ją na liście, zapis idzie w tle (`creatingNotes`); `updateNote` / `deleteNote` czekają na ten zapis; gdy zapis się nie uda (brak sieci, 5xx) - notatka trafia do kolejki offline, nie ginie
+- `/notes` na telefonie (< lg): otwarta notatka na całym ekranie (portal, wysokość z `useVisualViewport` - pasek formatowania `EditorToolbar variant="mobile"` jest tuż nad klawiaturą), `NotePanel layout="screen"`: pasek ← / status zapisu / przypnij / menu ⋯; adres `?note=` / `?taskNote=` - gest „wstecz” zamyka notatkę; pusta nowa notatka po zamknięciu jest usuwana (`discardIfEmpty`)
+- Szybka notatka: na dotyku Enter = nowa linia, przycisk „Zapisz”, pole rośnie z tekstem, po zapisie zostaje na liście z kursorem w polu
+- Udostępnianie z innych aplikacji (`share_target` w manifeście → `/notes?title&text&url`) wstawia tekst do szybkiej notatki
+- `AutosaveRichText` / `DescriptionField` `variant="page"` - sam tekst (bez ramki, paska, statusu), `onStatusChange` - status zapisu na zewnątrz
+- Hooki: `useMediaQuery`, `useIsCompactScreen`, `useIsTouch` (`src/hooks/use-media-query.ts`), `useVisualViewport`, `useOnline`
+
 **Offline (PWA):**
 - `createNote` nadaje notatce własne id (`newNoteId`) - bez internetu (albo gdy żądanie nie dojdzie) notatka trafia do kolejki na urządzeniu (`queueNoteChange`) i ma `pending: true`
 - `updateNote` bez internetu, albo gdy notatka ma już coś w kolejce, dopisuje zmianę do kolejki (zmiany tej samej notatki łączą się, wysyłane są po kolei)
@@ -854,6 +862,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-11-02 | Notatki na telefonie: edytor na całym ekranie z paskiem nad klawiaturą, „wstecz” zamyka notatkę, natychmiastowe tworzenie, szybka notatka z Enter = nowa linia, udostępnianie z innych aplikacji, `navigator.storage.persist` | Claude |
 | 2026-11-02 | Notatki offline w PWA (`lib/note-outbox`, kolejka w IndexedDB, Background Sync w `sw.js`, `POST /api/notes` z `id`), własna kolejność zakładek menu (`useNavOrderStore`, `NavOrderEditor`, model `NavLayout`, `/api/user/nav-order`) | Claude |
 | 2026-10-02 | Zadanie z zaznaczonego tekstu notatki / opisu zadania z odnośnikiem w tekście, który odhacza się po zrobieniu zadania (`taskRef`, `TaskRefsLayer`, `useTaskFromText`, `/api/tasks/refs`, `/api/tasks/[id]/from-description`, `lib/task-from-text`) | Claude |
 | 2026-09-30 | Notatki (`/notes`, model `Note`, `Task.descriptionUpdatedAt`, `useNotes`, `/api/notes/*`, `/api/tasks/notes`), `AutosaveRichText` | Claude |
