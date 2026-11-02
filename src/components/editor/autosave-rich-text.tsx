@@ -21,6 +21,9 @@ interface AutosaveRichTextProps {
   onEditorReady?: (editor: Editor | null) => void
   // Enables making tasks from the text (see DescriptionField)
   taskSource?: TaskTextSource
+  variant?: "box" | "page"
+  // E.g. to show "Zapisano" elsewhere when the variant shows no status
+  onStatusChange?: (status: SaveStatus) => void
 }
 
 const AUTOSAVE_DELAY = 1000
@@ -38,6 +41,8 @@ export function AutosaveRichText({
   contentClassName,
   onEditorReady,
   taskSource,
+  variant,
+  onStatusChange,
 }: AutosaveRichTextProps) {
   const [value, setValue] = useState(savedValue || "")
   const [status, setStatus] = useState<SaveStatus>("idle")
@@ -46,8 +51,14 @@ export function AutosaveRichText({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onSaveRef = useRef(onSave)
   const onSavedRef = useRef(onSaved)
+  const onStatusChangeRef = useRef(onStatusChange)
   onSaveRef.current = onSave
   onSavedRef.current = onSaved
+  onStatusChangeRef.current = onStatusChange
+
+  useEffect(() => {
+    onStatusChangeRef.current?.(status)
+  }, [status])
 
   // Take changes from outside (e.g. the full edit dialog), but not the echo of our own save
   useEffect(() => {
@@ -111,6 +122,7 @@ export function AutosaveRichText({
       contentClassName={contentClassName}
       onEditorReady={onEditorReady}
       taskSource={taskSource}
+      variant={variant}
     />
   )
 }

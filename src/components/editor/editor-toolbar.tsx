@@ -48,6 +48,10 @@ const TEXT_STYLES = [
 
 type TextStyleId = (typeof TEXT_STYLES)[number]["id"]
 
+// lg - finger-sized, for the phone toolbar above the keyboard
+type ToolbarSize = "sm" | "md" | "lg"
+const SIZE_CLASS: Record<ToolbarSize, string> = { sm: "h-7 w-7", md: "h-8 w-8", lg: "h-10 w-10" }
+
 function ToolbarButton({
   active,
   disabled,
@@ -61,7 +65,7 @@ function ToolbarButton({
   onClick: () => void
   title: string
   children: ReactNode
-  size?: "sm" | "md"
+  size?: ToolbarSize
 }) {
   return (
     <button
@@ -74,8 +78,8 @@ function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none",
-        size === "sm" ? "h-7 w-7" : "h-8 w-8",
+        "inline-flex shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none",
+        SIZE_CLASS[size],
         active ? "bg-primary/10 text-primary dark:bg-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
@@ -89,7 +93,7 @@ function Divider() {
 }
 
 // Task from the selected text, or from the line with the cursor
-function CreateTaskButton({ onClick, size }: { onClick: () => void; size: "sm" | "md" }) {
+function CreateTaskButton({ onClick, size }: { onClick: () => void; size: ToolbarSize }) {
   return (
     <button
       type="button"
@@ -97,17 +101,17 @@ function CreateTaskButton({ onClick, size }: { onClick: () => void; size: "sm" |
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1 rounded-md font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
-        size === "sm" ? "h-7 px-1.5 text-xs" : "h-8 px-2 text-sm"
+        "inline-flex shrink-0 items-center gap-1 rounded-md font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
+        size === "sm" ? "h-7 px-1.5 text-xs" : size === "lg" ? "h-10 px-3 text-sm" : "h-8 px-2 text-sm"
       )}
     >
-      <ListPlus className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />
+      <ListPlus className={size === "sm" ? "h-3.5 w-3.5" : size === "lg" ? "h-5 w-5" : "h-4 w-4"} />
       Zadanie
     </button>
   )
 }
 
-function LinkButton({ editor, active, size }: { editor: Editor; active: boolean; size: "sm" | "md" }) {
+function LinkButton({ editor, active, size }: { editor: Editor; active: boolean; size: ToolbarSize }) {
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState("")
 
@@ -138,15 +142,15 @@ function LinkButton({ editor, active, size }: { editor: Editor; active: boolean;
           aria-label="Link"
           onMouseDown={(e) => e.preventDefault()}
           className={cn(
-            "inline-flex items-center justify-center rounded-md transition-colors",
-            size === "sm" ? "h-7 w-7" : "h-8 w-8",
+            "inline-flex shrink-0 items-center justify-center rounded-md transition-colors",
+            SIZE_CLASS[size],
             active ? "bg-primary/10 text-primary dark:bg-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
-          <LinkIcon className="h-4 w-4" />
+          <LinkIcon className={size === "lg" ? "h-5 w-5" : "h-4 w-4"} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-3" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <PopoverContent className="w-[min(20rem,calc(100vw-1rem))] p-3" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
         <div className="flex gap-2">
           <Input
             autoFocus
@@ -184,7 +188,8 @@ function LinkButton({ editor, active, size }: { editor: Editor; active: boolean;
 
 interface EditorToolbarProps {
   editor: Editor | null
-  variant?: "full" | "compact"
+  // mobile - one row of finger-sized buttons, scrolled sideways (kept above the keyboard)
+  variant?: "full" | "compact" | "mobile"
   onExpand?: () => void
   // Shows "Zadanie": a task from the selection, linked in the text
   onCreateTask?: () => void
@@ -233,6 +238,55 @@ export function EditorToolbar({ editor, variant = "full", onExpand, onCreateTask
   const setTextStyle = (id: TextStyleId) => {
     if (id === "paragraph") chain().setParagraph().run()
     else chain().setHeading({ level: Number(id.slice(1)) as 1 | 2 | 3 }).run()
+  }
+
+  if (variant === "mobile") {
+    const icon = "h-5 w-5"
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          className
+        )}
+      >
+        <ToolbarButton size="lg" title="Lista z checkboxami" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
+          <ListChecks className={icon} />
+        </ToolbarButton>
+        <ToolbarButton size="lg" title="Lista punktowana" active={state.bulletList} onClick={() => chain().toggleBulletList().run()}>
+          <List className={icon} />
+        </ToolbarButton>
+        <ToolbarButton size="lg" title="Lista numerowana" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
+          <ListOrdered className={icon} />
+        </ToolbarButton>
+        <ToolbarButton size="lg" title="Nagłówek" active={state.textStyle === "h2"} onClick={() => chain().toggleHeading({ level: 2 }).run()}>
+          <Heading2 className={icon} />
+        </ToolbarButton>
+        <Divider />
+        <ToolbarButton size="lg" title="Pogrubienie" active={state.bold} onClick={() => chain().toggleBold().run()}>
+          <Bold className={icon} />
+        </ToolbarButton>
+        <ToolbarButton size="lg" title="Kursywa" active={state.italic} onClick={() => chain().toggleItalic().run()}>
+          <Italic className={icon} />
+        </ToolbarButton>
+        <ToolbarButton size="lg" title="Zakreślacz" active={state.highlight} onClick={() => chain().toggleHighlight().run()}>
+          <Highlighter className={icon} />
+        </ToolbarButton>
+        <LinkButton editor={editor} active={state.link} size="lg" />
+        <Divider />
+        <ToolbarButton size="lg" title="Cofnij" disabled={!state.canUndo} onClick={() => chain().undo().run()}>
+          <Undo2 className={icon} />
+        </ToolbarButton>
+        <ToolbarButton size="lg" title="Ponów" disabled={!state.canRedo} onClick={() => chain().redo().run()}>
+          <Redo2 className={icon} />
+        </ToolbarButton>
+        {onCreateTask && (
+          <>
+            <Divider />
+            <CreateTaskButton size="lg" onClick={onCreateTask} />
+          </>
+        )}
+      </div>
+    )
   }
 
   if (variant === "compact") {
