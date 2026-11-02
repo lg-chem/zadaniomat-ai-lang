@@ -1,7 +1,20 @@
 import useSWR, { useSWRConfig } from "swr"
-import { useCallback } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import type { Task } from "@/hooks/use-tasks"
+import { htmlToPlainText } from "@/lib/rich-text"
+import {
+  dropQueuedNote,
+  getQueuedNote,
+  isOfflineStorageAvailable,
+  loadNoteList,
+  newNoteId,
+  queueNoteChange,
+  saveNoteList,
+  useNoteOutboxStore,
+  type NoteOutboxEntry,
+  type QueuedNoteFields,
+} from "@/lib/note-outbox"
 
 export interface Note {
   id: string
@@ -10,6 +23,8 @@ export interface Note {
   isPinned: boolean
   createdAt: string
   updatedAt: string
+  // Written or changed without internet - waits on the device to be sent
+  pending?: boolean
 }
 
 export interface NoteTask {
@@ -55,14 +70,81 @@ const withQuery = (base: string, workspace: string, q: string) => {
   return `${base}?${params.toString()}`
 }
 
-// Own notes, pinned first
+const sortNotes = (notes: Note[]) =>
+  [...notes].sort(
+    (a, b) => Number(b.isPinned) - Number(a.isPinned) || (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)
+  )
+
+const matchesQuery = (note: Pick<Note, "title" | "content">, q: string) => {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return true
+  return note.title.toLowerCase().includes(needle) || htmlToPlainText(note.content).toLowerCase().includes(needle)
+}
+
+// The list as it is on the device: notes and changes not sent yet are shown too
+function withQueuedChanges(notes: Note[], entries: NoteOutboxEntry[], workspace: string, q: string): Note[] {
+  const queued = entries.filter((e) => e.workspaceType === workspace)
+  if (queued.length === 0) return notes
+
+  const byId = new Map(queued.map((e) => [e.id, e]))
+  const result = notes.map((note) => {
+    const entry = byId.get(note.id)
+    if (!entry) return note
+    byId.delete(note.id)
+    return { ...note, ...entry.fields, updatedAt: entry.updatedAt, pending: true } as Note
+  })
+  for (const entry of byId.values()) {
+    if (!entry.isNew) continue
+    const note: Note = {
+      id: entry.id,
+      title: entry.fields.title ?? "",
+      content: entry.fields.content ?? null,
+      isPinned: entry.fields.isPinned ?? false,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      pending: true,
+    }
+    if (matchesQuery(note, q)) result.push(note)
+  }
+  return sortNotes(result)
+}
+
+// Own notes, pinned first. Without internet: the last list seen online.
 export function useNotes(q = "") {
   const workspace = useNotesWorkspace()
   const { data, error, isLoading, mutate } = useSWR<Note[]>(withQuery(NOTES_KEY, workspace, q), {
     keepPreviousData: true,
     revalidateOnFocus: false,
   })
-  return { notes: data ?? [], isLoading, isError: error, mutate }
+  const entries = useNoteOutboxStore((s) => s.entries)
+  const [saved, setSaved] = useState<{ workspace: string; notes: Note[] } | null>(null)
+
+  // The list kept on the device, for opening the app offline
+  useEffect(() => {
+    let active = true
+    loadNoteList<Note>(workspace).then((notes) => {
+      if (active && notes) setSaved({ workspace, notes })
+    })
+    return () => {
+      active = false
+    }
+  }, [workspace])
+
+  useEffect(() => {
+    if (!data || q.trim()) return
+    const serverNotes = data.filter((n) => !n.pending)
+    void saveNoteList(workspace, serverNotes)
+    setSaved({ workspace, notes: serverNotes })
+  }, [data, q, workspace])
+
+  const notes = useMemo(() => {
+    const offline = typeof navigator !== "undefined" && !navigator.onLine
+    const kept = saved?.workspace === workspace ? saved.notes.filter((n) => matchesQuery(n, q)) : null
+    const base = data ?? (error || offline ? kept : null) ?? []
+    return withQueuedChanges(base, entries, workspace, q)
+  }, [data, error, saved, entries, workspace, q])
+
+  return { notes, isLoading: isLoading && notes.length === 0, isError: error, mutate }
 }
 
 // Task descriptions, most recently written first
@@ -74,6 +156,9 @@ export function useTaskNotes(q = "") {
   })
   return { taskNotes: data ?? [], isLoading, isError: error, mutate }
 }
+
+// A network error (no internet), not an answer from the server
+const isNetworkError = (error: unknown) => error instanceof TypeError
 
 export function useNoteDetail(id: string | null) {
   const { data, error, isLoading, mutate } = useSWR<NoteDetail>(id ? `${NOTES_KEY}/${id}` : null, {
@@ -98,19 +183,52 @@ export function useNoteActions() {
   const isNotesKey = (key: unknown) => typeof key === "string" && key.startsWith(NOTES_KEY)
   const revalidate = useCallback(() => mutate(isNotesKey), [mutate])
 
+  // Without internet the note is kept on the device and sent when the connection is back
+  const queueNew = useCallback(
+    async (id: string, input: { title?: string; content?: string | null }): Promise<Note> => {
+      const entry = await queueNoteChange({
+        id,
+        isNew: true,
+        workspaceType: workspace,
+        fields: { title: input.title ?? "", content: input.content ?? null },
+      })
+      return {
+        id,
+        title: entry.fields.title ?? "",
+        content: entry.fields.content ?? null,
+        isPinned: false,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        pending: true,
+      }
+    },
+    [workspace]
+  )
+
   const createNote = useCallback(
     async (input: { title?: string; content?: string | null } = {}) => {
-      const res = await fetch(NOTES_KEY, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...input, workspaceType: workspace }),
-      })
+      // Own id - if the answer is lost, sending again doesn't make a copy
+      const id = newNoteId()
+      const canWaitOffline = isOfflineStorageAvailable()
+      if (canWaitOffline && !navigator.onLine) return queueNew(id, input)
+
+      let res: Response
+      try {
+        res = await fetch(NOTES_KEY, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...input, id, workspaceType: workspace }),
+        })
+      } catch (error) {
+        if (canWaitOffline && isNetworkError(error)) return queueNew(id, input)
+        throw error
+      }
       if (!res.ok) throw new Error(await readError(res, "Nie udało się dodać notatki"))
       const note = (await res.json()) as Note
       await revalidate()
       return note
     },
-    [workspace, revalidate]
+    [workspace, revalidate, queueNew]
   )
 
   const updateNote = useCallback(
@@ -122,11 +240,27 @@ export function useNoteActions() {
           current?.map((n) => (n.id === id ? { ...n, ...input, updatedAt: new Date().toISOString() } : n)),
         { revalidate: false }
       )
-      const res = await fetch(`${NOTES_KEY}/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      })
+
+      // Kept on the device: without internet, and while earlier changes of the note
+      // still wait - so they're sent in order and a newer text isn't overwritten
+      const queue = async () => {
+        const entry = await queueNoteChange({ id, isNew: false, workspaceType: workspace, fields: input as QueuedNoteFields })
+        return { id, ...entry.fields, updatedAt: entry.updatedAt, pending: true } as Note
+      }
+      const canWaitOffline = isOfflineStorageAvailable()
+      if (canWaitOffline && (!navigator.onLine || (await getQueuedNote(id)))) return queue()
+
+      let res: Response
+      try {
+        res = await fetch(`${NOTES_KEY}/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        })
+      } catch (error) {
+        if (canWaitOffline && isNetworkError(error)) return queue()
+        throw error
+      }
       if (!res.ok) {
         revalidate()
         throw new Error(await readError(res, "Nie udało się zapisać notatki"))
@@ -134,13 +268,29 @@ export function useNoteActions() {
       if (input.isPinned !== undefined) revalidate()
       return (await res.json()) as Note
     },
-    [mutate, revalidate]
+    [mutate, revalidate, workspace]
   )
 
   const deleteNote = useCallback(
     async (id: string) => {
-      const res = await fetch(`${NOTES_KEY}/${id}`, { method: "DELETE" })
+      const queued = isOfflineStorageAvailable() ? await getQueuedNote(id) : null
+      // Not sent yet - it's enough to forget it on the device
+      if (queued?.isNew) {
+        await dropQueuedNote(id)
+        await revalidate()
+        return
+      }
+
+      let res: Response
+      try {
+        res = await fetch(`${NOTES_KEY}/${id}`, { method: "DELETE" })
+      } catch (error) {
+        if (isNetworkError(error)) throw new Error("Brak internetu - notatkę usuniesz, gdy wróci połączenie")
+        throw error
+      }
       if (!res.ok) throw new Error(await readError(res, "Nie udało się usunąć notatki"))
+      // Changes waiting for a deleted note have nowhere to go
+      if (queued) await dropQueuedNote(id)
       await revalidate()
     },
     [revalidate]

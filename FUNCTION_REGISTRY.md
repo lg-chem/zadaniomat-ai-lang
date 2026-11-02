@@ -217,8 +217,27 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 - `useNoteDetail(id)` - notatka + zadania z niej utworzone
 - `useNoteActions()` - `createNote`, `updateNote` (optymistycznie na liście), `deleteNote`, `createTaskFromText(source, input)` - zadanie z notatki (`{ kind: "note" }`) albo z opisu innego zadania (`{ kind: "task" }`)
 
+**Offline (PWA):**
+- `createNote` nadaje notatce własne id (`newNoteId`) - bez internetu (albo gdy żądanie nie dojdzie) notatka trafia do kolejki na urządzeniu (`queueNoteChange`) i ma `pending: true`
+- `updateNote` bez internetu, albo gdy notatka ma już coś w kolejce, dopisuje zmianę do kolejki (zmiany tej samej notatki łączą się, wysyłane są po kolei)
+- `deleteNote` niewysłanej notatki tylko usuwa ją z kolejki; usunięcie wysłanej wymaga internetu
+- `useNotes` pokazuje listę z serwera, a bez internetu ostatnią zapisaną na urządzeniu (`saveNoteList` / `loadNoteList`) - zawsze z nałożonymi zmianami z kolejki
+
 **Gdzie użyte:**
 - `/notes` (`src/components/notes/*`)
+
+---
+
+### Kolejka notatek offline
+**Lokalizacja:** `src/lib/note-outbox.ts` (+ `public/sw.js` - ten sam układ IndexedDB `zadaniomat-offline`)
+
+**Logika:**
+- `queueNoteChange({ id, isNew, workspaceType, fields })` - zapisuje notatkę / zmianę w IndexedDB (`note-outbox`), `rev` rośnie z każdą zmianą
+- `requestNoteSync()` - prosi service worker o wysłanie: Background Sync (`notes-outbox`, Android - też przy zamkniętej aplikacji), a z internetem od razu (`postMessage flush-notes`)
+- Service worker wysyła po kolei: nowe `POST /api/notes` z `id` i `createdAt` (ponowne wysłanie aktualizuje, nie tworzy kopii), zmiany `PATCH /api/notes/[id]`; usuwa wpis tylko, gdy w międzyczasie się nie zmienił; 401 - czeka na zalogowanie; 400/404/409 - odrzuca
+- `startNoteSync(refresh)` - w `DashboardClient`: wysyła przy starcie, po powrocie internetu i powrocie do aplikacji; po komunikacie `notes-synced` odświeża listy notatek
+- `useNoteOutboxStore` - wpisy w kolejce i ostatni wynik wysyłania (baner na `/notes`)
+- Service worker cache'uje `/notes` razem z jej plikami `/_next/static` (otwiera się bez internetu); pliki `/_next/static` - najpierw z cache
 
 ---
 
@@ -396,6 +415,18 @@ interface TimerState {
 **Logika:**
 - Przechowuje ostatnio wybrane osoby do przypisania zadań
 - Optymalizacja UX - szybszy wybór
+
+---
+
+### `useNavOrderStore`
+**Lokalizacja:** `src/stores/nav-order-store.ts`
+
+**Logika:**
+- Kolejność zakładek menu bocznego ustawiona przez użytkownika, osobno dla WORK i PRIVATE (linki, np. `["/notes", "/schedule"]`)
+- Trzymana na urządzeniu (`zadaniomat-nav-order`) i na koncie (`/api/user/nav-order`, model `NavLayout`) - ta sama na telefonie i komputerze; zmiana bez internetu zapisuje się na koncie przy następnym starcie
+- `loadNavOrder()` - raz na stronę: odczyt z urządzenia, potem z konta
+- `applyNavOrder(items, hrefs)` - układa zakładki; nowe (spoza zapisanej kolejności) idą na koniec
+- Edycja: „Zmień kolejność zakładek” w menu bocznym → `NavOrderEditor` (`src/components/layout/nav-order-editor.tsx`, przeciąganie za uchwyt, też palcem); u pracowników działa w obrębie zakładek z konfiguracji admina
 
 ---
 
@@ -579,9 +610,10 @@ export const swrConfig: SWRConfiguration = {
 ### Notes
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/notes?workspace&q` | GET/POST | Notatki (wyszukiwanie w tytule i treści) / nowa notatka |
+| `/api/notes?workspace&q` | GET/POST | Notatki (wyszukiwanie w tytule i treści) / nowa notatka (opcjonalnie `id` i `createdAt` z telefonu - ponowne wysłanie aktualizuje notatkę zamiast tworzyć kopię) |
 | `/api/notes/[id]` | GET/PATCH/DELETE | Notatka (+ zadania z niej, `Task.metadata.noteId`) / zmiana tytułu, treści, przypięcia / usunięcie |
 | `/api/notes/[id]/tasks` | POST | Zadanie z notatki lub jej fragmentu (`Task.metadata.noteId`) |
+| `/api/user/nav-order` | GET/PUT | Kolejność zakładek menu bocznego użytkownika (`NavLayout.tabOrder`) |
 | `/api/tasks/[id]/from-description` | POST | Własne zadanie z linijki/fragmentu opisu zadania (`Task.metadata.sourceTaskId`) |
 | `/api/tasks/refs?ids=a,b` | GET | Status zadań podlinkowanych w tekście (tylko własne/przypisane; brak = usunięte) |
 | `/api/tasks/notes?workspace&q` | GET | Zadania z opisem, ostatnio pisane pierwsze (kopie opisów zadań cyklicznych raz) |
@@ -820,6 +852,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-11-02 | Notatki offline w PWA (`lib/note-outbox`, kolejka w IndexedDB, Background Sync w `sw.js`, `POST /api/notes` z `id`), własna kolejność zakładek menu (`useNavOrderStore`, `NavOrderEditor`, model `NavLayout`, `/api/user/nav-order`) | Claude |
 | 2026-10-02 | Zadanie z zaznaczonego tekstu notatki / opisu zadania z odnośnikiem w tekście, który odhacza się po zrobieniu zadania (`taskRef`, `TaskRefsLayer`, `useTaskFromText`, `/api/tasks/refs`, `/api/tasks/[id]/from-description`, `lib/task-from-text`) | Claude |
 | 2026-09-30 | Notatki (`/notes`, model `Note`, `Task.descriptionUpdatedAt`, `useNotes`, `/api/notes/*`, `/api/tasks/notes`), `AutosaveRichText` | Claude |
 | 2026-09-29 | Zadania cykliczne: wybór dnia miesiąca / dni tygodnia / co N / od-do / weekend (`lib/task-recurrence`, `RecurrencePicker`); reguły „przed końcem sprintu/okresu” w końcu generują zadania | Claude |
