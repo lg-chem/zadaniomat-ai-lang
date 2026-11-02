@@ -32,6 +32,7 @@ import {
   Lightbulb,
   Flag,
   StickyNote,
+  ArrowUpDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -40,6 +41,8 @@ import { WorkspaceSwitcher } from "./workspace-switcher"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { prefetchPage } from "@/hooks/use-prefetch"
+import { applyNavOrder, loadNavOrder, useNavOrderStore } from "@/stores/nav-order-store"
+import { NavOrderEditor } from "./nav-order-editor"
 
 interface FriendUser {
   id: string
@@ -133,6 +136,16 @@ export function SidebarContent() {
   const { workspace } = useWorkspaceStore()
   const { addRecentFriend } = useRecentFriendsStore()
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
+  const [isEditingOrder, setIsEditingOrder] = useState(false)
+
+  // Tab order set by the user (kept on the device and in the account)
+  const orderWorkspace = workspace === "WORK" || workspace === "PRIVATE" ? workspace : null
+  const savedOrder = useNavOrderStore((s) => (orderWorkspace ? s.order[orderWorkspace] : undefined))
+  const setNavOrder = useNavOrderStore((s) => s.setOrder)
+  const resetNavOrder = useNavOrderStore((s) => s.resetOrder)
+  useEffect(() => {
+    void loadNavOrder()
+  }, [])
 
   // Fetch friends when in FRIENDS workspace
   const { data: friends = [] } = useSWR<FriendUser[]>(
@@ -217,7 +230,7 @@ export function SidebarContent() {
   // For WORK workspace, wait for org data to load before showing nav items
   // This prevents flash of all items before filtering
   const isWorkspaceLoading = workspace === "WORK" && isLoadingOrgs
-  const navItems = workspace === "WORK" ? getFilteredWorkNavItems() : privateNavItems
+  const navItems = applyNavOrder(workspace === "WORK" ? getFilteredWorkNavItems() : privateNavItems, savedOrder)
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard"
@@ -318,9 +331,19 @@ export function SidebarContent() {
             </div>
           ))}
         </nav>
+      ) : isEditingOrder && orderWorkspace ? (
+        /* Changing the order of the tabs (own key - opens scrolled to the top) */
+        <nav key="order" className="flex-1 overflow-y-auto p-4">
+          <NavOrderEditor
+            items={navItems}
+            onChange={(hrefs) => setNavOrder(orderWorkspace, hrefs)}
+            onDone={() => setIsEditingOrder(false)}
+            onReset={savedOrder ? () => resetNavOrder(orderWorkspace) : undefined}
+          />
+        </nav>
       ) : (
         /* Regular Navigation */
-        <nav className="flex-1 overflow-y-auto space-y-1 p-4">
+        <nav key="links" className="flex-1 overflow-y-auto space-y-1 p-4">
           {navItems.map((item) => {
             const showGroupChallengeBadge = item.href === "/group-challenges" && pendingInvitationsCount > 0
             const showTaskStackBadge = item.href === "/task-stack" && taskStackCount > 0
@@ -349,6 +372,16 @@ export function SidebarContent() {
               </Link>
             )
           })}
+          {orderWorkspace && (
+            <button
+              type="button"
+              onClick={() => setIsEditingOrder(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <ArrowUpDown className="h-4 w-4" />
+              Zmień kolejność zakładek
+            </button>
+          )}
         </nav>
       )}
 

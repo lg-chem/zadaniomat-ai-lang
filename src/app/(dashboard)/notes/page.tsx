@@ -4,13 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { differenceInDays, format, formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
-import { CheckCircle2, Circle, Loader2, Pin, Play, Plus, Search, StickyNote } from "lucide-react"
+import { CheckCircle2, Circle, CloudOff, Loader2, Pin, Play, Plus, Search, StickyNote } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NotePanel, noteDisplayTitle } from "@/components/notes/note-panel"
 import { TaskNotePanel } from "@/components/notes/task-note-panel"
 import { useNoteActions, useNotes, useTaskNotes, type Note, type TaskNote } from "@/hooks/use-notes"
 import { useTimerStore } from "@/stores/timer-store"
+import { useNoteOutboxStore } from "@/lib/note-outbox"
+import { useOnline } from "@/hooks/use-online"
 import { htmlToPlainText, plainTextToHtml } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 
@@ -55,6 +57,9 @@ export default function NotesPage() {
   const { createNote } = useNoteActions()
   const timerTaskId = useTimerStore((s) => (s.isRunning ? s.taskId : null))
   const timerPaused = useTimerStore((s) => s.isPaused)
+  const online = useOnline()
+  const waitingCount = useNoteOutboxStore((s) => s.entries.length)
+  const syncResult = useNoteOutboxStore((s) => s.lastResult)
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearch(query), 300)
@@ -111,7 +116,8 @@ export default function NotesPage() {
     setCapture("")
     setIsCapturing(true)
     const note = await addNote(text)
-    if (note) toast.success("Zapisano notatkę")
+    if (note?.pending) toast.success("Zapisano na telefonie - wyślę, gdy będzie internet")
+    else if (note) toast.success("Zapisano notatkę")
     else setCapture((current) => (current ? `${text}\n${current}` : text))
     setIsCapturing(false)
   }
@@ -134,6 +140,35 @@ export default function NotesPage() {
           Nowa notatka
         </Button>
       </div>
+
+      {/* Without internet notes are kept on the device and sent later */}
+      {(!online || waitingCount > 0) && (
+        <div
+          className={cn(
+            "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm",
+            !online || syncResult === "auth"
+              ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+              : "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
+          )}
+        >
+          {online ? (
+            <Loader2 className={cn("mt-0.5 h-4 w-4 shrink-0", syncResult !== "auth" && syncResult !== "error" && "animate-spin")} />
+          ) : (
+            <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+          )}
+          <span>
+            {!online
+              ? `Brak internetu. Nowe notatki i zmiany zapiszą się na telefonie i wyślą same, gdy wróci połączenie${
+                  waitingCount > 0 ? ` (czeka: ${waitingCount})` : ""
+                }.`
+              : syncResult === "auth"
+                ? `Zaloguj się ponownie, żeby wysłać notatki zapisane bez internetu (czeka: ${waitingCount}).`
+                : syncResult === "error"
+                  ? `Serwer nie odpowiada - spróbuję wysłać notatki jeszcze raz (czeka: ${waitingCount}).`
+                  : `Wysyłam notatki zapisane bez internetu (czeka: ${waitingCount})…`}
+          </span>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-4">
         {/* List */}
@@ -217,6 +252,11 @@ export default function NotesPage() {
                       <StickyNote className="h-4 w-4 shrink-0 text-amber-500" />
                       <span className="truncate font-medium">{noteDisplayTitle(note)}</span>
                       {note.isPinned && <Pin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                      {note.pending && (
+                        <span title="Czeka na wysłanie - zapisana na tym urządzeniu">
+                          <CloudOff className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                        </span>
+                      )}
                       <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{whenLabel(item.date)}</span>
                     </div>
                     {snippet(note.content, !hasTitle) && (

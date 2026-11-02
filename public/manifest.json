@@ -62,6 +62,13 @@
   ],
   "shortcuts": [
     {
+      "name": "Notatki",
+      "short_name": "Notatki",
+      "description": "Zanotuj coś - działa też bez internetu",
+      "url": "/notes",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    },
+    {
       "name": "Harmonogram",
       "short_name": "Harmonogram",
       "description": "Otwórz harmonogram dnia",

@@ -43,6 +43,7 @@ model User {
   knowledgeEntries KnowledgeEntry[]
   knowledgeEntryVersions KnowledgeEntryVersion[]
   settings      UserSettings?
+  navLayout     NavLayout?
   sportActivityTypes SportActivityType[]
   sportActivities SportActivity[]
   stepsEntries  StepsEntry[]
@@ -113,6 +114,16 @@ model UserSettings {
   employeeSidebarConfig Json?    // Admin's config for what employees see in sidebar
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Order of the side menu tabs set by the user, for each workspace - the same on every device
+model NavLayout {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  tabOrder  Json     // { "WORK": ["/notes", "/schedule", ...], "PRIVATE": [...] }
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

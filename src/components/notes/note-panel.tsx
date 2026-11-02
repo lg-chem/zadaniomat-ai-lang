@@ -6,7 +6,7 @@ import type { Editor } from "@tiptap/react"
 import { formatDistanceToNow } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
-import { ArrowLeft, CheckCircle2, Circle, ListPlus, Pin, PinOff, Trash2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Circle, CloudOff, ListPlus, Pin, PinOff, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AutosaveRichText } from "@/components/editor/autosave-rich-text"
 import { useTaskFromText } from "@/components/tasks/create-task-from-text-dialog"
@@ -33,7 +33,8 @@ export function noteDisplayTitle(note: Pick<Note, "title" | "content">): string 
 // One note: title, text with formatting (saved automatically), tasks made from it
 export function NotePanel({ note, onBack, onDeleted, autoFocusTitle }: NotePanelProps) {
   const { updateNote, deleteNote } = useNoteActions()
-  const { note: detail } = useNoteDetail(note.id)
+  // A note not sent yet isn't on the server - nothing to ask about
+  const { note: detail } = useNoteDetail(note.pending ? null : note.id)
   const [title, setTitle] = useState(note.title)
   const [editor, setEditor] = useState<Editor | null>(null)
   const taskSource = useMemo(() => ({ kind: "note" as const, id: note.id }), [note.id])
@@ -66,6 +67,10 @@ export function NotePanel({ note, onBack, onDeleted, autoFocusTitle }: NotePanel
 
   // Selected fragment (linked in the text), otherwise the whole note
   const handleCreateTask = () => {
+    if (note.pending) {
+      toast.info("Zadanie zrobisz z tej notatki, gdy się wyśle - potrzebny internet")
+      return
+    }
     taskFromText.start?.({
       whole: { title: noteDisplayTitle({ title, content: note.content }), description: note.content },
     })
@@ -94,6 +99,15 @@ export function NotePanel({ note, onBack, onDeleted, autoFocusTitle }: NotePanel
         <span className="text-xs text-muted-foreground">
           edytowano {formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true, locale: pl })}
         </span>
+        {note.pending && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+            title="Zapisana na tym urządzeniu - wyśle się sama, gdy będzie internet"
+          >
+            <CloudOff className="h-3 w-3" />
+            czeka na wysłanie
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
