@@ -5,6 +5,7 @@ import { mutate } from "swr"
 import { FloatingTimer } from "@/components/timer/floating-timer"
 import { usePrefetchData } from "@/hooks/use-prefetch"
 import { startNoteSync } from "@/lib/note-outbox"
+import { prepareOfflineUse } from "@/lib/offline-ready"
 
 interface DashboardClientProps {
   children: React.ReactNode
@@ -16,6 +17,9 @@ export function DashboardClient({ children }: DashboardClientProps) {
 
   // Notes written without internet are sent from any page once it's back
   useEffect(() => startNoteSync((isNotesKey) => mutate(isNotesKey)), [])
+
+  // Notes open without internet later
+  useEffect(() => prepareOfflineUse(), [])
 
   return (
     <>

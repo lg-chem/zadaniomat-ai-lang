@@ -237,7 +237,9 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 - Service worker wysyła po kolei: nowe `POST /api/notes` z `id` i `createdAt` (ponowne wysłanie aktualizuje, nie tworzy kopii), zmiany `PATCH /api/notes/[id]`; usuwa wpis tylko, gdy w międzyczasie się nie zmienił; 401 - czeka na zalogowanie; 400/404/409 - odrzuca
 - `startNoteSync(refresh)` - w `DashboardClient`: wysyła przy starcie, po powrocie internetu i powrocie do aplikacji; po komunikacie `notes-synced` odświeża listy notatek
 - `useNoteOutboxStore` - wpisy w kolejce i ostatni wynik wysyłania (baner na `/notes`)
-- Service worker cache'uje `/notes` razem z jej plikami `/_next/static` (otwiera się bez internetu); pliki `/_next/static` - najpierw z cache
+- Service worker (`zadaniomat-v3`) trzyma `/notes` z jej plikami; pliki `/_next/static` - najpierw z cache
+- Bez internetu każda strona (też start aplikacji `/`, który normalnie przekierowuje na `/schedule`) otwiera `/notes`; jeśli Notatki nie są jeszcze zapisane - prosta strona „Brak internetu” zamiast błędu przeglądarki. Nigdy nie podaje zapisanego przekierowania (Chrome odrzuca je przy otwieraniu strony)
+- `prepareOfflineUse()` (`src/lib/offline-ready.ts`, w `DashboardClient`): zalogowany z internetem prosi service worker (`prepare-offline`) o zapisanie `/notes` i wszystkich wczytanych plików, wcześniej ładuje edytor (`preloadEditor` z `editor/lazy` - te same pliki co przy otwarciu notatki). Działa też, gdy worker zainstalował się na stronie logowania
 
 ---
 

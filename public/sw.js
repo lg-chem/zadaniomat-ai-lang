@@ -1,39 +1,72 @@
-const CACHE_NAME = 'zadaniomat-v2';
+const CACHE_NAME = 'zadaniomat-v3';
 
 // Assets to cache on install
-const STATIC_ASSETS = [
-  '/',
-  '/schedule',
-  '/notes',
-  '/goals',
-  '/knowledge',
-  '/ai',
-  '/manifest.json',
-];
+const STATIC_ASSETS = ['/manifest.json', '/icons/icon-192x192.png'];
 
-// Pages that open without internet - their scripts and styles are cached with them
-const OFFLINE_PAGES = ['/notes'];
+// Pages that work without internet - opened instead of any other page when offline
+const OFFLINE_HOME = '/notes';
+const OFFLINE_PAGES = [OFFLINE_HOME];
 
-// Caches a page with the build files it loads, so it can start offline
+// Shown when nothing was kept yet (the app wasn't opened logged in with internet)
+const OFFLINE_HTML = `<!doctype html><html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Brak internetu - Zadaniomat</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px;box-sizing:border-box;background:#fff;color:#0f172a;text-align:center}
+@media(prefers-color-scheme:dark){body{background:#020617;color:#e2e8f0}}button{margin-top:16px;padding:10px 18px;border-radius:8px;border:0;background:#3b82f6;color:#fff;font-size:15px}</style></head>
+<body><div><h1 style="font-size:22px">Brak internetu</h1>
+<p>Notatki działają bez internetu, gdy raz otworzysz aplikację zalogowany z internetem.</p>
+<button onclick="location.reload()">Spróbuj ponownie</button></div></body></html>`;
+
+// A response that can be kept and shown for a page (not a redirect to another one)
+const isPageResponse = (response) =>
+  response && response.ok && !response.redirected && response.type === 'basic';
+
+// Keeps build files that aren't kept yet (their names hold a hash - they never change)
+async function cacheMissing(cache, urls) {
+  await Promise.all(
+    urls.map(async (url) => {
+      if (await cache.match(url)) return;
+      await cache.add(url).catch(() => {});
+    })
+  );
+}
+
+// Keeps a page with the build files it loads, so it can start offline
 async function cachePageWithAssets(cache, path) {
   const response = await fetch(path, { credentials: 'same-origin' });
   // Not logged in (redirected to login) - nothing worth keeping
-  if (!response.ok || response.redirected) return;
+  if (!isPageResponse(response)) return;
   await cache.put(path, response.clone());
   const html = await response.text();
   // e.g. /_next/static/chunks/app/(dashboard)/notes/page-1a2b.js
   const assets = [...new Set(html.match(/\/_next\/static\/[^"'\s\\<>]+/g) || [])];
-  await Promise.all(assets.map((url) => cache.add(url).catch(() => {})));
+  await cacheMissing(cache, assets);
+}
+
+// Getting ready for offline: the offline pages and the build files the app has
+// loaded (also scripts loaded on demand, e.g. the editor). Asked by the app when
+// it's open logged in with internet - at install the user may not be logged in.
+async function prepareOffline(loadedUrls) {
+  const cache = await caches.open(CACHE_NAME);
+  const own = (loadedUrls || []).filter((url) => {
+    try {
+      const u = new URL(url, self.location.origin);
+      return u.origin === self.location.origin && u.pathname.startsWith('/_next/static/');
+    } catch (e) {
+      return false;
+    }
+  });
+  await Promise.all([
+    cacheMissing(cache, own),
+    ...OFFLINE_PAGES.map((path) => cachePageWithAssets(cache, path).catch(() => {})),
+  ]);
 }
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      // One missing page mustn't stop the worker from installing
-      await Promise.all(
-        STATIC_ASSETS.filter((path) => !OFFLINE_PAGES.includes(path)).map((path) => cache.add(path).catch(() => {}))
-      );
+      // One missing file mustn't stop the worker from installing
+      await cacheMissing(cache, STATIC_ASSETS);
       await Promise.all(OFFLINE_PAGES.map((path) => cachePageWithAssets(cache, path).catch(() => {})));
     })
   );
@@ -54,7 +87,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch event - network first, fallback to cache
+// A page opened without internet: Notes work offline, other pages need the
+// server - so they open Notes instead of the browser's "no internet" page
+async function offlinePage(url) {
+  const cache = await caches.open(CACHE_NAME);
+  const home = await cache.match(OFFLINE_HOME);
+  if (isPageResponse(home)) {
+    if (OFFLINE_PAGES.includes(url.pathname)) return home;
+    return Response.redirect(new URL(OFFLINE_HOME, self.location.origin).href, 302);
+  }
+  return new Response(OFFLINE_HTML, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -91,37 +135,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Pages: always fresh from the server; without internet - see offlinePage
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Keep the offline pages up to date
+          if (OFFLINE_PAGES.includes(url.pathname) && isPageResponse(response)) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(url.pathname, responseClone));
+          }
+          return response;
+        })
+        .catch(() => offlinePage(url))
+    );
+    return;
+  }
+
+  // Other files (icons, page data for in-app navigation) - network first, cache as fallback
   event.respondWith(
-    // Network first strategy
     fetch(request)
       .then((response) => {
-        // Clone the response before caching
-        const responseClone = response.clone();
-
-        // Cache successful responses
-        if (response.status === 200) {
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
+        if (response.status === 200 && !response.redirected) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
         }
-
         return response;
       })
-      .catch(() => {
-        // Fallback to cache if network fails
-        return caches.match(request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-
-          // Return offline page for navigation requests (ignoring ?query)
-          if (request.mode === 'navigate') {
-            return caches.match(url.pathname).then((page) => page || caches.match('/'));
-          }
-
-          return new Response('Offline', { status: 503 });
-        });
-      })
+      .catch(() =>
+        caches.match(request).then((cached) => cached || new Response('Offline', { status: 503 }))
+      )
   );
 });
 
@@ -277,5 +320,8 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'flush-notes') {
     event.waitUntil(flushNotesOnce().catch(() => {}));
+  }
+  if (event.data && event.data.type === 'prepare-offline') {
+    event.waitUntil(prepareOffline(event.data.urls).catch(() => {}));
   }
 });
