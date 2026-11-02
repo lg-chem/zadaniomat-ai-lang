@@ -1,7 +1,7 @@
 import useSWR from 'swr'
 import { useCallback } from 'react'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { trackTaskWrite } from '@/lib/task-writes'
+import { trackTaskCreate, trackTaskWrite } from '@/lib/task-writes'
 
 export type TaskStatus = "NEW" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "TO_TRANSFER"
 
@@ -120,39 +120,47 @@ export function useTasks(options: UseTasksOptions = {}) {
   // Optimistic add helper
   const optimisticAdd = useCallback(
     async (tempTask: Partial<Task>, serverAdd: () => Promise<Task | null>) => {
-      const currentTasks = data ?? []
-
       // Create a temporary task with a temp ID
       // IMPORTANT: spread tempTask FIRST, then apply defaults for missing fields
       // This ensures that if tempTask has a value, it won't be overwritten by undefined from spread
-      const tempId = `temp-${Date.now()}`
-      const newTask: Task = {
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const withTempId = (tasks: Task[]): Task => ({
         ...tempTask,
         id: tempId,
         title: tempTask.title || '',
         status: tempTask.status || 'NEW',
         priority: tempTask.priority ?? 0,
         actualMinutes: tempTask.actualMinutes ?? 0,
-        orderInDay: tempTask.orderInDay ?? currentTasks.length,
-      } as Task
+        orderInDay: tempTask.orderInDay ?? tasks.length,
+      } as Task)
 
-      // Optimistically add to UI
-      const optimisticData = [...currentTasks, newTask]
-      await mutate(optimisticData, false)
+      // Optimistically add to UI - to the current list, so a task added
+      // a moment earlier (and not yet saved) stays in it
+      await mutate((current) => [...(current ?? []), withTempId(current ?? [])], { revalidate: false })
+
+      const created = serverAdd()
+      // Changes made to the task before it's saved (e.g. a started timer) go to its real id
+      trackTaskCreate(tempId, created.then((task) => task?.id ?? null))
 
       try {
-        // Perform the actual add
-        const createdTask = await serverAdd()
+        const createdTask = await created
+        // Swap the temporary id for the real one right away, without waiting for the refresh
+        if (createdTask?.id) {
+          mutate(
+            (current) => current?.map((task) => (task.id === tempId ? { ...task, id: createdTask.id } : task)),
+            { revalidate: false }
+          )
+        }
         // Revalidate to get the real data
         mutate()
         return createdTask
       } catch (error) {
-        // Rollback on error
-        mutate(currentTasks, false)
+        // Rollback on error - only the added task, keep other changes
+        mutate((current) => current?.filter((task) => task.id !== tempId), { revalidate: false })
         throw error
       }
     },
-    [data, mutate]
+    [mutate]
   )
 
   return {

@@ -47,6 +47,7 @@ interface TimerState {
   reset: () => void
   toggleMinimize: () => void
   setPosition: (position: { x: number; y: number } | null) => void
+  replaceTaskId: (oldId: string, newId: string) => void
   // Cross-tab sync
   syncFromBroadcast: (state: Partial<TimerState>) => void
 }
@@ -346,6 +347,23 @@ export const useTimerStore = create<TimerState>()(
       reset: () => {
         set(idleSession)
         broadcastState(idleSession)
+      },
+
+      // A task added a moment ago was saved and got its real id -
+      // keep timing it (and its extended plan) under that id
+      replaceTaskId: (oldId, newId) => {
+        const state = get()
+        const newState: Partial<TimerState> = {}
+
+        if (state.taskId === oldId) newState.taskId = newId
+        if (oldId in state.plannedExtensions) {
+          const { [oldId]: extension, ...plannedExtensions } = state.plannedExtensions
+          newState.plannedExtensions = { ...plannedExtensions, [newId]: extension }
+        }
+
+        if (Object.keys(newState).length === 0) return
+        set(newState)
+        broadcastState(newState)
       },
 
       // Cross-tab synchronization

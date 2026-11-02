@@ -30,6 +30,7 @@
 - Pobiera zadania z API `/api/tasks` z filtrowaniem po dacie i workspace
 - Implementuje optimistic updates (`optimisticUpdate`, `optimisticDelete`, `optimisticAdd`)
 - `optimisticUpdate` / `optimisticDelete` zmieniają cache od jego bieżącej wartości (nie nadpisują np. czasu z timera) i zapisują przez `trackTaskWrite`
+- `optimisticAdd` pokazuje zadanie od razu z tymczasowym id (`temp-...`); po zapisie podmienia je na prawdziwe id (bez czekania na odświeżenie) i zgłasza przez `trackTaskCreate` - timer włączony w międzyczasie liczy dalej pod prawdziwym id
 - Automatycznie rollbackuje w przypadku błędu serwera
 
 **Gdzie użyte:**
@@ -352,6 +353,7 @@ interface TimerState {
 - `completeTask()` - jak `stopTimer()`, dodatkowo czyści przedłużenia zadania
 - `extendTimer(minutes)` - dodaje minuty do planu (1:00 + 5 min = 6:00), timer liczy dalej
 - `tick()` - aktualizacja co sekundę (wywoływana przez setInterval)
+- `replaceTaskId(oldId, newId)` - zadanie dodane przed chwilą dostało prawdziwe id - timer (i przedłużenia planu) przechodzą na nie
 
 **Logika:**
 - Czas liczony z zegara (`runningSince`) - działa po odświeżeniu strony i w tle
@@ -366,9 +368,15 @@ interface TimerState {
 - `discardTimerForTask(taskId)` - porzuca timer usuniętego zadania
 - Czas sesji dodawany co do sekundy przez `POST /api/tasks/[id]/time` (`durationSeconds`) - pełne minuty w `actualMinutes`, reszta w `actualExtraSeconds`
 - Nowy czas (i status po zakończeniu) widać w listach zadań od razu - optymistycznie w cache SWR; czas i status wysyłane równolegle
+- Timer zadania, które jeszcze się zapisuje (`temp-...`), czeka na jego prawdziwe id (`resolveTaskId`) zamiast wysyłać czas pod tymczasowe id (404)
+- Chwilowe błędy (brak połączenia, 500, 503) ponawiane 2 razy (po 1 s i 3 s) - tylko takie, po których nic się nie zapisało, więc czas nie doda się podwójnie
+- Gdy zapis się nie uda, toast podaje przyczynę i czas sesji, z przyciskiem "Ponów" - wysyła ponownie tylko nieudane żądania
 
 **Odświeżanie list zadań:** `src/lib/task-writes.ts`
 - `trackTaskWrite(write)` - zapisuje zmianę już pokazaną w listach; listy `/api/tasks*` odświeża dopiero, gdy żaden inny zapis zadania nie trwa (bez migania pół-zapisanego stanu, np. czas zapisany, a status jeszcze nie)
+- `isTempTaskId(id)` - czy to tymczasowe id zadania dodanego przed chwilą (`temp-...`)
+- `trackTaskCreate(tempId, realId)` - zapamiętuje, jakie prawdziwe id dostanie zadanie; przestawia na nie timer
+- `resolveTaskId(id)` - id do wysłania na serwer: dla zadania, które się jeszcze zapisuje, czeka na prawdziwe id (`null`, jeśli zapis się nie udał)
 
 **Gdzie użyte:**
 - Floating timer widget
@@ -677,7 +685,7 @@ export const swrConfig: SWRConfiguration = {
 - `src/components/tasks/` - komponenty zadań
 - `src/components/layout/` - layouty, sidebar, header
 - `src/components/teams/` - komponenty zespołowe
-- `src/components/schedule/` - harmonogram
+- `src/components/schedule/` - harmonogram: `WeekStrip` (pasek dni), `QuickAddBar` (dodawanie zadania na oglądany dzień u góry strony; kategoria i czas zostają dla kolejnego zadania; ikona kalendarza otwiera „Inny termin” z wpisanym tytułem)
 - `src/components/quarter/` - ekran Cele: karty celów, oś kwartału, rytuały, dialogi (cel, plan sprintu, zamknięcie sprintu, check-in, przegląd kwartału), archiwum
 - `src/components/editor/` - edytor opisów (TipTap): `DescriptionField` (pole z formatowaniem + „Pełny ekran”), `DocumentEditorDialog` (strona jak w Google Docs: konspekt z nagłówków, liczba słów, szablony, tabele, zakreślacz), `RichTextView` (podgląd przez schemat edytora - bez surowego HTML). Importuj z `editor/lazy` (ładowane dopiero przy użyciu)
 - `src/components/editor/autosave-rich-text.tsx` - pole z formatowaniem i autozapisem (1 s po pisaniu, przy wyjściu z pola i zamknięciu pełnego ekranu); `onSave` decyduje, gdzie zapisać
