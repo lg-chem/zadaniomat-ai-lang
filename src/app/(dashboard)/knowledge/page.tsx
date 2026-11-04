@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { toast } from "sonner"
 import { useSession } from "next-auth/react"
 import {
@@ -19,18 +19,12 @@ import {
   Users,
   Lock,
   Sparkles,
-  FileText,
-  List,
-  Wrench,
-  HelpCircle,
-  CheckCircle,
-  Layout,
-  X,
-  GripVertical,
-  Clock,
   Copy,
   History,
   RotateCcw,
+  ListPlus,
+  ListOrdered,
+  CloudOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,67 +40,23 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { IconPicker, DynamicIcon } from "@/components/ui/icon-picker"
-import { RichEditor, RichContent } from "@/components/ui/rich-editor"
+import { KnowledgeEntryEditor, entryTaskDescription } from "@/components/knowledge/entry-editor"
+import { RichTextView } from "@/components/editor/lazy"
+import { clearEntryBackup, readEntryBackup, type EntryBackup } from "@/components/knowledge/draft-backup"
+import {
+  ENTRY_TYPE_CONFIG,
+  EntryTypeIcon,
+  entryDisplayTitle,
+  type EntryDraft,
+  type KnowledgeCategory,
+  type KnowledgeEntry,
+} from "@/components/knowledge/types"
+import { CreateTaskFromTextDialog, type TaskFromTextDraft } from "@/components/tasks/create-task-from-text-dialog"
+import { htmlToPlainText, normalizeRichText } from "@/lib/rich-text"
+import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import useSWR from "swr"
-
-interface KnowledgeCategory {
-  id: string
-  name: string
-  color: string
-  icon?: string | null
-  description?: string | null
-  linkedCategoryId?: string | null
-  parentId?: string | null
-  children?: KnowledgeCategory[]
-  _count: {
-    entries: number
-  }
-}
-
-type KnowledgeEntryType = "ARTICLE" | "SOP" | "HOWTO" | "FAQ" | "CHECKLIST" | "TEMPLATE"
-
-interface KnowledgeStep {
-  id?: string
-  order: number
-  title: string
-  description?: string | null
-  estimatedTime?: number | null
-  assignedRole?: string | null
-}
-
-interface KnowledgeEntry {
-  id: string
-  title: string
-  content: string
-  type: KnowledgeEntryType
-  isImportant: boolean
-  visibility: "PRIVATE" | "TEAM"
-  tags: string[]
-  currentVersion?: number
-  createdAt: string
-  updatedAt: string
-  category: KnowledgeCategory
-  userId: string
-  user?: {
-    id: string
-    name: string | null
-  }
-  steps?: KnowledgeStep[]
-}
 
 interface KnowledgeEntryVersion {
   id: string
@@ -122,27 +72,13 @@ interface KnowledgeEntryVersion {
   }
 }
 
-// Entry type labels and icons
-const ENTRY_TYPE_CONFIG: Record<KnowledgeEntryType, { label: string; description: string }> = {
-  ARTICLE: { label: "Artykuł", description: "Standardowy wpis wiedzy" },
-  SOP: { label: "Procedura (SOP)", description: "Proces z krokami do wykonania" },
-  HOWTO: { label: "Instrukcja", description: "Jak coś zrobić - poradnik" },
-  FAQ: { label: "FAQ", description: "Pytanie i odpowiedź" },
-  CHECKLIST: { label: "Checklist", description: "Lista do odhaczenia" },
-  TEMPLATE: { label: "Szablon", description: "Szablon do kopiowania" },
-}
-
-// Icon component for entry types
-function EntryTypeIcon({ type, className }: { type: KnowledgeEntryType; className?: string }) {
-  const icons: Record<KnowledgeEntryType, React.ReactNode> = {
-    ARTICLE: <FileText className={className} />,
-    SOP: <List className={className} />,
-    HOWTO: <Wrench className={className} />,
-    FAQ: <HelpCircle className={className} />,
-    CHECKLIST: <CheckCircle className={className} />,
-    TEMPLATE: <Layout className={className} />,
-  }
-  return icons[type] || <FileText className={className} />
+// What the entry editor is showing
+type EditorState = {
+  // Changes the key so every opening starts fresh
+  key: number
+  entry: KnowledgeEntry | null
+  preset?: Partial<EntryDraft>
+  restore?: EntryBackup
 }
 
 // Helper to count total entries in category tree
@@ -376,27 +312,16 @@ export default function KnowledgePage() {
   const isLoading = categoriesLoading || entriesLoading
 
   // Dialogs
-  const [showEntryDialog, setShowEntryDialog] = useState(false)
+  const [editorState, setEditorState] = useState<EditorState | null>(null)
+  const [taskDraft, setTaskDraft] = useState<TaskFromTextDraft | null>(null)
+  const [backup, setBackup] = useState<EntryBackup | null>(null)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showVersionsDialog, setShowVersionsDialog] = useState(false)
-  const [editingEntry, setEditingEntry] = useState<KnowledgeEntry | null>(null)
   const [editingCategory, setEditingCategory] = useState<KnowledgeCategory | null>(null)
   const [versionsEntry, setVersionsEntry] = useState<KnowledgeEntry | null>(null)
   const [versions, setVersions] = useState<KnowledgeEntryVersion[]>([])
   const [versionsLoading, setVersionsLoading] = useState(false)
 
-  // Forms
-  const [entryForm, setEntryForm] = useState({
-    title: "",
-    content: "",
-    categoryId: "",
-    isImportant: false,
-    visibility: "PRIVATE" as "PRIVATE" | "TEAM",
-    type: "ARTICLE" as KnowledgeEntryType,
-    tags: [] as string[],
-    steps: [] as KnowledgeStep[],
-  })
-  const [tagInput, setTagInput] = useState("")
   const [categoryForm, setCategoryForm] = useState({
     name: "",
     description: "",
@@ -417,131 +342,50 @@ export default function KnowledgePage() {
     })
   }
 
-  const resetEntryForm = () => {
-    setEntryForm({
-      title: "",
-      content: "",
-      categoryId: "",
-      isImportant: false,
-      visibility: "PRIVATE",
-      type: "ARTICLE",
-      tags: [],
-      steps: [],
-    })
-    setTagInput("")
-  }
+  // Text that couldn't be saved earlier (kept on this device) - read when the editor is closed
+  useEffect(() => {
+    if (editorState) return
+    const kept = readEntryBackup()
+    setBackup(kept && kept.workspace === workspace ? kept : null)
+  }, [editorState, workspace])
 
-  // Entry handlers with optimistic updates
-  const handleCreateEntry = async () => {
-    if (!entryForm.title.trim() || !entryForm.content.trim() || !entryForm.categoryId) return
+  // The list shows the entry as saved, without asking the server again
+  const handleEntrySaved = useCallback(
+    (saved: KnowledgeEntry) => {
+      mutateEntries(
+        (current) => {
+          const list = current || []
+          return list.some((e) => e.id === saved.id)
+            ? list.map((e) => (e.id === saved.id ? saved : e))
+            : [saved, ...list]
+        },
+        { revalidate: false }
+      )
+    },
+    [mutateEntries]
+  )
 
-    const category = allCategories.find(c => c.id === entryForm.categoryId)
-    const tempId = `temp-${Date.now()}`
-    const optimisticEntry: KnowledgeEntry = {
-      id: tempId,
-      title: entryForm.title,
-      content: entryForm.content,
-      type: entryForm.type,
-      isImportant: entryForm.isImportant,
-      visibility: entryForm.visibility,
-      tags: entryForm.tags,
-      steps: entryForm.steps,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      category: category || { id: entryForm.categoryId, name: "", color: "#6366f1", _count: { entries: 0 } },
-      userId: currentUserId || "",
-    }
+  const handleEntryDeleted = useCallback(
+    (id: string) => {
+      mutateEntries((current) => (current || []).filter((e) => e.id !== id), { revalidate: false })
+      mutateCategories()
+    },
+    [mutateEntries, mutateCategories]
+  )
 
-    // Close dialog immediately
-    setShowEntryDialog(false)
-    const formData = { ...entryForm }
-    resetEntryForm()
-
-    // Optimistic update
-    mutateEntries(
-      async (currentEntries) => {
-        const res = await fetch("/api/knowledge/entries", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...formData, workspace }),
-        })
-        if (!res.ok) throw new Error("Failed to create entry")
-        const newEntry = await res.json()
-        toast.success("Wpis dodany")
-        return [newEntry, ...(currentEntries || []).filter(e => e.id !== tempId)]
-      },
-      {
-        optimisticData: (currentEntries) => [optimisticEntry, ...(currentEntries || [])],
-        rollbackOnError: true,
-        revalidate: false,
-      }
-    ).catch(() => {
-      toast.error("Nie udało się dodać wpisu")
-    })
-
-    mutateCategories()
-  }
-
-  const handleUpdateEntry = async () => {
-    if (!editingEntry || !entryForm.title.trim() || !entryForm.content.trim()) return
-
-    const entryId = editingEntry.id
-    const category = allCategories.find(c => c.id === entryForm.categoryId)
-    const updatedEntry: KnowledgeEntry = {
-      ...editingEntry,
-      title: entryForm.title,
-      content: entryForm.content,
-      type: entryForm.type,
-      isImportant: entryForm.isImportant,
-      visibility: entryForm.visibility,
-      tags: entryForm.tags,
-      steps: entryForm.steps,
-      category: category || editingEntry.category,
-      updatedAt: new Date().toISOString(),
-    }
-
-    // Close dialog immediately
-    setEditingEntry(null)
-    setShowEntryDialog(false)
-    const formData = { ...entryForm }
-    resetEntryForm()
-
-    // Optimistic update
-    mutateEntries(
-      async (currentEntries) => {
-        const res = await fetch(`/api/knowledge/entries/${entryId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        })
-        if (!res.ok) throw new Error("Failed to update entry")
-        const serverEntry = await res.json()
-        toast.success("Wpis zaktualizowany")
-        return (currentEntries || []).map(e => e.id === entryId ? serverEntry : e)
-      },
-      {
-        optimisticData: (currentEntries) => (currentEntries || []).map(e => e.id === entryId ? updatedEntry : e),
-        rollbackOnError: true,
-        revalidate: false,
-      }
-    ).catch(() => {
-      toast.error("Nie udało się zaktualizować wpisu")
-    })
-  }
-
-  const handleDeleteEntry = async (id: string) => {
-    if (!confirm("Czy na pewno chcesz usunąć ten wpis?")) return
+  const handleDeleteEntry = async (entry: KnowledgeEntry) => {
+    if (!confirm(`Usunąć wpis „${entryDisplayTitle(entry)}”?`)) return
 
     // Optimistic delete
     mutateEntries(
       async (currentEntries) => {
-        const res = await fetch(`/api/knowledge/entries/${id}`, { method: "DELETE" })
+        const res = await fetch(`/api/knowledge/entries/${entry.id}`, { method: "DELETE" })
         if (!res.ok) throw new Error("Failed to delete entry")
         toast.success("Wpis usunięty")
-        return (currentEntries || []).filter(e => e.id !== id)
+        return (currentEntries || []).filter(e => e.id !== entry.id)
       },
       {
-        optimisticData: (currentEntries) => (currentEntries || []).filter(e => e.id !== id),
+        optimisticData: (currentEntries) => (currentEntries || []).filter(e => e.id !== entry.id),
         rollbackOnError: true,
         revalidate: false,
       }
@@ -580,36 +424,47 @@ export default function KnowledgePage() {
     })
   }
 
-  const handleStartEditEntry = (entry: KnowledgeEntry) => {
-    setEditingEntry(entry)
-    setEntryForm({
-      title: entry.title,
-      content: entry.content,
-      categoryId: entry.category.id,
-      isImportant: entry.isImportant,
-      visibility: entry.visibility || "PRIVATE",
-      type: entry.type || "ARTICLE",
-      tags: entry.tags || [],
-      steps: entry.steps || [],
-    })
-    setTagInput("")
-    setShowEntryDialog(true)
+  const openEditor = (state: Omit<EditorState, "key">) => setEditorState({ ...state, key: Date.now() })
+
+  const openEntry = (entry: KnowledgeEntry) => openEditor({ entry })
+
+  const openNewEntry = () => {
+    // A category is needed - the one shown, otherwise the first
+    const categoryId = selectedCategory || allCategories[0]?.id
+    if (!categoryId) {
+      toast.info("Najpierw dodaj kategorię - wpisy są w nich układane")
+      return
+    }
+    openEditor({ entry: null, preset: { categoryId } })
   }
 
-  const openNewEntryDialog = (categoryId?: string, type?: KnowledgeEntryType) => {
-    setEditingEntry(null)
-    setEntryForm({
-      title: "",
-      content: "",
-      categoryId: categoryId || allCategories[0]?.id || "",
-      isImportant: false,
-      visibility: "PRIVATE",
-      type: type || "ARTICLE",
-      tags: [],
-      steps: [],
+  // Whole entry as a task (with the steps of a procedure as a checklist)
+  const createTaskFromEntry = (entry: KnowledgeEntry) => {
+    setTaskDraft({
+      source: { kind: "knowledge", id: entry.id },
+      title: entryDisplayTitle(entry).slice(0, 200),
+      description: entryTaskDescription({ content: entry.content, steps: entry.steps || [] }),
+      descriptionLabel: entry.steps?.length
+        ? "Skopiuj treść i kroki (jako checklistę) do opisu zadania"
+        : "Skopiuj treść wpisu do opisu zadania",
+      range: null,
     })
-    setTagInput("")
-    setShowEntryDialog(true)
+  }
+
+  const restoreBackup = (kept: EntryBackup) => {
+    const entry = kept.entryId ? allEntries.find((e) => e.id === kept.entryId) ?? null : null
+    if (kept.entryId && !entry) {
+      // The entry is gone (deleted elsewhere) - the text goes into a new one
+      openEditor({ entry: null, restore: { ...kept, entryId: null } })
+      return
+    }
+    openEditor({ entry, restore: kept })
+  }
+
+  const discardBackup = () => {
+    if (!confirm("Odrzucić niezapisany tekst? Nie da się go potem przywrócić.")) return
+    clearEntryBackup()
+    setBackup(null)
   }
 
   // Version history handlers
@@ -662,22 +517,19 @@ export default function KnowledgePage() {
     }
   }
 
-  // Create new entry from template
+  // New entry made from a template - created only when something is changed
   const createFromTemplate = (template: KnowledgeEntry) => {
-    setEditingEntry(null)
-    setEntryForm({
-      title: `${template.title} (kopia)`,
-      content: template.content,
-      categoryId: template.category.id,
-      isImportant: false,
-      visibility: "PRIVATE",
-      type: "ARTICLE", // New entry is ARTICLE, not TEMPLATE
-      tags: template.tags || [],
-      steps: template.steps?.map(s => ({ ...s, id: undefined })) || [],
+    openEditor({
+      entry: null,
+      preset: {
+        title: `${template.title} (kopia)`,
+        content: template.content,
+        categoryId: template.category.id,
+        type: "ARTICLE",
+        tags: template.tags || [],
+        steps: template.steps?.map((step) => ({ ...step, id: undefined })) || [],
+      },
     })
-    setTagInput("")
-    setShowEntryDialog(true)
-    toast.info("Tworzenie wpisu z szablonu - dostosuj i zapisz")
   }
 
   // Category handlers
@@ -836,6 +688,26 @@ export default function KnowledgePage() {
     return getBreadcrumbs(selectedCategory, [...strategicCategories, ...customCategories])
   }, [selectedCategory, strategicCategories, customCategories])
 
+  // A kept text that was saved after all (e.g. sent when the page was closed) needs no banner
+  const backupIsSaved = useMemo(() => {
+    if (!backup) return false
+    const saved = allEntries.find((e) => e.id === (backup.entryId ?? backup.clientId))
+    if (!saved) return false
+    const same =
+      saved.title === backup.draft.title.trim() &&
+      saved.content === (normalizeRichText(backup.draft.content) ?? "")
+    return same || saved.updatedAt >= backup.savedAt
+  }, [backup, allEntries])
+
+  useEffect(() => {
+    if (backup && backupIsSaved) {
+      clearEntryBackup(backup.entryId ?? backup.clientId)
+      setBackup(null)
+    }
+  }, [backup, backupIsSaved])
+
+  const visibleBackup = backup && !backupIsSaved && !entriesLoading ? backup : null
+
   if (isLoading) {
     return (
       <div className="space-y-4 md:space-y-6 animate-fade-in">
@@ -896,7 +768,7 @@ export default function KnowledgePage() {
             <FolderPlus className="h-4 w-4 mr-2" />
             Nowa kategoria
           </Button>
-          <Button onClick={() => openNewEntryDialog()} disabled={allCategories.length === 0}>
+          <Button onClick={openNewEntry} disabled={allCategories.length === 0}>
             <Plus className="h-4 w-4 mr-2" />
             Nowy wpis
           </Button>
@@ -1051,6 +923,29 @@ export default function KnowledgePage() {
             </div>
           )}
 
+          {visibleBackup && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+              <CloudOff className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">
+                  Niezapisany tekst{" "}
+                  {visibleBackup.draft.title.trim() ? `„${visibleBackup.draft.title.trim()}”` : "wpisu"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Nie udało się go wysłać - został na tym urządzeniu. Otwórz, a zapisze się sam.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => restoreBackup(visibleBackup)}>
+                  Przywróć
+                </Button>
+                <Button size="sm" variant="ghost" onClick={discardBackup}>
+                  Odrzuć
+                </Button>
+              </div>
+            </div>
+          )}
+
           {entries.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -1062,7 +957,7 @@ export default function KnowledgePage() {
                     : "Dodaj pierwszy wpis do bazy wiedzy"}
                 </p>
                 {!searchQuery && allCategories.length > 0 && (
-                  <Button onClick={() => openNewEntryDialog(selectedCategory || undefined)}>
+                  <Button onClick={openNewEntry}>
                     <Plus className="h-4 w-4 mr-2" />
                     Dodaj wpis
                   </Button>
@@ -1073,21 +968,39 @@ export default function KnowledgePage() {
             entries.map((entry) => {
               const isOwner = entry.userId === currentUserId
               const entryType = entry.type || "ARTICLE"
+              const preview = htmlToPlainText(entry.content)
+              const isLongPreview = preview.length > 420 || preview.split("\n").length > 8
+              const stepCount = entry.steps?.length ?? 0
               return (
-              <Card key={entry.id} className={entry.isImportant ? "border-yellow-500/50" : ""}>
+              <Card
+                key={entry.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openEntry(entry)}
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault()
+                    openEntry(entry)
+                  }
+                }}
+                className={cn(
+                  "cursor-pointer transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  entry.isImportant && "border-yellow-500/50"
+                )}
+              >
                 <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      {entry.isImportant && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
-                      <EntryTypeIcon type={entryType} className="h-4 w-4 text-muted-foreground" />
-                      <CardTitle className="text-lg">{entry.title}</CardTitle>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {entry.isImportant && <Star className="h-4 w-4 shrink-0 text-yellow-500 fill-yellow-500" />}
+                      <EntryTypeIcon type={entryType} className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <CardTitle className="truncate text-lg">{entryDisplayTitle(entry)}</CardTitle>
                       {entryType !== "ARTICLE" && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="shrink-0 text-xs">
                           {ENTRY_TYPE_CONFIG[entryType].label}
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       {/* Use as template button for TEMPLATE type entries */}
                       {entryType === "TEMPLATE" && (
                         <Button
@@ -1101,6 +1014,16 @@ export default function KnowledgePage() {
                           Użyj
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-xs"
+                        onClick={() => createTaskFromEntry(entry)}
+                        title="Zrób zadanie z tego wpisu (trafi do harmonogramu)"
+                      >
+                        <ListPlus className="h-4 w-4" />
+                        <span className="hidden sm:inline">Zadanie</span>
+                      </Button>
                       {isOwner && (
                         <>
                           <Button
@@ -1115,7 +1038,7 @@ export default function KnowledgePage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7"
+                            className="hidden h-7 w-7 sm:inline-flex"
                             onClick={() => handleShowVersions(entry)}
                             title="Historia wersji"
                           >
@@ -1125,7 +1048,8 @@ export default function KnowledgePage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => handleStartEditEntry(entry)}
+                            onClick={() => openEntry(entry)}
+                            title="Edytuj"
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -1133,7 +1057,8 @@ export default function KnowledgePage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => handleDeleteEntry(entry.id)}
+                            onClick={() => handleDeleteEntry(entry)}
+                            title="Usuń"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -1143,63 +1068,13 @@ export default function KnowledgePage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm text-muted-foreground mb-3">
-                    <RichContent content={entry.content} />
-                  </div>
-
-                  {/* Show steps for SOP entries */}
-                  {entry.steps && entry.steps.length > 0 && (
-                    <div className="mb-3 p-3 bg-muted/30 rounded-lg">
-                      <p className="text-xs font-medium text-muted-foreground mb-2">
-                        Kroki procedury ({entry.steps.length})
-                      </p>
-                      <div className="space-y-2">
-                        {entry.steps.map((step, index) => (
-                          <Collapsible key={step.id || index}>
-                            <div className="border rounded-lg bg-background">
-                              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-muted/50 transition-colors text-left">
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="font-bold text-primary">{index + 1}.</span>
-                                  <span className="font-medium">{step.title}</span>
-                                  {step.estimatedTime && (
-                                    <span className="text-xs text-muted-foreground">
-                                      ~{step.estimatedTime} min
-                                    </span>
-                                  )}
-                                  {step.assignedRole && (
-                                    <Badge variant="outline" className="text-xs">
-                                      {step.assignedRole}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
-                              </CollapsibleTrigger>
-                              {step.description && (
-                                <CollapsibleContent>
-                                  <div className="px-3 pb-3 pt-0 border-t">
-                                    <div className="pt-3 text-sm text-muted-foreground whitespace-pre-wrap">
-                                      {step.description}
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="mt-2 h-7 text-xs"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        navigator.clipboard.writeText(step.description || "")
-                                        toast.success("Skopiowano do schowka")
-                                      }}
-                                    >
-                                      <Copy className="h-3 w-3 mr-1" />
-                                      Kopiuj instrukcję
-                                    </Button>
-                                  </div>
-                                </CollapsibleContent>
-                              )}
-                            </div>
-                          </Collapsible>
-                        ))}
-                      </div>
+                  {preview && (
+                    // Formatted like in the editor, cut after a few lines - the whole text is one click away
+                    <div className={cn("relative mb-3 max-h-48 overflow-hidden", isLongPreview && "pb-1")}>
+                      <RichTextView value={entry.content} className="text-sm text-muted-foreground" />
+                      {isLongPreview && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent" />
+                      )}
                     </div>
                   )}
 
@@ -1211,10 +1086,17 @@ export default function KnowledgePage() {
                       {entry.category.name}
                     </Badge>
 
+                    {stepCount > 0 && (
+                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                        <ListOrdered className="h-3 w-3" />
+                        {stepCount} {stepCount === 1 ? "krok" : stepCount < 5 ? "kroki" : "kroków"}
+                      </Badge>
+                    )}
+
                     {/* Tags */}
                     {entry.tags && entry.tags.length > 0 && entry.tags.map((tag) => (
                       <Badge key={tag} variant="secondary" className="text-xs">
-                        {tag}
+                        #{tag}
                       </Badge>
                     ))}
 
@@ -1246,271 +1128,23 @@ export default function KnowledgePage() {
         </div>
       </div>
 
-      {/* Entry Dialog */}
-      <Dialog open={showEntryDialog} onOpenChange={setShowEntryDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingEntry ? "Edytuj wpis" : "Nowy wpis"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            {/* Type selector */}
-            <div>
-              <Label>Typ wpisu</Label>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                {(Object.keys(ENTRY_TYPE_CONFIG) as KnowledgeEntryType[]).map((type) => (
-                  <Button
-                    key={type}
-                    type="button"
-                    variant={entryForm.type === type ? "default" : "outline"}
-                    size="sm"
-                    className="flex items-center gap-2 justify-start"
-                    onClick={() => setEntryForm({ ...entryForm, type })}
-                  >
-                    <EntryTypeIcon type={type} className="h-4 w-4" />
-                    {ENTRY_TYPE_CONFIG[type].label}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {ENTRY_TYPE_CONFIG[entryForm.type].description}
-              </p>
-            </div>
+      {editorState && (
+        <KnowledgeEntryEditor
+          key={editorState.key}
+          entry={editorState.entry}
+          preset={editorState.preset}
+          restore={editorState.restore}
+          readOnly={!!editorState.entry && editorState.entry.userId !== currentUserId}
+          categories={flatCats}
+          workspace={workspace}
+          onSaved={handleEntrySaved}
+          onDeleted={handleEntryDeleted}
+          onClose={() => setEditorState(null)}
+          onShowHistory={handleShowVersions}
+        />
+      )}
 
-            <div>
-              <Label>Tytuł</Label>
-              <Input
-                value={entryForm.title}
-                onChange={(e) => setEntryForm({ ...entryForm, title: e.target.value })}
-                placeholder="np. Procedura obsługi reklamacji"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Kategoria</Label>
-                <Select
-                  value={entryForm.categoryId}
-                  onValueChange={(v) => setEntryForm({ ...entryForm, categoryId: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Wybierz kategorię" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {flatCats.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                          {cat.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Tags input */}
-              <div>
-                <Label>Tagi</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && tagInput.trim()) {
-                        e.preventDefault()
-                        if (!entryForm.tags.includes(tagInput.trim())) {
-                          setEntryForm({ ...entryForm, tags: [...entryForm.tags, tagInput.trim()] })
-                        }
-                        setTagInput("")
-                      }
-                    }}
-                    placeholder="Dodaj tag (Enter)"
-                  />
-                </div>
-                {entryForm.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {entryForm.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">
-                        {tag}
-                        <button
-                          onClick={() => setEntryForm({
-                            ...entryForm,
-                            tags: entryForm.tags.filter((t) => t !== tag),
-                          })}
-                          className="ml-1 hover:text-destructive"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <Label>Treść</Label>
-              <RichEditor
-                content={entryForm.content}
-                onChange={(html) => setEntryForm({ ...entryForm, content: html })}
-                placeholder={entryForm.type === "FAQ" ? "Odpowiedź na pytanie..." : "Opisz szczegółowo..."}
-              />
-            </div>
-
-            {/* Steps editor for SOP type */}
-            {entryForm.type === "SOP" && (
-              <div>
-                <Label>Kroki procedury</Label>
-                <div className="space-y-2 mt-2">
-                  {entryForm.steps.map((step, index) => (
-                    <div key={index} className="flex items-start gap-2 p-3 border rounded-lg bg-muted/30">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <GripVertical className="h-4 w-4" />
-                        <span className="font-bold">{index + 1}.</span>
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <Input
-                          value={step.title}
-                          onChange={(e) => {
-                            const newSteps = [...entryForm.steps]
-                            newSteps[index] = { ...newSteps[index], title: e.target.value }
-                            setEntryForm({ ...entryForm, steps: newSteps })
-                          }}
-                          placeholder="Nazwa kroku"
-                          className="font-medium"
-                        />
-                        <Textarea
-                          value={step.description || ""}
-                          onChange={(e) => {
-                            const newSteps = [...entryForm.steps]
-                            newSteps[index] = { ...newSteps[index], description: e.target.value }
-                            setEntryForm({ ...entryForm, steps: newSteps })
-                          }}
-                          placeholder="Opis kroku (opcjonalnie)"
-                          rows={2}
-                        />
-                        <div className="flex gap-2">
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              value={step.estimatedTime || ""}
-                              onChange={(e) => {
-                                const newSteps = [...entryForm.steps]
-                                newSteps[index] = { ...newSteps[index], estimatedTime: parseInt(e.target.value) || null }
-                                setEntryForm({ ...entryForm, steps: newSteps })
-                              }}
-                              placeholder="min"
-                              className="w-20 h-8"
-                            />
-                          </div>
-                          <Input
-                            value={step.assignedRole || ""}
-                            onChange={(e) => {
-                              const newSteps = [...entryForm.steps]
-                              newSteps[index] = { ...newSteps[index], assignedRole: e.target.value }
-                              setEntryForm({ ...entryForm, steps: newSteps })
-                            }}
-                            placeholder="Odpowiedzialny (np. HR)"
-                            className="h-8"
-                          />
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          setEntryForm({
-                            ...entryForm,
-                            steps: entryForm.steps.filter((_, i) => i !== index),
-                          })
-                        }}
-                      >
-                        <X className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEntryForm({
-                        ...entryForm,
-                        steps: [
-                          ...entryForm.steps,
-                          { order: entryForm.steps.length, title: "", description: null, estimatedTime: null, assignedRole: null },
-                        ],
-                      })
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Dodaj krok
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isImportant"
-                  checked={entryForm.isImportant}
-                  onChange={(e) => setEntryForm({ ...entryForm, isImportant: e.target.checked })}
-                  className="rounded"
-                />
-                <Label htmlFor="isImportant" className="cursor-pointer">
-                  Oznacz jako ważne
-                </Label>
-              </div>
-            </div>
-
-            <div>
-              <Label>Widoczność</Label>
-              <div className="flex gap-2 mt-2">
-                <Button
-                  type="button"
-                  variant={entryForm.visibility === "PRIVATE" ? "default" : "outline"}
-                  size="sm"
-                  className="flex items-center gap-2"
-                  onClick={() => setEntryForm({ ...entryForm, visibility: "PRIVATE" })}
-                >
-                  <Lock className="h-4 w-4" />
-                  Tylko ja
-                </Button>
-                <Button
-                  type="button"
-                  variant={entryForm.visibility === "TEAM" ? "default" : "outline"}
-                  size="sm"
-                  className="flex items-center gap-2"
-                  onClick={() => setEntryForm({ ...entryForm, visibility: "TEAM" })}
-                >
-                  <Users className="h-4 w-4" />
-                  Udostępnij zespołowi
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {entryForm.visibility === "TEAM"
-                  ? "Członkowie zespołu z tą samą kategorią zobaczą ten wpis"
-                  : "Tylko Ty możesz zobaczyć ten wpis"}
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEntryDialog(false)}>
-              Anuluj
-            </Button>
-            <Button
-              onClick={editingEntry ? handleUpdateEntry : handleCreateEntry}
-              disabled={!entryForm.title.trim() || !entryForm.content.trim() || !entryForm.categoryId}
-            >
-              {editingEntry ? "Zapisz zmiany" : "Dodaj wpis"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateTaskFromTextDialog draft={taskDraft} onClose={() => setTaskDraft(null)} />
 
       {/* Category Dialog */}
       <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
@@ -1646,9 +1280,9 @@ export default function KnowledgePage() {
                         </span>
                       </div>
                       <h4 className="font-medium">{version.title}</h4>
-                      <div className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        <RichContent content={version.content} />
-                      </div>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-3 whitespace-pre-line">
+                        {htmlToPlainText(version.content)}
+                      </p>
                       {version.tags && version.tags.length > 0 && (
                         <div className="flex gap-1 mt-2">
                           {version.tags.map((tag) => (

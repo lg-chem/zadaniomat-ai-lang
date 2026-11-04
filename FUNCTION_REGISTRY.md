@@ -628,6 +628,14 @@ export const swrConfig: SWRConfiguration = {
 | `/api/tasks/refs?ids=a,b` | GET | Status zadań podlinkowanych w tekście (tylko własne/przypisane; brak = usunięte) |
 | `/api/tasks/notes?workspace&q` | GET | Zadania z opisem, ostatnio pisane pierwsze (kopie opisów zadań cyklicznych raz) |
 
+### Knowledge (Baza wiedzy)
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/api/knowledge/entries?workspace&search&semantic` | GET/POST | Wpisy (własne + udostępnione zespołowi) / nowy wpis (opcjonalnie `id` z urządzenia - ponowne wysłanie aktualizuje zamiast tworzyć kopię; tytuł albo treść wystarczy; `autosave: true` - indeks AI odświeżany na koniec pisania) |
+| `/api/knowledge/entries/[id]` | GET/PATCH/DELETE | Wpis / zmiana (`autosave`, `snapshot: false` - ta sama sesja pisania, bez nowej wersji; `reindex: true` - odśwież indeks AI) / usunięcie |
+| `/api/knowledge/entries/[id]/tasks` | GET/POST | Zadania z wpisu (`Task.metadata.knowledgeEntryId`) / nowe zadanie z wpisu, fragmentu lub kroku procedury |
+| `/api/knowledge/entries/[id]/versions` | GET/POST | Historia wersji / przywrócenie wersji |
+
 ### Calendar events
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
@@ -737,6 +745,8 @@ export const swrConfig: SWRConfiguration = {
 - `src/components/editor/task-ref.ts` - znacznik `taskRef` (`<span data-task-id>`): w HTML tylko id zadania, status czytany na żywo (kółko przed tekstem, przekreślenie po zrobieniu); `task-ref-text.ts` - `textForTask`, `addTaskRef`, `removeTaskRef` (bez ładowania edytora)
 - `src/components/editor/task-refs-layer.tsx` - `TaskRefsLayer`: pobiera statusy (`/api/tasks/refs`, odświeżane z kluczami `/api/tasks*`), karta po kliknięciu kółka (Gotowe/Przywróć, Otwórz, Odłącz), przycisk „Zrób zadanie” pod zaznaczeniem. Jest w `DescriptionField`, `DocumentEditorDialog` i `RichTextView`; „Zadanie” w pasku edytora włącza `taskSource` (notatki i opisy zadań przez `EditableDescription`)
 - Harmonogram otwiera zadanie z linku `/schedule?date=…&task=id` (rozwija i przewija do niego)
+- `src/components/knowledge/` - Baza wiedzy: `KnowledgeEntryEditor` (wpis na osobnej stronie jak notatka: kategoria, typ, widoczność, tagi, `DescriptionField`, kroki SOP, „Utwórz zadanie” z wpisu/zaznaczenia/kroku, zadania z wpisu), `useEntryAutosave` (autozapis po kolei: pierwszy tekst tworzy wpis, ustawienia od razu, ponawianie, jedna wersja na sesję pisania), `draft-backup` (niewysłany tekst zostaje w `localStorage`, pasek „Przywróć” nad listą)
+- `src/components/editor/nested-lists.ts` - `NestedLists`: podpunkty w listach - `- `, `a. `, `i. `, `1. ` na początku punktu (albo po Shift+Enter) robią podlistę pod punktem wyżej; zagnieżdżone numerowanie 1. → a. → i. (CSS `.rich-text`); `list-style.ts` - wybór numeracji (1/a/i) w pełnym pasku; w paskach przyciski wcięcia (Tab / Shift+Tab)
 - `src/components/calendar/` - kalendarz: `TimeGrid` (dzień/tydzień: przeciąganie po siatce = nowe wydarzenie, przesuwanie i zmiana długości wydarzeń i zadań, bloki w tle, linia „teraz”), `MonthView` (przeciąganie między dniami), `EventDialog` (Wydarzenie / Zadanie, powtarzanie, kolor, opis), `ItemPreviewDialog`, `useScopePrompt` (to / to i następne / wszystkie), `DayEventsCard` (wydarzenia dnia w Harmonogramie)
 
 ---
@@ -862,6 +872,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-11-04 | Baza wiedzy: edytor jak w notatkach z autozapisem i kopią na urządzeniu (`components/knowledge`, `lib/knowledge`), zadania z wpisów (`/api/knowledge/entries/[id]/tasks`, `TaskTextSource` `knowledge`); naprawa zapisu wpisów (API wołało funkcję z pliku klienckiego); podpunkty w listach edytora (`NestedLists`); usunięto `ui/rich-editor` | Claude |
 | 2026-11-02 | Notatki na telefonie: edytor na całym ekranie z paskiem nad klawiaturą, „wstecz” zamyka notatkę, natychmiastowe tworzenie, szybka notatka z Enter = nowa linia, udostępnianie z innych aplikacji, `navigator.storage.persist` | Claude |
 | 2026-11-02 | Notatki offline w PWA (`lib/note-outbox`, kolejka w IndexedDB, Background Sync w `sw.js`, `POST /api/notes` z `id`), własna kolejność zakładek menu (`useNavOrderStore`, `NavOrderEditor`, model `NavLayout`, `/api/user/nav-order`) | Claude |
 | 2026-10-02 | Zadanie z zaznaczonego tekstu notatki / opisu zadania z odnośnikiem w tekście, który odhacza się po zrobieniu zadania (`taskRef`, `TaskRefsLayer`, `useTaskFromText`, `/api/tasks/refs`, `/api/tasks/[id]/from-description`, `lib/task-from-text`) | Claude |

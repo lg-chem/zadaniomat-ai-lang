@@ -2,8 +2,15 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { updateKnowledgeEmbedding } from "@/lib/embeddings"
-import { stripHtml } from "@/components/ui/rich-editor"
+import {
+  entryContent,
+  entryInclude,
+  hasEntryText,
+  ownsKnowledgeCategory,
+  reindexEntry,
+  stepRows,
+  updateEntrySchema,
+} from "@/lib/knowledge"
 
 export async function GET(
   req: Request,
@@ -48,15 +55,20 @@ export async function PATCH(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+    const userId = session.user.id
 
-    const body = await req.json()
-    const { title, content, categoryId, isImportant, visibility, type, tags, steps } = body
+    const parsed = updateEntrySchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Nieprawidłowe dane wpisu" }, { status: 400 })
+    }
+    const { title, content, categoryId, isImportant, visibility, type, tags, steps, autosave, snapshot, reindex } =
+      parsed.data
 
     // Verify entry belongs to user
     const existing = await prisma.knowledgeEntry.findFirst({
       where: {
         id: params.id,
-        userId: session.user.id,
+        userId,
       },
     })
 
@@ -64,83 +76,66 @@ export async function PATCH(
       return NextResponse.json({ error: "Wpis nie znaleziony" }, { status: 404 })
     }
 
-    // Save current version to history if title or content is changing
-    const isContentChange = (title !== undefined && title !== existing.title) ||
-                           (content !== undefined && content !== existing.content)
-
-    if (isContentChange) {
-      await prisma.knowledgeEntryVersion.create({
-        data: {
-          entryId: params.id,
-          version: existing.currentVersion,
-          title: existing.title,
-          content: existing.content,
-          tags: existing.tags,
-          changeType: "updated",
-          changedById: session.user.id,
-        },
-      })
+    if (categoryId !== undefined && categoryId !== existing.categoryId && !(await ownsKnowledgeCategory(userId, categoryId))) {
+      return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    // If steps are provided, delete existing and create new ones
-    if (steps !== undefined) {
-      await prisma.knowledgeStep.deleteMany({
-        where: { entryId: params.id },
-      })
+    const nextContent = content !== undefined ? entryContent(content) : undefined
+    if (!hasEntryText(title ?? existing.title, nextContent ?? existing.content)) {
+      return NextResponse.json({ error: "Wpis musi mieć tytuł albo treść" }, { status: 400 })
+    }
 
-      if (steps.length > 0) {
-        await prisma.knowledgeStep.createMany({
-          data: steps.map((step: { title: string; description?: string; estimatedTime?: number; assignedRole?: string }, index: number) => ({
+    const isContentChange =
+      (title !== undefined && title !== existing.title) || (nextContent !== undefined && nextContent !== existing.content)
+    // While typing, the version from the start of writing is kept - not one per keystroke
+    const saveVersion = isContentChange && snapshot !== false
+
+    const entry = await prisma.$transaction(async (tx) => {
+      if (saveVersion) {
+        await tx.knowledgeEntryVersion.create({
+          data: {
             entryId: params.id,
-            order: index,
-            title: step.title,
-            description: step.description || null,
-            estimatedTime: step.estimatedTime || null,
-            assignedRole: step.assignedRole || null,
-          })),
+            version: existing.currentVersion,
+            title: existing.title,
+            content: existing.content,
+            tags: existing.tags,
+            changeType: "updated",
+            changedById: userId,
+          },
         })
       }
-    }
 
-    const entry = await prisma.knowledgeEntry.update({
-      where: { id: params.id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(content !== undefined && { content }),
-        ...(categoryId !== undefined && { categoryId }),
-        ...(isImportant !== undefined && { isImportant }),
-        ...(visibility !== undefined && { visibility }),
-        ...(type !== undefined && { type }),
-        ...(tags !== undefined && { tags }),
-        // Increment version if content changed
-        ...(isContentChange && { currentVersion: { increment: 1 } }),
-      },
-      include: {
-        category: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
+      // Steps are sent as the whole list
+      if (steps !== undefined) {
+        await tx.knowledgeStep.deleteMany({ where: { entryId: params.id } })
+        const rows = stepRows(steps)
+        if (rows.length > 0) {
+          await tx.knowledgeStep.createMany({ data: rows.map((row) => ({ ...row, entryId: params.id })) })
+        }
+      }
+
+      return tx.knowledgeEntry.update({
+        where: { id: params.id },
+        data: {
+          ...(title !== undefined && { title }),
+          ...(nextContent !== undefined && { content: nextContent }),
+          ...(categoryId !== undefined && { categoryId }),
+          ...(isImportant !== undefined && { isImportant }),
+          ...(visibility !== undefined && { visibility }),
+          ...(type !== undefined && { type }),
+          ...(tags !== undefined && { tags }),
+          ...(saveVersion && { currentVersion: { increment: 1 } }),
         },
-        steps: {
-          orderBy: { order: "asc" },
-        },
-      },
+        include: entryInclude,
+      })
     })
 
-    // Update embedding if title or content changed
-    // Strip HTML for cleaner embeddings
-    if (title !== undefined || content !== undefined) {
-      updateKnowledgeEmbedding(entry.id, `${stripHtml(entry.title)}\n\n${stripHtml(entry.content)}`).catch(err => {
-        console.error("Error updating embedding:", err)
-      })
-    }
+    if (reindex || (isContentChange && !autosave)) reindexEntry(entry)
 
     return NextResponse.json(entry)
   } catch (error) {
     console.error("Error updating knowledge entry:", error)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    return NextResponse.json({ error: "Nie udało się zapisać wpisu" }, { status: 500 })
   }
 }
 

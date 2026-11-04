@@ -46,8 +46,16 @@ export interface TaskNote extends Task {
   updatedAt: string
 }
 
-// Text a task can be made from: a note or another task's description
-export type TaskTextSource = { kind: "note" | "task"; id: string }
+const NOTES_KEY = "/api/notes"
+
+// Text a task can be made from: a note, another task's description or a knowledge entry
+export type TaskTextSource = { kind: "note" | "task" | "knowledge"; id: string }
+
+const TASK_SOURCE_URL: Record<TaskTextSource["kind"], (id: string) => string> = {
+  note: (id) => `${NOTES_KEY}/${id}/tasks`,
+  task: (id) => `/api/tasks/${id}/from-description`,
+  knowledge: (id) => `/api/knowledge/entries/${id}/tasks`,
+}
 
 export interface NoteTaskInput {
   title: string
@@ -58,7 +66,6 @@ export interface NoteTaskInput {
   categoryId?: string | null
 }
 
-const NOTES_KEY = "/api/notes"
 
 export function useNotesWorkspace(): "WORK" | "PRIVATE" {
   const { workspace } = useWorkspaceStore()
@@ -334,8 +341,7 @@ export function useNoteActions() {
 
   const createTaskFromText = useCallback(
     async (source: TaskTextSource, input: NoteTaskInput) => {
-      const url = source.kind === "note" ? `${NOTES_KEY}/${source.id}/tasks` : `/api/tasks/${source.id}/from-description`
-      const res = await fetch(url, {
+      const res = await fetch(TASK_SOURCE_URL[source.kind](source.id), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -343,6 +349,7 @@ export function useNoteActions() {
       if (!res.ok) throw new Error(await readError(res, "Nie udało się utworzyć zadania"))
       const task = (await res.json()) as NoteTask
       if (source.kind === "note") mutate(`${NOTES_KEY}/${source.id}`)
+      if (source.kind === "knowledge") mutate(`/api/knowledge/entries/${source.id}/tasks`)
       mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"))
       return task
     },
