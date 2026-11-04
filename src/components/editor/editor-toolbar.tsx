@@ -24,6 +24,8 @@ import {
   Maximize2,
   LayoutTemplate,
   ListPlus,
+  IndentIncrease,
+  IndentDecrease,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,6 +40,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { DOCUMENT_TEMPLATES } from "./templates"
+import { currentOrderedListStyle, setOrderedListStyle, type OrderedListStyle } from "./list-style"
+
+const ORDERED_STYLES: { id: OrderedListStyle; label: string; sample: string }[] = [
+  { id: "1", label: "Numery", sample: "1. 2. 3." },
+  { id: "a", label: "Litery", sample: "a. b. c." },
+  { id: "i", label: "Rzymskie", sample: "i. ii. iii." },
+]
 
 const TEXT_STYLES = [
   { id: "paragraph", label: "Zwykły tekst", className: "text-sm" },
@@ -90,6 +99,42 @@ function ToolbarButton({
 
 function Divider() {
   return <div className="mx-1 h-5 w-px shrink-0 bg-border" />
+}
+
+// Moves the list item with the cursor in (sub-point of the item above) or out
+function IndentButtons({
+  editor,
+  canSink,
+  canLift,
+  size,
+  iconClassName,
+}: {
+  editor: Editor
+  canSink: boolean
+  canLift: boolean
+  size: ToolbarSize
+  iconClassName: string
+}) {
+  const sink = () => {
+    const chain = editor.chain().focus()
+    if (editor.can().sinkListItem("taskItem")) chain.sinkListItem("taskItem").run()
+    else chain.sinkListItem("listItem").run()
+  }
+  const lift = () => {
+    const chain = editor.chain().focus()
+    if (editor.can().liftListItem("taskItem")) chain.liftListItem("taskItem").run()
+    else chain.liftListItem("listItem").run()
+  }
+  return (
+    <>
+      <ToolbarButton size={size} title="Zmniejsz wcięcie (Shift+Tab)" disabled={!canLift} onClick={lift}>
+        <IndentDecrease className={iconClassName} />
+      </ToolbarButton>
+      <ToolbarButton size={size} title="Podpunkt - wcięcie (Tab)" disabled={!canSink} onClick={sink}>
+        <IndentIncrease className={iconClassName} />
+      </ToolbarButton>
+    </>
+  )
 }
 
 // Task from the selected text, or from the line with the cursor
@@ -225,6 +270,10 @@ export function EditorToolbar({ editor, variant = "full", onExpand, onCreateTask
         codeBlock: e.isActive("codeBlock"),
         link: e.isActive("link"),
         table: e.isActive("table"),
+        inList: e.isActive("listItem") || e.isActive("taskItem"),
+        canSink: e.can().sinkListItem("listItem") || e.can().sinkListItem("taskItem"),
+        canLift: e.can().liftListItem("listItem") || e.can().liftListItem("taskItem"),
+        orderedStyle: e.isActive("orderedList") ? currentOrderedListStyle(e) : null,
         canUndo: e.can().undo(),
         canRedo: e.can().redo(),
       }
@@ -258,6 +307,9 @@ export function EditorToolbar({ editor, variant = "full", onExpand, onCreateTask
         <ToolbarButton size="lg" title="Lista numerowana" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
           <ListOrdered className={icon} />
         </ToolbarButton>
+        {state.inList && (
+          <IndentButtons editor={editor} canSink={state.canSink} canLift={state.canLift} size="lg" iconClassName={icon} />
+        )}
         <ToolbarButton size="lg" title="Nagłówek" active={state.textStyle === "h2"} onClick={() => chain().toggleHeading({ level: 2 }).run()}>
           <Heading2 className={icon} />
         </ToolbarButton>
@@ -314,6 +366,15 @@ export function EditorToolbar({ editor, variant = "full", onExpand, onCreateTask
         <ToolbarButton size="sm" title="Lista z checkboxami" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
           <ListChecks className="h-3.5 w-3.5" />
         </ToolbarButton>
+        {state.inList && (
+          <IndentButtons
+            editor={editor}
+            canSink={state.canSink}
+            canLift={state.canLift}
+            size="sm"
+            iconClassName="h-3.5 w-3.5"
+          />
+        )}
         <LinkButton editor={editor} active={state.link} size="sm" />
         {onCreateTask && (
           <>
@@ -393,9 +454,34 @@ export function EditorToolbar({ editor, variant = "full", onExpand, onCreateTask
       <ToolbarButton title="Lista numerowana" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
         <ListOrdered className="h-4 w-4" />
       </ToolbarButton>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            title="Rodzaj numeracji: 1. 2. 3. / a. b. c. / i. ii. iii."
+            aria-label="Rodzaj numeracji"
+            onMouseDown={(e) => e.preventDefault()}
+            className="-ml-0.5 inline-flex h-8 w-4 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-52" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Numeracja listy</DropdownMenuLabel>
+          {ORDERED_STYLES.map((style) => (
+            <DropdownMenuItem key={style.id} onSelect={() => setOrderedListStyle(editor, style.id)}>
+              <span className={cn("w-20 font-mono text-xs", state.orderedStyle === style.id && "font-semibold text-primary")}>
+                {style.sample}
+              </span>
+              {style.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <ToolbarButton title="Lista z checkboxami" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
         <ListChecks className="h-4 w-4" />
       </ToolbarButton>
+      <IndentButtons editor={editor} canSink={state.canSink} canLift={state.canLift} size="md" iconClassName="h-4 w-4" />
       <Divider />
 
       <ToolbarButton title="Cytat / wyróżnienie" active={state.blockquote} onClick={() => chain().toggleBlockquote().run()}>

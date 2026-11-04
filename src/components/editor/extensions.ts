@@ -5,6 +5,7 @@ import TaskItem from "@tiptap/extension-task-item"
 import Highlight from "@tiptap/extension-highlight"
 import { TableKit } from "@tiptap/extension-table"
 import { TaskRef } from "./task-ref"
+import { NestedLists } from "./nested-lists"
 
 interface EditorExtensionOptions {
   placeholder?: string
@@ -30,5 +31,6 @@ export function createEditorExtensions({ placeholder = "", editable = true }: Ed
     Highlight,
     TableKit.configure({ table: { resizable: false } }),
     TaskRef,
+    NestedLists,
   ]
 }

@@ -278,6 +278,29 @@ html {
 .rich-text ul ul {
   list-style: circle;
 }
+.rich-text ul ul ul {
+  list-style: square;
+}
+/* Sub-points of a numbered list: 1. → a. → i. (unless chosen otherwise) */
+.rich-text ol ol {
+  list-style-type: lower-alpha;
+}
+.rich-text ol ol ol {
+  list-style-type: lower-roman;
+}
+.rich-text ol[type="1"] {
+  list-style-type: decimal;
+}
+.rich-text ol[type="a"] {
+  list-style-type: lower-alpha;
+}
+.rich-text ol[type="i"] {
+  list-style-type: lower-roman;
+}
+.rich-text li > ul,
+.rich-text li > ol {
+  margin-top: 0.15em;
+}
 .rich-text li > p {
   margin: 0;
 }

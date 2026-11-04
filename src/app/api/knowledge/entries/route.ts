@@ -2,8 +2,16 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { updateKnowledgeEmbedding, searchKnowledge } from "@/lib/embeddings"
-import { stripHtml } from "@/components/ui/rich-editor"
+import { searchKnowledge } from "@/lib/embeddings"
+import {
+  createEntrySchema,
+  entryContent,
+  entryInclude,
+  hasEntryText,
+  ownsKnowledgeCategory,
+  reindexEntry,
+  stepRows,
+} from "@/lib/knowledge"
 
 export async function GET(req: Request) {
   try {
@@ -96,15 +104,7 @@ export async function GET(req: Request) {
           where: {
             id: { in: entryIds },
           },
-          include: {
-            category: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
+          include: entryInclude,
         })
 
         // Sort by similarity (maintain order from semantic search)
@@ -174,18 +174,7 @@ export async function GET(req: Request) {
           },
         ],
       },
-      include: {
-        category: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        steps: {
-          orderBy: { order: "asc" },
-        },
-      },
+      include: entryInclude,
       orderBy: [{ isImportant: "desc" }, { updatedAt: "desc" }],
     })
 
@@ -202,76 +191,69 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+    const userId = session.user.id
 
-    const body = await req.json()
-    const { title, content, categoryId, workspace, isImportant, visibility, type, tags, steps } = body
+    const parsed = createEntrySchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Nieprawidłowe dane wpisu" }, { status: 400 })
+    }
+    const input = parsed.data
 
-    if (!title || !content || !categoryId) {
-      return NextResponse.json(
-        { error: "Tytuł, treść i kategoria są wymagane" },
-        { status: 400 }
-      )
+    if (!hasEntryText(input.title, input.content)) {
+      return NextResponse.json({ error: "Wpisz tytuł albo treść" }, { status: 400 })
+    }
+    if (!(await ownsKnowledgeCategory(userId, input.categoryId))) {
+      return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
     }
 
-    // Verify category belongs to user
-    const category = await prisma.knowledgeCategory.findFirst({
-      where: {
-        id: categoryId,
-        userId: session.user.id,
-      },
-    })
+    const fields = {
+      title: input.title ?? "",
+      content: entryContent(input.content),
+      categoryId: input.categoryId,
+      isImportant: input.isImportant ?? false,
+      visibility: input.visibility ?? "PRIVATE",
+      type: input.type ?? "ARTICLE",
+      tags: input.tags ?? [],
+    }
+    const steps = stepRows(input.steps ?? [])
 
-    if (!category) {
-      return NextResponse.json({ error: "Kategoria nie znaleziona" }, { status: 404 })
+    // Sent again (the first answer didn't arrive) - the entry is already there
+    if (input.id) {
+      const existing = await prisma.knowledgeEntry.findUnique({ where: { id: input.id } })
+      if (existing) {
+        if (existing.userId !== userId) {
+          return NextResponse.json({ error: "Nieprawidłowe dane wpisu" }, { status: 400 })
+        }
+        const entry = await prisma.$transaction(async (tx) => {
+          await tx.knowledgeStep.deleteMany({ where: { entryId: existing.id } })
+          return tx.knowledgeEntry.update({
+            where: { id: existing.id },
+            data: { ...fields, ...(steps.length > 0 && { steps: { create: steps } }) },
+            include: entryInclude,
+          })
+        })
+        if (!input.autosave) reindexEntry(entry)
+        return NextResponse.json(entry)
+      }
     }
 
     const entry = await prisma.knowledgeEntry.create({
       data: {
-        title,
-        content,
-        categoryId,
-        workspaceType: workspace || "WORK",
-        userId: session.user.id,
-        isImportant: isImportant || false,
-        visibility: visibility || "PRIVATE",
-        type: type || "ARTICLE",
-        tags: tags || [],
-        // Create steps if provided (for SOP type)
-        ...(steps && steps.length > 0 ? {
-          steps: {
-            create: steps.map((step: { title: string; description?: string; estimatedTime?: number; assignedRole?: string }, index: number) => ({
-              order: index,
-              title: step.title,
-              description: step.description || null,
-              estimatedTime: step.estimatedTime || null,
-              assignedRole: step.assignedRole || null,
-            })),
-          },
-        } : {}),
+        ...(input.id && { id: input.id }),
+        ...fields,
+        workspaceType: input.workspace ?? "WORK",
+        userId,
+        ...(steps.length > 0 && { steps: { create: steps } }),
       },
-      include: {
-        category: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        steps: {
-          orderBy: { order: "asc" },
-        },
-      },
+      include: entryInclude,
     })
 
-    // Generate embedding asynchronously (don't block response)
-    // Strip HTML for cleaner embeddings
-    updateKnowledgeEmbedding(entry.id, `${stripHtml(title)}\n\n${stripHtml(content)}`).catch(err => {
-      console.error("Error generating embedding for new entry:", err)
-    })
+    // While typing the index is refreshed once writing ends
+    if (!input.autosave) reindexEntry(entry)
 
     return NextResponse.json(entry, { status: 201 })
   } catch (error) {
     console.error("Error creating knowledge entry:", error)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    return NextResponse.json({ error: "Nie udało się zapisać wpisu" }, { status: 500 })
   }
 }

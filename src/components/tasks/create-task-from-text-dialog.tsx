@@ -105,7 +105,7 @@ export function CreateTaskFromTextDialog({ draft, onClose, onCreated }: CreateTa
     }
   }
 
-  const fromNote = draft?.source.kind !== "task"
+  const kind = draft?.source.kind ?? "note"
 
   return (
     <Dialog open={!!draft} onOpenChange={(open) => !open && onClose()}>
@@ -113,12 +113,14 @@ export function CreateTaskFromTextDialog({ draft, onClose, onCreated }: CreateTa
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckSquare className="h-5 w-5" />
-            {fromNote ? "Zadanie z notatki" : "Zadanie z opisu"}
+            {kind === "task" ? "Zadanie z opisu" : kind === "knowledge" ? "Zadanie z bazy wiedzy" : "Zadanie z notatki"}
           </DialogTitle>
           <DialogDescription>
             {draft?.range
               ? "Trafi do harmonogramu wybranego dnia. Tekst dostanie odnośnik do zadania i odhaczy się, gdy je zrobisz."
-              : "Trafi do harmonogramu wybranego dnia. Notatka zostaje bez zmian."}
+              : kind === "knowledge"
+                ? "Trafi do harmonogramu wybranego dnia. Wpis zostaje bez zmian i pokaże zadania, które z niego powstały."
+                : "Trafi do harmonogramu wybranego dnia. Notatka zostaje bez zmian."}
           </DialogDescription>
         </DialogHeader>
 
@@ -199,7 +201,7 @@ export function CreateTaskFromTextDialog({ draft, onClose, onCreated }: CreateTa
 
 interface StartOptions {
   // Without a selection: the whole text instead of the line with the cursor
-  whole?: { title: string; description: string | null }
+  whole?: { title: string; description: string | null; descriptionLabel?: string }
 }
 
 // "Make a task" for an editor: from the selection or the line with the cursor.
@@ -232,7 +234,7 @@ export function useTaskFromText(editor: Editor | null, source: TaskTextSource | 
           source: taskSource,
           title: whole.title.slice(0, 200),
           description: whole.description,
-          descriptionLabel: "Skopiuj treść notatki do opisu zadania",
+          descriptionLabel: whole.descriptionLabel ?? "Skopiuj treść notatki do opisu zadania",
           range: null,
         })
         return
