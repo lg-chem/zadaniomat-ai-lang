@@ -279,6 +279,27 @@ export interface QuarterGoal {
   keyResults: QuarterKeyResult[]
   checkIns: QuarterCheckIn[]
   trackedSeconds: number
+  taskCount: number // Tasks linked to the goal itself (not through commitments)
+  completedTaskCount: number
+}
+
+/** Task of a quarter goal or a sprint commitment, as the goals page shows it */
+export interface GoalTaskItem {
+  id: string
+  title: string
+  status: string
+  description: string | null // The task's own note (HTML), also listed in Notatki
+  scheduledDate: string | null // ISO date - the day in Harmonogram
+  scheduledTime: string | null
+  plannedMinutes: number | null
+  goalId: string | null
+  subtasks: { id: string; title: string; isCompleted: boolean; order: number }[]
+  linkedNote: { id: string; title: string } | null // Note from Notatki pinned to the task
+}
+
+/** Day key of a task's day in Harmonogram ("YYYY-MM-DD"), null when it has no day */
+export function taskDayKey(task: { scheduledDate: string | null }): string | null {
+  return task.scheduledDate ? task.scheduledDate.slice(0, 10) : null
 }
 
 export interface SprintCommitment {

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { isValidDay } from "@/lib/calendar"
+import { withLinkedNotes } from "@/lib/goal-tasks"
 
 // Helper function to check if user can access a goal (owner or team admin)
 async function canAccessGoal(goalId: string, userId: string) {
@@ -70,7 +72,8 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     })
 
-    return NextResponse.json(tasks)
+    // linkedNote: the note from Notatki pinned to the task
+    return NextResponse.json(await withLinkedNotes(session.user.id, tasks))
   } catch (error) {
     console.error("Error fetching goal tasks:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
@@ -89,10 +92,14 @@ export async function POST(
     }
 
     const { id: goalId } = await params
-    const { title, description, plannedMinutes } = await req.json()
+    const { title, description, plannedMinutes, scheduledDate } = await req.json()
 
     if (!title?.trim()) {
       return NextResponse.json({ error: "Tytuł jest wymagany" }, { status: 400 })
+    }
+    // Optional day in Harmonogram ("YYYY-MM-DD")
+    if (scheduledDate != null && !isValidDay(scheduledDate)) {
+      return NextResponse.json({ error: "Nieprawidłowa data" }, { status: 400 })
     }
 
     // Verify goal exists and user has access (owner or team admin)
@@ -109,6 +116,7 @@ export async function POST(
         title: title.trim(),
         description: description || null,
         plannedMinutes: plannedMinutes || null,
+        scheduledDate: scheduledDate ? new Date(`${scheduledDate}T00:00:00.000Z`) : null,
         status: "NEW",
         priority: 0,
         userId: goal.userId,
@@ -125,7 +133,7 @@ export async function POST(
       },
     })
 
-    return NextResponse.json(task, { status: 201 })
+    return NextResponse.json({ ...task, linkedNote: null }, { status: 201 })
   } catch (error) {
     console.error("Error creating goal task:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

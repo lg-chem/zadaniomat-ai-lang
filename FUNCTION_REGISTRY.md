@@ -152,6 +152,25 @@ const { habits, isLoading, isError, mutate } = useHabits()
 const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 2026, quarter: 4 })
 ```
 
+**Zmiany bez czekania (`QuarterCacheProvider` / `useQuarterCache`, `src/components/quarter/quarter-cache.tsx`):**
+- Ekran Cele owija kwartał w `QuarterCacheProvider`; kliknięcia (odhaczenie zobowiązania, celu, wartość KR, usunięcie celu) zmieniają kwartał na ekranie od razu (`save(zmiana, zapis)`), zapis idzie w tle
+- Kwartał jest przeładowywany dopiero, gdy nic się już nie zapisuje (`refreshWhenIdle`); błąd = komunikat + przeładowanie przywraca stan z serwera
+- Zmiany: `updateGoal`, `removeGoal`, `updateCommitment`
+
+---
+
+### `useGoalTasks` / `useGoalTaskActions`
+**Lokalizacja:** `src/hooks/use-goal-tasks.ts`
+
+**Logika:**
+- Zadania celu kwartalnego (`goalTasksKey` → `/api/goals/[id]/tasks`) albo wszystkich zobowiązań sprintu naraz (`sprintTasksKey` → `/api/sprints/[id]/tasks`) w formacie `GoalTaskItem`
+- Akcje (`add`, `toggle`, `rename`, `schedule`, `linkNote`, `remove`, `saveNote`, `setLocal`) zmieniają listę od razu i zapisują w tle; nowe zadanie ma tymczasowe id (`trackTaskCreate`) - można je od razu odhaczyć/zaplanować
+- Po zapisie: odświeżenie list Harmonogramu i Notatek (`isTasksKey`) i liczników w kwartale - gdy nic się już nie zapisuje; błąd = komunikat + przeładowanie listy
+
+**Gdzie użyte:**
+- `src/components/quarter/sprint-panel.tsx` (zadania zobowiązań), `src/components/quarter/goal-card.tsx` (sekcja „Zadania” celu)
+- Widok: `GoalTaskList` (`goal-task-list.tsx`) - odhaczenie, dzień w Harmonogramie (`TaskDayPicker`: Dziś / Jutro / poniedziałek / kalendarz / usuń dzień / otwórz w harmonogramie), ikona notatki; `GoalTaskDialog` (`goal-task-dialog.tsx`) - nazwa, notatka zadania (opis, widać ją w Notatkach „Z zadań”), podpięta notatka z Notatek, lista kontrolna, usunięcie
+
 ---
 
 ### `useChallenges` / `useGroupChallenges`
@@ -482,9 +501,35 @@ export const swrConfig: SWRConfiguration = {
 }
 ```
 
+- Middleware `afterHydration`: zapytania startują po przejęciu strony od HTML z serwera - w pierwszym renderze workspace to jeszcze domyślne „FRIENDS”, więc wcześniej każda lista szła najpierw z błędnym workspace (seria błędów 500 przy każdym otwarciu aplikacji)
+
 **Gdzie użyte:**
 - Provider SWR w głównym layout
 - Wszystkie hooki SWR
+
+---
+
+### `pending-writes`
+**Lokalizacja:** `src/lib/pending-writes.ts`
+
+**Logika:**
+- `trackWrite(zapis)` - zapis zmiany już widocznej na ekranie; `refreshWhenIdle(id, odśwież)` - odświeżenie po tym, jak skończą się wszystkie trwające zapisy (to samo `id` raz) - przeładowanie w trakcie przywracałoby na chwilę stan sprzed kliknięcia
+- `jsonRequest(url, method, body)` - fetch JSON, błąd z komunikatem z API (`quarterRequest` to ten sam helper)
+
+**Gdzie użyte:**
+- `useQuarterCache`, `useGoalTaskActions`
+
+---
+
+### `LiveTaskTime` / `LiveTotalMinutes` / `useLiveWorkedSeconds`
+**Lokalizacja:** `src/components/timer/live-time.tsx`
+
+**Logika:**
+- Czas pracy zadania razem z trwającą sesją timera; co sekundę przerysowuje się tylko zadanie z timerem (pozostałe dostają te same wartości ze store)
+- Harmonogram nie subskrybuje już całego `useTimerStore` - wcześniej cała strona renderowała się co sekundę, gdy chodził timer
+
+**Gdzie użyte:**
+- `src/app/(dashboard)/schedule/page.tsx` (kolumna „Real”, suma „Rzeczywisty czas”)
 
 ---
 
@@ -540,6 +585,15 @@ export const swrConfig: SWRConfiguration = {
 
 ---
 
+### `goal-tasks`
+**Lokalizacja:** `src/lib/goal-tasks.ts` (tylko serwer)
+
+**Logika:**
+- `goalTaskSelect` - pola zadania celu dla ekranu Cele; `withLinkedNotes` - zamienia `metadata` na `linkedNote { id, title }` (tylko własne notatki)
+- Podpięta notatka = `Task.metadata.noteId` (to samo powiązanie co „zadanie z notatki”, więc notatka pokazuje zadanie w „Zadania z tej notatki”)
+
+---
+
 ### `quarter-data` / `quarter-schemas`
 **Lokalizacja:** `src/lib/quarter-data.ts`, `src/lib/quarter-schemas.ts` (tylko serwer)
 
@@ -585,6 +639,7 @@ export const swrConfig: SWRConfiguration = {
 - Opisy z edytora zapisywane jako HTML; stare opisy to zwykły tekst
 - `toEditorHtml` - zwykły tekst → HTML (listy `-`, `1.`, `[ ]`, nagłówki `#`, puste linie)
 - `htmlToPlainText` - podglądy (`line-clamp`), AI; `normalizeRichText` - pusty edytor = `null`
+- `noteTitleFrom(title, content)` - tytuł notatki albo pierwsza linijka tekstu (klient + serwer)
 
 **Gdzie użyte:**
 - Edytor opisu, podglądy opisów (Stos zadań, TaskItem, Cykliczne, Harmonogram), API wydarzeń
@@ -611,7 +666,7 @@ export const swrConfig: SWRConfiguration = {
 | `/api/tasks` | GET | Lista zadań (filtry: date, from/to lub startDate/endDate, workspace) |
 | `/api/tasks` | POST | Tworzenie zadania |
 | `/api/tasks/[id]` | GET | Szczegóły zadania |
-| `/api/tasks/[id]` | PATCH | Aktualizacja zadania |
+| `/api/tasks/[id]` | PATCH | Aktualizacja zadania (`noteId` - podpięcie notatki z Notatek, `null` odpina; zapisywane w `metadata.noteId`) |
 | `/api/tasks/[id]` | DELETE | Usunięcie zadania |
 | `/api/tasks/[id]/time` | POST | Dodanie czasu pracy |
 | `/api/tasks/[id]/subtasks` | GET/POST | Podzadania |
@@ -650,7 +705,7 @@ export const swrConfig: SWRConfiguration = {
 |----------|--------|------|
 | `/api/goals` | GET/POST | Lista/tworzenie celów (w kwartale tworzy cel kwartalny z KR lub zobowiązanie sprintu) |
 | `/api/goals/[id]` | GET/PATCH/DELETE | CRUD celu (używane też do odhaczania zobowiązań) |
-| `/api/goals/[id]/tasks` | GET/POST | Zadania celu / zobowiązania |
+| `/api/goals/[id]/tasks` | GET/POST | Zadania celu / zobowiązania (+ `linkedNote`); POST przyjmuje `scheduledDate` (dzień w Harmonogramie) |
 
 ### Quarters (cele kwartalne, WORK)
 | Endpoint | Metoda | Opis |
@@ -683,6 +738,7 @@ export const swrConfig: SWRConfiguration = {
 | `/api/sprints` | GET/POST | Sprinty |
 | `/api/sprints/active` | GET | Sprint obejmujący dzisiejszą datę (WORK) |
 | `/api/sprints/[id]/plan` | PUT | Plan sprintu: cel sprintu + zobowiązania (lista zastępowana) |
+| `/api/sprints/[id]/tasks` | GET | Zadania wszystkich zobowiązań sprintu jednym zapytaniem (`GoalTaskItem[]`, bez anulowanych) |
 | `/api/sprints/[id]/close` | POST | Zamknięcie sprintu: zrobione / przeniesione / odpuszczone + retro |
 | `/api/periods` | GET/POST | Okresy |
 

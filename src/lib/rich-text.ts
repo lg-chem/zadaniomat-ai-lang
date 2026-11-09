@@ -124,3 +124,10 @@ export function isEmptyRichText(value: string | null | undefined): boolean {
 export function normalizeRichText(value: string | null | undefined): string | null {
   return isEmptyRichText(value) ? null : (value as string)
 }
+
+// Title of a note to show: its own, or the first line of the text
+export function noteTitleFrom(title: string, content: string | null | undefined): string {
+  if (title.trim()) return title
+  const firstLine = htmlToPlainText(content).split("\n").find((line) => line.trim())
+  return firstLine?.replace(/^[•☐☑]\s*/, "").slice(0, 120) || "Bez tytułu"
+}

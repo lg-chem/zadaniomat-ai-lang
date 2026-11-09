@@ -449,6 +449,7 @@ model Task {
   @@index([userId, workspaceType])
   @@index([scheduledDate])
   @@index([sprintId])
+  @@index([goalId]) // Tasks of a quarter goal / sprint commitment (goals page, progress)
   @@index([categoryId])
   @@index([assignedToId])
   @@index([organizationId])
