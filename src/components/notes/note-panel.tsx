@@ -20,7 +20,7 @@ import { EditorToolbar } from "@/components/editor/editor-toolbar"
 import type { SaveStatus } from "@/components/editor/document-editor-dialog"
 import { useTaskFromText } from "@/components/tasks/create-task-from-text-dialog"
 import { useNoteActions, useNoteDetail, type Note } from "@/hooks/use-notes"
-import { htmlToPlainText } from "@/lib/rich-text"
+import { htmlToPlainText, noteTitleFrom } from "@/lib/rich-text"
 import { formatDayShort } from "@/lib/task-recurrence"
 import { cn } from "@/lib/utils"
 
@@ -47,9 +47,7 @@ function combinedStatus(a: SaveStatus, b: SaveStatus): SaveStatus {
 const TITLE_SAVE_DELAY = 800
 
 export function noteDisplayTitle(note: Pick<Note, "title" | "content">): string {
-  if (note.title.trim()) return note.title
-  const firstLine = htmlToPlainText(note.content).split("\n").find((line) => line.trim())
-  return firstLine?.replace(/^[•☐☑]\s*/, "").slice(0, 120) || "Bez tytułu"
+  return noteTitleFrom(note.title, note.content)
 }
 
 // One note: title, text with formatting (saved automatically), tasks made from it

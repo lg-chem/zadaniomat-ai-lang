@@ -1,4 +1,5 @@
-import { SWRConfiguration } from 'swr'
+import { useSyncExternalStore } from 'react'
+import type { Middleware, SWRConfiguration } from 'swr'
 
 // Simple fetcher - let SWR handle caching
 export const fetcher = async (url: string) => {
@@ -9,9 +10,21 @@ export const fetcher = async (url: string) => {
   return res.json()
 }
 
+const subscribeNothing = () => () => {}
+
+// Data is fetched once the page has taken over from the server-rendered HTML.
+// In that first render the stores still show their defaults (the workspace is
+// "FRIENDS" until the saved one is read), so every list was first requested for
+// the wrong workspace - a burst of failing, retried requests on each app start.
+const afterHydration: Middleware = (useSWRNext) => (key, fetcher, config) => {
+  const hydrated = useSyncExternalStore(subscribeNothing, () => true, () => false)
+  return useSWRNext(hydrated ? key : null, fetcher, config)
+}
+
 // Global SWR configuration - optimized for performance
 export const swrConfig: SWRConfiguration = {
   fetcher,
+  use: [afterHydration],
   // Don't revalidate on window focus - prevents unnecessary requests when switching tabs
   revalidateOnFocus: false,
   // Revalidate on reconnect

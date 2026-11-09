@@ -34,6 +34,7 @@ import {
 import { ArchiveSection } from "@/components/quarter/archive-section"
 import { CheckInDialog } from "@/components/quarter/check-in-dialog"
 import { GoalCard } from "@/components/quarter/goal-card"
+import { QuarterCacheProvider } from "@/components/quarter/quarter-cache"
 import { GoalDialog, type GoalPrefill } from "@/components/quarter/goal-dialog"
 import { QuarterReviewDialog } from "@/components/quarter/quarter-review-dialog"
 import { QuarterTimeline } from "@/components/quarter/quarter-timeline"
@@ -267,7 +268,8 @@ export default function GoalsPage() {
       {!quarter ? (
         <PlanQuarter quarterRef={ref} today={today} creating={creating} onCreate={createQuarter} />
       ) : (
-        <>
+        // Clicks on the page show at once and are saved in the background
+        <QuarterCacheProvider quarterRef={ref}>
           {/* Timeline */}
           <div className="space-y-2">
             <QuarterTimeline
@@ -324,7 +326,6 @@ export default function GoalsPage() {
                     index={i}
                     elapsed={elapsed}
                     onEdit={(g) => setGoalDialog({ goal: g })}
-                    onChanged={refresh}
                   />
                 ))}
               </div>
@@ -341,7 +342,6 @@ export default function GoalsPage() {
                 today={today}
                 onPlan={(s) => setPlanSprintId(s.id)}
                 onClose={(s) => setCloseSprintId(s.id)}
-                onChanged={refresh}
               />
             </section>
           )}
@@ -394,7 +394,7 @@ export default function GoalsPage() {
               if (carriedTo) goToQuarter(carriedTo)
             }}
           />
-        </>
+        </QuarterCacheProvider>
       )}
 
       <ArchiveSection

@@ -68,8 +68,11 @@ export function usePrefetchData() {
       preload(`/api/knowledge/categories?workspace=PRIVATE`, fetcher)
     }
 
-    // Prefetch data for both workspaces (shared resources)
-    preload(`/api/knowledge/categories?workspace=${workspace}`, fetcher)
+    // Prefetch data for both workspaces (shared resources) - "Znajomi" has no knowledge base
+    // (the request failed with an error on every page load there)
+    if (workspace === 'WORK') {
+      preload(`/api/knowledge/categories?workspace=WORK`, fetcher)
+    }
 
   }, [workspace])
 }
@@ -78,7 +81,11 @@ export function usePrefetchData() {
  * Prefetch tasks and schedule blocks for adjacent days
  * Call this when user selects a date to preload nearby days
  */
+// Workspaces with their own tasks - "FRIENDS" has none (requests for it fail)
+const hasOwnData = (workspace: string) => workspace === 'WORK' || workspace === 'PRIVATE'
+
 export function prefetchAdjacentDays(centerDate: Date, workspace: string) {
+  if (!hasOwnData(workspace)) return
   const prevDay = format(subDays(centerDate, 1), 'yyyy-MM-dd')
   const nextDay = format(addDays(centerDate, 1), 'yyyy-MM-dd')
 

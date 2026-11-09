@@ -16,15 +16,12 @@ interface TaskTimerProps {
 }
 
 export function TaskTimer({ taskId, taskTitle, plannedMinutes, actualMinutes, actualExtraSeconds, compact = false }: TaskTimerProps) {
-  const {
-    isPaused,
-    taskId: activeTaskId,
-    pauseTimer,
-    resumeTimer,
-  } = useTimerStore()
-  const workedSeconds = useTimerStore(selectWorkedSeconds)
-
-  const isActive = activeTaskId === taskId
+  // Only the timer's own task follows the ticks; the other rows don't re-render every second
+  const isActive = useTimerStore((s) => s.taskId === taskId)
+  const isPaused = useTimerStore((s) => s.isPaused)
+  const pauseTimer = useTimerStore((s) => s.pauseTimer)
+  const resumeTimer = useTimerStore((s) => s.resumeTimer)
+  const workedSeconds = useTimerStore((s) => (s.taskId === taskId ? selectWorkedSeconds(s) : 0))
 
   // Note: Timer tick is handled by FloatingTimer only
 

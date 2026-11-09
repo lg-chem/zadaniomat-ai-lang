@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
+import type { Prisma } from "@prisma/client"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { updateGoalProgressFromTasks } from "@/lib/goal-progress"
@@ -141,9 +142,32 @@ export async function PATCH(
       isRecurring,
       recurrenceRule,
       assignedToId,
+      noteId,
     } = body
 
     const updateData: Record<string, unknown> = {}
+
+    // Pin a note from Notatki to the task (null unpins) - kept in metadata.noteId,
+    // the same link a task made from a note has, so the note lists the task too
+    if (noteId !== undefined) {
+      if (noteId !== null && typeof noteId !== "string") {
+        return NextResponse.json({ error: "Nieprawidłowa notatka" }, { status: 400 })
+      }
+      const metadata: Prisma.JsonObject =
+        existingTask.metadata && typeof existingTask.metadata === "object" && !Array.isArray(existingTask.metadata)
+          ? { ...(existingTask.metadata as Prisma.JsonObject) }
+          : {}
+      if (noteId) {
+        const note = await prisma.note.findFirst({ where: { id: noteId, userId: session.user.id }, select: { id: true } })
+        if (!note) {
+          return NextResponse.json({ error: "Notatka nie znaleziona" }, { status: 404 })
+        }
+        metadata.noteId = note.id
+      } else {
+        delete metadata.noteId
+      }
+      updateData.metadata = metadata
+    }
 
     // Assignees can only update certain fields
     if (isAssignee && !isOwner) {

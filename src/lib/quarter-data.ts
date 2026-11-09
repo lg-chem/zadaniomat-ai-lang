@@ -107,7 +107,7 @@ export async function loadQuarter(userId: string, ref: QuarterRef): Promise<Quar
         checkIns: { orderBy: { weekStart: "asc" } },
         tasks: {
           where: { status: { not: "CANCELLED" } },
-          select: { actualMinutes: true, actualExtraSeconds: true },
+          select: { status: true, actualMinutes: true, actualExtraSeconds: true },
         },
       },
     }),
@@ -172,6 +172,8 @@ export async function loadQuarter(userId: string, ref: QuarterRef): Promise<Quar
         note: c.note,
       })),
       trackedSeconds: trackedSecondsOf(g.tasks) + (commitmentSecondsByGoal.get(g.id) ?? 0),
+      taskCount: g.tasks.length,
+      completedTaskCount: g.tasks.filter((t) => t.status === "COMPLETED").length,
     })),
     sprints: period.sprints.map((s, index) => ({
       id: s.id,

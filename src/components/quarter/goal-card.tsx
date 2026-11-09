@@ -2,7 +2,22 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
-import { Check, Clock, Gauge, MoreHorizontal, Pencil, Plus, Shield, Trash2, Undo2, Footprints, X } from "lucide-react"
+import { preload, useSWRConfig } from "swr"
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Gauge,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Shield,
+  Trash2,
+  Undo2,
+  Footprints,
+  X,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -14,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { quarterRequest } from "@/hooks/use-quarter"
+import { goalTasksKey, useGoalTaskActions, useGoalTasks } from "@/hooks/use-goal-tasks"
+import { fetcher } from "@/lib/swr-config"
 import { cn } from "@/lib/utils"
 import {
   formatDuration,
@@ -26,7 +43,9 @@ import {
   type QuarterGoal,
   type QuarterKeyResult,
 } from "@/lib/quarters"
+import { GoalTaskList } from "./goal-task-list"
 import { PaceBadge, PaceBar } from "./pace"
+import { removeGoal, updateGoal, useQuarterCache } from "./quarter-cache"
 
 export function parseDecimal(value: string): number | null {
   const normalized = value.replace(/\s/g, "").replace(",", ".")
@@ -36,17 +55,17 @@ export function parseDecimal(value: string): number | null {
 }
 
 function KeyResultRow({
+  goalId,
   keyResult,
   elapsed,
-  onSaved,
 }: {
+  goalId: string
   keyResult: QuarterKeyResult
   elapsed: number
-  onSaved: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState("")
-  const [saving, setSaving] = useState(false)
+  const { save: saveQuarter } = useQuarterCache()
 
   const progress = keyResultProgress(keyResult)
   const status = paceStatus(progress, elapsed)
@@ -58,22 +77,22 @@ function KeyResultRow({
     setEditing(true)
   }
 
-  const save = async () => {
+  // The new value shows at once, saving happens in the background
+  const save = () => {
     const parsed = parseDecimal(value)
     if (parsed === null) {
       toast.error("Wpisz liczbę")
       return
     }
-    setSaving(true)
-    try {
-      await quarterRequest(`/api/key-results/${keyResult.id}`, "PATCH", { currentValue: parsed })
-      setEditing(false)
-      onSaved()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się zapisać")
-    } finally {
-      setSaving(false)
-    }
+    setEditing(false)
+    if (parsed === keyResult.currentValue) return
+    void saveQuarter(
+      updateGoal(goalId, (goal) => ({
+        ...goal,
+        keyResults: goal.keyResults.map((kr) => (kr.id === keyResult.id ? { ...kr, currentValue: parsed } : kr)),
+      })),
+      () => quarterRequest(`/api/key-results/${keyResult.id}`, "PATCH", { currentValue: parsed })
+    )
   }
 
   return (
@@ -100,7 +119,7 @@ function KeyResultRow({
               aria-label={`Aktualna wartość: ${keyResult.title}`}
             />
             <span className="text-xs text-muted-foreground">/ {formatNumber(keyResult.targetValue)}{unit}</span>
-            <Button type="submit" size="icon" variant="ghost" className="h-7 w-7" disabled={saving} aria-label="Zapisz">
+            <Button type="submit" size="icon" variant="ghost" className="h-7 w-7" aria-label="Zapisz">
               <Check className="h-3.5 w-3.5" />
             </Button>
             <Button
@@ -136,41 +155,77 @@ function KeyResultRow({
   )
 }
 
+// Tasks linked to the quarter goal itself - loaded when the list is opened
+function GoalTasksSection({ goal }: { goal: QuarterGoal }) {
+  const [open, setOpen] = useState(false)
+  const { refresh } = useQuarterCache()
+  const { cache } = useSWRConfig()
+  const key = goalTasksKey(goal.id)
+  const { tasks, isLoaded } = useGoalTasks(open ? key : null)
+  const actions = useGoalTaskActions(key, refresh)
+  const total = isLoaded ? tasks.length : goal.taskCount
+  const completed = isLoaded ? tasks.filter((t) => t.status === "COMPLETED").length : goal.completedTaskCount
+
+  return (
+    <div className="-mx-1">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        // Starts loading on hover, so the list is usually there on click
+        onPointerEnter={() => {
+          if (!cache.get(key)?.data) preload(key, fetcher).catch(() => {})
+        }}
+        className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-sm hover:bg-muted/60"
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="font-medium">Zadania</span>
+        <span className="text-xs text-muted-foreground">{total > 0 ? `${completed}/${total}` : "harmonogram, notatki"}</span>
+      </button>
+      {open && (
+        <GoalTaskList
+          className="ml-2.5 mt-1 border-l-2 pl-3"
+          goalId={goal.id}
+          tasks={tasks}
+          isLoaded={isLoaded}
+          actions={actions}
+          contextLabel={goal.title}
+        />
+      )}
+    </div>
+  )
+}
+
 export function GoalCard({
   goal,
   index,
   elapsed,
   onEdit,
-  onChanged,
 }: {
   goal: QuarterGoal
   index: number
   elapsed: number
   onEdit: (goal: QuarterGoal) => void
-  onChanged: () => void
 }) {
   const progress = goalProgress(goal.keyResults)
   const status = goal.isCompleted ? "done" : progress !== null ? paceStatus(progress, elapsed) : null
   const checkIn = latestCheckIn(goal)
+  const { save } = useQuarterCache()
 
-  const toggleCompleted = async () => {
-    try {
-      await quarterRequest(`/api/quarter-goals/${goal.id}`, "PATCH", { isCompleted: !goal.isCompleted })
-      onChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się zapisać")
-    }
-  }
+  const toggleCompleted = () =>
+    save(
+      updateGoal(goal.id, (g) => ({ ...g, isCompleted: !g.isCompleted })),
+      () => quarterRequest(`/api/quarter-goals/${goal.id}`, "PATCH", { isCompleted: !goal.isCompleted })
+    )
 
   const remove = async () => {
     if (!confirm("Usunąć ten cel? Znikną też jego rezultaty, check-iny i zobowiązania w sprintach.")) return
-    try {
-      await quarterRequest(`/api/quarter-goals/${goal.id}`, "DELETE")
-      toast.success("Cel usunięty")
-      onChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się usunąć")
-    }
+    const ok = await save(removeGoal(goal.id), () => quarterRequest(`/api/quarter-goals/${goal.id}`, "DELETE"), "Nie udało się usunąć")
+    if (ok) toast.success("Cel usunięty")
   }
 
   return (
@@ -236,7 +291,7 @@ export function GoalCard({
         {goal.keyResults.length > 0 ? (
           <div className="space-y-3">
             {goal.keyResults.map((kr) => (
-              <KeyResultRow key={kr.id} keyResult={kr} elapsed={elapsed} onSaved={onChanged} />
+              <KeyResultRow key={kr.id} goalId={goal.id} keyResult={kr} elapsed={elapsed} />
             ))}
           </div>
         ) : (
@@ -268,6 +323,8 @@ export function GoalCard({
             </div>
           </div>
         )}
+
+        <GoalTasksSection goal={goal} />
 
         {/* Footer: lead measure, confidence, time */}
         <div className="mt-auto space-y-1.5 border-t pt-3 text-xs text-muted-foreground">

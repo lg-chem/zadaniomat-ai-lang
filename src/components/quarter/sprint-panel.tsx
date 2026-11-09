@@ -1,44 +1,38 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import useSWR from "swr"
+import { useMemo, useState } from "react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
-import { toast } from "sonner"
 import {
-  Calendar,
   Check,
   ChevronDown,
   ChevronRight,
   Clock,
   CornerDownRight,
   ListChecks,
-  Plus,
   RefreshCw,
+  StickyNote,
   Target,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { quarterRequest } from "@/hooks/use-quarter"
+import { sprintTasksKey, useGoalTaskActions, useGoalTasks, type GoalTaskActions } from "@/hooks/use-goal-tasks"
 import { cn } from "@/lib/utils"
 import {
   daysBetween,
   dayKeyToLocalDate,
   formatDuration,
+  type GoalTaskItem,
   type QuarterGoal,
   type QuarterPayload,
   type QuarterSprint,
   type SprintCommitment,
 } from "@/lib/quarters"
+import { GoalTaskList, hasTaskNote } from "./goal-task-list"
+import { updateCommitment, useQuarterCache } from "./quarter-cache"
 
-interface CommitmentTask {
-  id: string
-  title: string
-  status: string
-  scheduledDate?: string | null
-}
+const EMPTY_TASKS: GoalTaskItem[] = []
 
 const shortDate = (key: string) => format(dayKeyToLocalDate(key), "d MMM", { locale: pl })
 
@@ -54,102 +48,31 @@ export function sprintStatusLabel(sprint: QuarterSprint, today: string): string 
   return `Trwa · dzień ${day}/${total}`
 }
 
-function CommitmentTasks({ commitment, onChanged }: { commitment: SprintCommitment; onChanged: () => void }) {
-  const { data: tasks = [], mutate } = useSWR<CommitmentTask[]>(`/api/goals/${commitment.id}/tasks`)
-  const [title, setTitle] = useState("")
-
-  const toggle = async (task: CommitmentTask) => {
-    try {
-      await quarterRequest(`/api/tasks/${task.id}`, "PATCH", {
-        status: task.status === "COMPLETED" ? "NEW" : "COMPLETED",
-      })
-      await mutate()
-      onChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się zapisać zadania")
-    }
-  }
-
-  const add = async () => {
-    const value = title.trim()
-    if (!value) return
-    setTitle("")
-    try {
-      await quarterRequest(`/api/goals/${commitment.id}/tasks`, "POST", { title: value })
-      await mutate()
-      onChanged()
-    } catch (error) {
-      setTitle(value)
-      toast.error(error instanceof Error ? error.message : "Nie udało się dodać zadania")
-    }
-  }
-
-  return (
-    <div className="ml-7 mt-2 space-y-1.5 border-l-2 pl-3">
-      {tasks.map((task) => (
-        <div key={task.id} className="flex items-center gap-2 text-sm">
-          <button
-            type="button"
-            onClick={() => toggle(task)}
-            className={cn(
-              "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
-              task.status === "COMPLETED" ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/40"
-            )}
-            aria-label={task.status === "COMPLETED" ? "Oznacz jako niezrobione" : "Oznacz jako zrobione"}
-          >
-            {task.status === "COMPLETED" && <Check className="h-3 w-3" />}
-          </button>
-          <span className={cn("min-w-0 flex-1 truncate", task.status === "COMPLETED" && "text-muted-foreground line-through")}>
-            {task.title}
-          </span>
-          {task.scheduledDate && (
-            <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-              <Calendar className="h-3 w-3" />
-              {format(new Date(task.scheduledDate), "d MMM", { locale: pl })}
-            </span>
-          )}
-        </div>
-      ))}
-      <form
-        className="flex gap-1.5"
-        onSubmit={(e) => {
-          e.preventDefault()
-          add()
-        }}
-      >
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Dodaj zadanie…"
-          className="h-8 text-sm"
-          aria-label="Nowe zadanie"
-        />
-        <Button type="submit" size="icon" variant="secondary" className="h-8 w-8 shrink-0" disabled={!title.trim()}>
-          <Plus className="h-4 w-4" />
-        </Button>
-      </form>
-      <p className="text-xs text-muted-foreground">
-        Dni zaplanujesz w{" "}
-        <Link href="/schedule" className="underline underline-offset-2">
-          Harmonogramie
-        </Link>{" "}
-        (sekcja „Cele sprintu” i stos zadań).
-      </p>
-    </div>
-  )
-}
-
-function CommitmentRow({ commitment, onChanged }: { commitment: SprintCommitment; onChanged: () => void }) {
+function CommitmentRow({
+  commitment,
+  tasks,
+  tasksLoaded,
+  actions,
+}: {
+  commitment: SprintCommitment
+  tasks: GoalTaskItem[]
+  tasksLoaded: boolean
+  actions: GoalTaskActions
+}) {
   const [expanded, setExpanded] = useState(false)
+  const { save } = useQuarterCache()
+  // The sprint's tasks are loaded with the panel - counts follow clicks at once
+  const taskCount = tasksLoaded ? tasks.length : commitment.taskCount
+  const completedTaskCount = tasksLoaded
+    ? tasks.filter((t) => t.status === "COMPLETED").length
+    : commitment.completedTaskCount
+  const notesCount = tasks.filter(hasTaskNote).length
 
-  const toggle = async () => {
-    try {
-      await quarterRequest(`/api/goals/${commitment.id}`, "PATCH", { isCompleted: !commitment.isCompleted })
-      onChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nie udało się zapisać")
-    }
-  }
+  const toggle = () =>
+    save(
+      updateCommitment(commitment.id, (c) => ({ ...c, isCompleted: !c.isCompleted })),
+      () => quarterRequest(`/api/goals/${commitment.id}`, "PATCH", { isCompleted: !commitment.isCompleted })
+    )
 
   return (
     <div>
@@ -158,8 +81,8 @@ function CommitmentRow({ commitment, onChanged }: { commitment: SprintCommitment
           type="button"
           onClick={toggle}
           className={cn(
-            "flex h-5 w-5 shrink-0 items-center justify-center rounded border",
-            commitment.isCompleted ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/40"
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+            commitment.isCompleted ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/40 hover:border-foreground"
           )}
           aria-label={commitment.isCompleted ? "Oznacz jako niezrobione" : "Oznacz jako zrobione"}
         >
@@ -184,10 +107,18 @@ function CommitmentRow({ commitment, onChanged }: { commitment: SprintCommitment
               <CornerDownRight className="h-3 w-3" /> przeniesione
             </span>
           )}
-          {commitment.taskCount > 0 && (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {commitment.completedTaskCount}/{commitment.taskCount} zadań
+          {notesCount > 0 && (
+            <span className="hidden shrink-0 items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400 sm:flex" title="Zadania z notatką">
+              <StickyNote className="h-3 w-3" />
+              {notesCount}
             </span>
+          )}
+          {taskCount > 0 ? (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {completedTaskCount}/{taskCount} zadań
+            </span>
+          ) : (
+            <span className="shrink-0 text-xs text-muted-foreground">+ zadania</span>
           )}
           {commitment.trackedSeconds > 0 && (
             <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex">
@@ -202,7 +133,16 @@ function CommitmentRow({ commitment, onChanged }: { commitment: SprintCommitment
           )}
         </button>
       </div>
-      {expanded && <CommitmentTasks commitment={commitment} onChanged={onChanged} />}
+      {expanded && (
+        <GoalTaskList
+          className="ml-2.5 mt-1.5 border-l-2 pl-3 sm:ml-7"
+          goalId={commitment.id}
+          tasks={tasks}
+          isLoaded={tasksLoaded}
+          actions={actions}
+          contextLabel={commitment.title}
+        />
+      )}
     </div>
   )
 }
@@ -241,15 +181,27 @@ export function SprintPanel({
   today,
   onPlan,
   onClose,
-  onChanged,
 }: {
   quarter: QuarterPayload
   sprint: QuarterSprint
   today: string
   onPlan: (sprint: QuarterSprint) => void
   onClose: (sprint: QuarterSprint) => void
-  onChanged: () => void
 }) {
+  const { refresh } = useQuarterCache()
+  // All tasks of the sprint in one request - expanding a commitment shows them at once
+  const tasksKey = sprintTasksKey(sprint.id)
+  const { tasks, isLoaded: tasksLoaded } = useGoalTasks(sprint.commitments.length > 0 ? tasksKey : null)
+  const taskActions = useGoalTaskActions(tasksKey, refresh)
+  const tasksByCommitment = useMemo(() => {
+    const map = new Map<string, GoalTaskItem[]>()
+    for (const task of tasks) {
+      if (!task.goalId) continue
+      map.set(task.goalId, [...(map.get(task.goalId) ?? []), task])
+    }
+    return map
+  }, [tasks])
+
   const index = quarter.sprints.findIndex((s) => s.id === sprint.id)
   const previous = index > 0 ? quarter.sprints[index - 1] : null
   const previousChange = previous?.retrospective?.actionItems[0]
@@ -350,7 +302,13 @@ export function SprintPanel({
                   {goal ? goal.title : "Poza celami kwartału"}
                 </p>
                 {items.map((commitment) => (
-                  <CommitmentRow key={commitment.id} commitment={commitment} onChanged={onChanged} />
+                  <CommitmentRow
+                    key={commitment.id}
+                    commitment={commitment}
+                    tasks={tasksByCommitment.get(commitment.id) ?? EMPTY_TASKS}
+                    tasksLoaded={tasksLoaded}
+                    actions={taskActions}
+                  />
                 ))}
               </div>
             ))}

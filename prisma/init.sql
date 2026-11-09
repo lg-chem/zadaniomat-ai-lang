@@ -313,6 +313,7 @@ CREATE TABLE "Task" (
 CREATE INDEX "Task_userId_workspaceType_idx" ON "Task"("userId", "workspaceType");
 CREATE INDEX "Task_scheduledDate_idx" ON "Task"("scheduledDate");
 CREATE INDEX "Task_sprintId_idx" ON "Task"("sprintId");
+CREATE INDEX "Task_goalId_idx" ON "Task"("goalId");
 CREATE INDEX "Task_categoryId_idx" ON "Task"("categoryId");
 CREATE INDEX "Task_assignedToId_idx" ON "Task"("assignedToId");
 CREATE INDEX "Task_organizationId_idx" ON "Task"("organizationId");

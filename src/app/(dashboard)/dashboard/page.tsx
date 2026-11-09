@@ -57,8 +57,11 @@ export default function DashboardPage() {
   }, [workspace, dateStr])
 
   useEffect(() => {
+    // "FRIENDS" has no own tasks (it shows the friends page) - and it's the default
+    // in the first render after opening the app, before the saved workspace is read
+    if (workspace !== "WORK" && workspace !== "PRIVATE") return
     fetchTasks()
-  }, [fetchTasks])
+  }, [fetchTasks, workspace])
 
   // Refresh worked time after the timer saves a session
   useEffect(() => {
