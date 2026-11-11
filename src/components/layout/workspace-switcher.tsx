@@ -4,7 +4,7 @@ import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Briefcase, User, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useWorkspaceStore, workspaceHome } from "@/stores/workspace-store"
 import useSWR from "swr"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
@@ -36,14 +36,8 @@ export function WorkspaceSwitcher() {
     }
 
     setWorkspace(newWorkspace)
-    // Navigate to default page for each workspace
-    if (newWorkspace === "FRIENDS") {
-      router.push("/schedule")
-    } else if (newWorkspace === "WORK") {
-      router.push("/schedule")
-    } else {
-      router.push("/schedule")
-    }
+    // Each workspace opens on its start page: private - "Dziś"
+    router.push(workspaceHome(newWorkspace))
   }
 
   // Show skeleton while loading

@@ -2,7 +2,11 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { loadChallenges, readLinkFields } from "@/lib/challenge-data"
 
+export const dynamic = "force-dynamic"
+
+// GET - challenges with their entries; ?showCompleted=true adds the closed ones
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,33 +17,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const showCompleted = searchParams.get("showCompleted") === "true"
 
-    // For active view, show both incomplete and those that exceeded target
-    const challenges = await prisma.challenge.findMany({
-      where: {
-        userId: session.user.id,
-        ...(showCompleted
-          ? {}
-          : {
-              OR: [
-                { isCompleted: false },
-                // Also show completed challenges that exceeded target (for NUMERIC type)
-                {
-                  isCompleted: true,
-                  challengeType: "NUMERIC",
-                },
-              ],
-            }),
-      },
-      include: {
-        milestones: {
-          orderBy: { targetValue: "asc" },
-        },
-        entries: {
-          orderBy: { date: "desc" },
-        },
-      },
-      orderBy: { endDate: "asc" },
-    })
+    const challenges = await loadChallenges(session.user.id, { showCompleted })
 
     return NextResponse.json(challenges)
   } catch (error) {
@@ -67,8 +45,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dla nawyku tygodniowego wymagana jest liczba dni w tygodniu" }, { status: 400 })
     }
 
+    const link = await readLinkFields(session.user.id, body)
+    if ("error" in link) {
+      return NextResponse.json({ error: link.error }, { status: 400 })
+    }
+
     const challenge = await prisma.challenge.create({
       data: {
+        ...link.data,
         name,
         description,
         challengeType: challengeType || "NUMERIC",
@@ -78,7 +62,8 @@ export async function POST(req: Request) {
         unit,
         weeklyTarget: weeklyTarget ? parseInt(weeklyTarget) : null,
         color: color || "#f59e0b",
-        isPublic: isPublic || false,
+        // Private unless shared on purpose
+        isPublic: isPublic === true,
         userId: session.user.id,
       },
       include: {

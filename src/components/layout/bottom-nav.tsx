@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Sparkles,
-  Dumbbell,
   Menu,
   CalendarDays,
-  Repeat,
   Users,
+  Sun,
+  StickyNote,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -24,10 +25,13 @@ const workBottomNav = [
   { href: "/schedule", label: "Plan", icon: CalendarDays },
 ]
 
+// Private: habits, sport and challenges are all ticked on "Dziś" - the bar leads to
+// it and to what is opened next most often
 const privateBottomNav = [
+  { href: "/today", label: "Dziś", icon: Sun },
   { href: "/schedule", label: "Plan", icon: CalendarDays },
-  { href: "/sport", label: "Sport", icon: Dumbbell },
-  { href: "/habits", label: "Nawyki", icon: Repeat },
+  { href: "/notes", label: "Notatki", icon: StickyNote },
+  { href: "/stats", label: "Statystyki", icon: BarChart3 },
 ]
 
 export function BottomNav() {
@@ -45,7 +49,7 @@ export function BottomNav() {
   // Friends workspace - show recent friends
   if (workspace === "FRIENDS") {
     return (
-      <nav className="fixed bottom-0 left-0 right-0 z-40 h-14 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden safe-area-inset-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 border-t bg-card md:hidden safe-area-inset-bottom">
         <div className="flex h-full items-center justify-around px-1">
           {/* All Friends link */}
           <Link
@@ -109,7 +113,7 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 h-14 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden safe-area-inset-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 border-t bg-card md:hidden safe-area-inset-bottom">
       <div className="flex h-full items-center justify-around px-1">
         {navItems.map((item) => (
           <Link

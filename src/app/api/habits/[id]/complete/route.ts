@@ -2,7 +2,22 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { refreshHabitStreak } from "@/lib/habit-data"
+import { dateOfKey, dayKeyOf, isDayKey } from "@/lib/tracking"
 
+function toInt(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null
+  const n = parseInt(String(value))
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+/**
+ * Marks a habit on a day.
+ * body: { date: yyyy-MM-dd, done?: boolean, minutes?, count?, notes?, today? }
+ * - done: true / false sets the day (asking twice changes nothing more);
+ *   without it the day is switched - unless minutes / count / notes come, which only fill the day in
+ * - today: the user's day, the streak is counted to it
+ */
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
@@ -15,7 +30,7 @@ export async function POST(
 
     const { id } = params
     const body = await req.json()
-    const { date, notes, minutes } = body
+    const { date, notes, minutes, count, done } = body
 
     const habit = await prisma.habit.findFirst({
       where: { id, userId: session.user.id },
@@ -25,71 +40,55 @@ export async function POST(
       return NextResponse.json({ error: "Habit not found" }, { status: 404 })
     }
 
-    const completionDate = date ? new Date(date) : new Date()
-    completionDate.setHours(0, 0, 0, 0)
+    const serverToday = dayKeyOf(new Date())
+    const day = isDayKey(date) ? date : serverToday
+    const today = isDayKey(body.today) ? body.today : serverToday
+    const completionDate = dateOfKey(day)
 
-    // Check if already completed today
     const existing = await prisma.habitCompletion.findUnique({
-      where: {
-        habitId_date: {
+      where: { habitId_date: { habitId: id, date: completionDate } },
+    })
+
+    const hasDetails = minutes !== undefined || count !== undefined || notes !== undefined
+    const wantsDone = typeof done === "boolean" ? done : existing ? hasDetails : true
+
+    let completion = existing
+    if (!wantsDone) {
+      if (existing) await prisma.habitCompletion.delete({ where: { id: existing.id } })
+      completion = null
+    } else if (existing) {
+      if (hasDetails) {
+        completion = await prisma.habitCompletion.update({
+          where: { id: existing.id },
+          data: {
+            ...(minutes !== undefined && { minutes: toInt(minutes) }),
+            ...(count !== undefined && { count: Math.max(1, toInt(count) ?? 1) }),
+            ...(notes !== undefined && { notes: notes ? String(notes) : null }),
+          },
+        })
+      }
+    } else {
+      completion = await prisma.habitCompletion.create({
+        data: {
           habitId: id,
           date: completionDate,
-        },
-      },
-    })
-
-    if (existing) {
-      // If minutes provided, update existing completion's time instead of toggling off
-      if (minutes !== undefined) {
-        const updated = await prisma.habitCompletion.update({
-          where: { id: existing.id },
-          data: { minutes: minutes ? parseInt(minutes) : null },
-        })
-        return NextResponse.json({ completed: true, minutes: updated.minutes })
-      }
-
-      // Toggle off - delete completion
-      await prisma.habitCompletion.delete({
-        where: { id: existing.id },
-      })
-
-      // Update streak (simplified - just decrement if breaking today's streak)
-      await prisma.habit.update({
-        where: { id },
-        data: {
-          currentStreak: Math.max(0, habit.currentStreak - 1),
+          minutes: minutes !== undefined ? toInt(minutes) : habit.defaultMinutes,
+          count: Math.max(1, toInt(count) ?? 1),
+          notes: notes ? String(notes) : null,
         },
       })
-
-      return NextResponse.json({ completed: false })
     }
 
-    // Determine minutes to save (provided or default from habit)
-    const minutesToSave = minutes !== undefined
-      ? (minutes ? parseInt(minutes) : null)
-      : habit.defaultMinutes
+    // Counted from the days really done - also right after filling in a past day or undoing one
+    const streak = await refreshHabitStreak(id, today)
 
-    // Create completion
-    await prisma.habitCompletion.create({
-      data: {
-        habitId: id,
-        date: completionDate,
-        minutes: minutesToSave,
-        notes,
-      },
+    return NextResponse.json({
+      completed: !!completion,
+      completion,
+      minutes: completion?.minutes ?? null,
+      streak: streak?.currentStreak ?? 0,
+      ...streak,
     })
-
-    // Update streak
-    const newStreak = habit.currentStreak + 1
-    await prisma.habit.update({
-      where: { id },
-      data: {
-        currentStreak: newStreak,
-        longestStreak: Math.max(habit.longestStreak, newStreak),
-      },
-    })
-
-    return NextResponse.json({ completed: true, streak: newStreak })
   } catch (error) {
     console.error("Error toggling habit completion:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

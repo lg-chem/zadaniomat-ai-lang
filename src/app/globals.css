@@ -200,6 +200,11 @@ html {
   scroll-behavior: smooth;
 }
 
+/* A tap acts at once: no wait for a possible double tap (which would zoom the page) */
+button, a, [role="button"], input, select, textarea, label, summary {
+  touch-action: manipulation;
+}
+
 /* Better touch feedback on mobile */
 @media (hover: none) {
   button, a, [role="button"] {
@@ -482,4 +487,16 @@ html {
 }
 .rich-text-document h3 {
   font-size: 1.2em;
+}
+
+/* ==================== Charts (statistics) ==================== */
+/* Two series, checked for color-blind separation and contrast on both surfaces */
+.viz {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-empty: hsl(var(--muted));
+}
+.dark .viz {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
 }

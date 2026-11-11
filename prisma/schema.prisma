@@ -510,6 +510,8 @@ model Habit {
   frequency     HabitFrequency @default(DAILY)
   targetCount   Int           @default(1) // Times per frequency
   defaultMinutes Int?          // Default time for this habit
+  unit          String?       // What is counted besides the tick, e.g. "stron" (HabitCompletion.count); null - tick and minutes only
+  scheduledTime String?       // HH:mm - the habit shows in the plan of the day at this time
   color         String        @default("#10b981")
   icon          String?
   currentStreak Int           @default(0)
@@ -565,6 +567,11 @@ model Challenge {
   isCompleted   Boolean        @default(false)
   isPublic      Boolean        @default(false)
   color         String         @default("#f59e0b")
+  // Progress counted from a habit / sport / steps instead of own entries (NONE - own entries)
+  linkedType        LinkedDataType @default(NONE)
+  linkedHabitId     String?        // HABIT: the habit
+  linkedSportTypeId String?        // SPORT: the activity type; null - any activity
+  linkedMetric      String         @default("COUNT") // COUNT (days / sessions) | MINUTES | VALUE (habit's own unit)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 

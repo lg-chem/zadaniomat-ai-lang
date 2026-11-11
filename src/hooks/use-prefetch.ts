@@ -1,9 +1,12 @@
 import { useEffect } from 'react'
 import { preload } from 'swr'
 import { fetcher } from '@/lib/swr-config'
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays } from 'date-fns'
+import { format, startOfWeek, startOfMonth, endOfMonth, addDays, subDays } from 'date-fns'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { localDayKey, quarterApiKey, quarterOf } from '@/lib/quarters'
+import { habitsWeekKey } from '@/hooks/use-habits'
+import { challengesKey } from '@/hooks/use-challenges'
+import { sportActivitiesKey, stepsKey, weekRange } from '@/hooks/use-sport'
 
 /**
  * Prefetches all common data for the current workspace
@@ -15,10 +18,6 @@ export function usePrefetchData() {
   useEffect(() => {
     const today = new Date()
     const todayStr = format(today, 'yyyy-MM-dd')
-
-    // Week range for calendar
-    const weekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const weekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
     // Month range for calendar
     const monthStart = format(startOfMonth(today), 'yyyy-MM-dd')
@@ -54,16 +53,15 @@ export function usePrefetchData() {
       preload(`/api/tasks/counts?workspace=PRIVATE&from=${countsFrom}&to=${countsTo}`, fetcher)
       // Categories
       preload(`/api/categories?workspace=PRIVATE`, fetcher)
-      // Habits
-      preload(`/api/habits`, fetcher)
-      // Challenges
-      preload(`/api/challenges?showCompleted=false`, fetcher)
-      // Sport types
+      // Habits, challenges, sport and steps of this week - the same keys the pages
+      // ("Dziś", Nawyki, Wyzwania, Sport) read, so they open with the data already there
+      preload(habitsWeekKey(), fetcher)
+      preload(challengesKey(), fetcher)
       preload(`/api/sport/types`, fetcher)
-      // Sport activities for week
-      preload(`/api/sport/activities?from=${weekStart}&to=${weekEnd}`, fetcher)
-      // Steps for week
-      preload(`/api/sport/steps?from=${weekStart}&to=${weekEnd}`, fetcher)
+      preload(sportActivitiesKey(weekRange()), fetcher)
+      preload(stepsKey(weekRange()), fetcher)
+      // Plan of the day
+      preload(`/api/schedule-blocks?workspace=PRIVATE&date=${todayStr}`, fetcher)
       // Knowledge categories
       preload(`/api/knowledge/categories?workspace=PRIVATE`, fetcher)
     }
@@ -105,7 +103,6 @@ export function prefetchPage(page: string, workspace: string = 'WORK') {
   const today = new Date()
   const todayStr = format(today, 'yyyy-MM-dd')
   const weekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-  const weekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const monthStart = format(startOfMonth(today), 'yyyy-MM-dd')
   const monthEnd = format(endOfMonth(today), 'yyyy-MM-dd')
 
@@ -125,15 +122,20 @@ export function prefetchPage(page: string, workspace: string = 'WORK') {
       preload(`/api/backlog?workspace=${workspace}&showProcessed=false`, fetcher)
       break
     case 'habits':
-      preload(`/api/habits`, fetcher)
+      preload(habitsWeekKey(), fetcher)
       break
     case 'challenges':
-      preload(`/api/challenges?showCompleted=false`, fetcher)
+      preload(challengesKey(), fetcher)
       break
     case 'sport':
       preload(`/api/sport/types`, fetcher)
-      preload(`/api/sport/activities?from=${weekStart}&to=${weekEnd}`, fetcher)
-      preload(`/api/sport/steps?from=${weekStart}&to=${weekEnd}`, fetcher)
+      preload(sportActivitiesKey(weekRange()), fetcher)
+      preload(stepsKey(weekRange()), fetcher)
+      break
+    case 'today':
+      preload(habitsWeekKey(), fetcher)
+      preload(challengesKey(), fetcher)
+      preload(sportActivitiesKey(weekRange()), fetcher)
       break
     case 'knowledge':
       preload(`/api/knowledge/categories?workspace=${workspace}`, fetcher)

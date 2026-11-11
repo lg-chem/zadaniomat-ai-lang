@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -11,8 +13,10 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
+    // from / to - what the pages send; startDate / endDate - the older names.
+    // (Only the older names were read: every page asking for a week got the whole history.)
+    const startDate = searchParams.get("from") ?? searchParams.get("startDate")
+    const endDate = searchParams.get("to") ?? searchParams.get("endDate")
 
     const where: Record<string, unknown> = {
       userId: session.user.id,
@@ -31,7 +35,7 @@ export async function GET(req: Request) {
         type: true,
         bodyParts: true,
       },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { createdAt: "asc" }],
     })
 
     return NextResponse.json(activities)
@@ -59,10 +63,11 @@ export async function POST(req: Request) {
       data: {
         typeId,
         date: new Date(date),
-        duration,
-        notes,
+        duration: duration ? parseInt(duration) || null : null,
+        notes: notes || null,
         fromSteps: fromSteps || false,
-        isPublic: isPublic || false,
+        // Private unless shared on purpose
+        isPublic: isPublic === true,
         userId: session.user.id,
         bodyParts: bodyParts?.length > 0
           ? {

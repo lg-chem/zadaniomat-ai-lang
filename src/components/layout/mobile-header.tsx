@@ -5,7 +5,7 @@ import { Menu, CheckSquare, Briefcase, User, Users } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { SidebarContent } from "./sidebar"
-import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useWorkspaceStore, workspaceHome } from "@/stores/workspace-store"
 import { cn } from "@/lib/utils"
 import { NotificationsDropdown } from "@/components/notifications/notifications-dropdown"
 
@@ -15,13 +15,8 @@ export function MobileHeader() {
 
   const handleWorkspaceChange = (newWorkspace: "FRIENDS" | "WORK" | "PRIVATE") => {
     setWorkspace(newWorkspace)
-    if (newWorkspace === "FRIENDS") {
-      router.push("/schedule")
-    } else if (newWorkspace === "WORK") {
-      router.push("/schedule")
-    } else {
-      router.push("/schedule")
-    }
+    // Each workspace opens on its start page: private - "Dziś"
+    router.push(workspaceHome(newWorkspace))
   }
 
   return (

@@ -85,32 +85,15 @@ const { categories, isLoading, isError, mutate } = useCategories()
 ### `useHabits`
 **Lokalizacja:** `src/hooks/use-habits.ts`
 
-**Zależności:**
-- `useSWR`
-- `useWorkspaceStore`
-
 **Logika:**
-- Pobiera nawyki TYLKO dla workspace `PRIVATE`
-- Zawiera completions (ukończenia) w jednym zapytaniu
-- Zwraca `null` dla innych workspace'ów
+- Nawyki z odhaczeniami z zakresu dni (domyślnie bieżący tydzień: klucz `habitsWeekKey()` - ten sam na „Dziś”, w Nawykach i w prefetchu)
+- `setDay(habitId, day, { done?, minutes?, count?, notes? })` - zmiana widoczna od razu (`patchLists`), zapis w tle (`trackWrite`), potem `refreshPrivate('habits')` (odświeża też wyzwania i statystyki, które liczą się z nawyków). Wysyła stan docelowy (`done`), nie „przełącz” - powtórzone żądanie nie cofa kliknięcia
+- Serie (`currentStreak`, `longestStreak`) i `periodDone/periodTarget` liczy serwer z faktycznych dni (`lib/habit-data`, `computeStreak`): dzienne - dni z rzędu, tygodniowe/miesięczne - tygodnie/miesiące z celem; bieżący okres nie przerywa serii
+- `createHabit`, `updateHabit` (`isActive: false` = zakończ z historią), `removeHabit`; `sortHabitsForDay`, `completionOn`
 
-**Gdzie użyte:**
-- `/src/app/(dashboard)/habits/page.tsx`
-- Komponenty nawyków
+**Pola nawyku:** `unit` (co liczyć oprócz odhaczenia, np. „stron” → `HabitCompletion.count`), `scheduledTime` (HH:mm w planie dnia)
 
-**API:**
-```typescript
-interface Habit {
-  id: string
-  name: string
-  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
-  targetCount: number
-  currentStreak: number
-  completions: HabitCompletion[]
-}
-
-const { habits, isLoading, isError, mutate } = useHabits()
-```
+**Gdzie użyte:** `/today`, `/habits`, `/schedule` (prywatne - `DayHabitsCard`), `/challenges` (wybór nawyku do podpięcia)
 
 ---
 
@@ -176,16 +159,12 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 ### `useChallenges` / `useGroupChallenges`
 **Lokalizacja:** `src/hooks/use-challenges.ts`, `src/hooks/use-group-challenges.ts`
 
-**Zależności:**
-- `useSWR`
+**Logika (`useChallenges(showCompleted)`):**
+- Postęp dodany ręcznie (`addEntry`, `toggleDay`, `updateEntry`, `removeEntry`) widoczny od razu - przeliczany `challengeProgress` z `lib/tracking`
+- Wyzwanie może liczyć się samo (`linkedType`: `HABIT` / `SPORT` / `STEPS`, `linkedMetric`: `COUNT` / `MINUTES` / `VALUE`) - wpisy i postęp liczy serwer przy każdym odczycie (`lib/challenge-data` `loadChallenges`), ręczne wpisy są wtedy zablokowane
+- Tempo względem równego planu: `challengePace` (przed/za planem, ile na tydzień) - pokazuje `ChallengeCard`
 
-**Logika:**
-- `useChallenges` - osobiste wyzwania użytkownika
-- `useGroupChallenges` - wyzwania zespołowe
-
-**Gdzie użyte:**
-- Panel wyzwań
-- Gamifikacja
+**Gdzie użyte:** `/today` (wersja skrócona), `/challenges`
 
 ---
 
@@ -321,10 +300,10 @@ const { quarter, history, isLoaded, isLoading, mutate } = useQuarter({ year: 202
 **Lokalizacja:** `src/hooks/use-sport.ts`
 
 **Logika:**
-- Pobiera dane sportowe/fitness użytkownika
+- `useSportTypes` (+ `createType`), `useSportActivities(range)` (`addActivity` / `updateActivity` / `removeActivity` - od razu na ekranie, prawdziwe id podmieniane po zapisie), `useSteps(range)` (`saveSteps`)
+- Zakres dni `{ from, to }` (yyyy-MM-dd); `weekRange(day)` daje tydzień - ten sam klucz na „Dziś”, w Sporcie i w prefetchu. API czyta `from`/`to` (wcześniej czytało tylko `startDate`/`endDate`, więc każda strona pobierała całą historię)
 
-**Gdzie użyte:**
-- Panel fitness
+**Gdzie użyte:** `/today` (`SportQuickLog`), `/sport`
 
 ---
 
@@ -364,6 +343,7 @@ interface WorkspaceState {
 **Logika:**
 - Przechowuje aktualny workspace użytkownika
 - Persystowany w localStorage (`zadaniomat-workspace`)
+- Zapisuje też ciasteczko `zadaniomat-workspace` - `/` i logowanie otwierają stronę startową ostatniego workspace'u (`workspaceHome`: prywatne → `/today`, reszta → `/schedule`)
 - **KLUCZOWE:** Wszystkie hooki używają tego store do filtrowania danych!
 
 **Gdzie użyte:**
@@ -928,6 +908,7 @@ Przed wprowadzeniem zmian w którymkolwiek z powyższych modułów:
 
 | Data | Zmiana | Autor |
 |------|--------|-------|
+| 2026-11-11 | Prywatne: ekran „Dziś” (`/today` - nawyki, sport jednym dotknięciem, plan dnia z podglądem pracy, wyzwania), komponenty `components/private/*`, `lib/tracking` (serie, postęp, tempo), `lib/habit-data`, `lib/challenge-data`, `lib/private-sync`; wyzwania liczone z nawyku / sportu / kroków (`Challenge.linked*`), nawyki z jednostką i godziną (`Habit.unit`, `scheduledTime`); statystyki roczne (`/api/stats/private`, `PrivateStats`); wpisy domyślnie prywatne + `/api/user/privacy`; `OtherWorkspaceDay` w harmonogramie (`usePlanViewStore`); `lib/schema-guard` dodaje nowe kolumny przy starcie | Claude |
 | 2026-11-04 | Baza wiedzy: edytor jak w notatkach z autozapisem i kopią na urządzeniu (`components/knowledge`, `lib/knowledge`), zadania z wpisów (`/api/knowledge/entries/[id]/tasks`, `TaskTextSource` `knowledge`); naprawa zapisu wpisów (API wołało funkcję z pliku klienckiego); podpunkty w listach edytora (`NestedLists`); usunięto `ui/rich-editor` | Claude |
 | 2026-11-02 | Notatki na telefonie: edytor na całym ekranie z paskiem nad klawiaturą, „wstecz” zamyka notatkę, natychmiastowe tworzenie, szybka notatka z Enter = nowa linia, udostępnianie z innych aplikacji, `navigator.storage.persist` | Claude |
 | 2026-11-02 | Notatki offline w PWA (`lib/note-outbox`, kolejka w IndexedDB, Background Sync w `sw.js`, `POST /api/notes` z `id`), własna kolejność zakładek menu (`useNavOrderStore`, `NavOrderEditor`, model `NavLayout`, `/api/user/nav-order`) | Claude |

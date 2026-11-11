@@ -37,7 +37,8 @@ export default function LoginPage() {
           setError(result.error)
         }
       } else {
-        router.push("/schedule")
+        // "/" sends on to the start page of the workspace used last
+        router.push("/")
         router.refresh()
       }
     } catch {

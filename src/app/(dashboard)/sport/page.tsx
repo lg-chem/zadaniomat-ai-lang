@@ -1,469 +1,288 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import { toast } from "sonner"
-import {
-  format,
-  startOfWeek,
-  addDays,
-  subWeeks,
-  addWeeks,
-  isToday,
-  endOfWeek,
-} from "date-fns"
+import { memo, useCallback, useMemo, useState } from "react"
+import { format } from "date-fns"
 import { pl } from "date-fns/locale"
-import {
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  Trash2,
-  X,
-  Dumbbell,
-  Footprints,
-  Copy,
-  Clock,
-  Users,
-  Edit2,
-  MoreHorizontal,
-} from "lucide-react"
+import { toast } from "sonner"
+import { ChevronLeft, ChevronRight, Clock, Dumbbell, Footprints, Plus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Label } from "@/components/ui/label"
-import { useSportTypes, useSportActivities, useSteps } from "@/hooks/use-sport"
+  BODY_PARTS,
+  useSportActivities,
+  useSportTypes,
+  useSteps,
+  type SportActivity,
+  type StepsEntry,
+} from "@/hooks/use-sport"
+import { jsonRequest } from "@/lib/pending-writes"
+import { refreshPrivate } from "@/lib/private-sync"
+import { addDaysKey, dateOfKey, dayKeyOf, formatMinutes, todayKey, weekStartKey } from "@/lib/tracking"
+import { SportQuickLog } from "@/components/private/sport-quick-log"
+import { ActivityDialog, type ActivityDialogTarget, type ActivityFormValues } from "@/components/private/activity-dialog"
 
-interface SportActivityType {
-  id: string
-  name: string
-  icon?: string | null
-  color: string
-  isDefault: boolean
-  hasBodyParts: boolean
+interface DayRowProps {
+  day: string
+  today: string
+  activities: SportActivity[]
+  steps?: StepsEntry
+  onOpen: (target: ActivityDialogTarget) => void
+  onSaveSteps: (day: string, count: number) => void
+  onCopySteps: (entry: StepsEntry) => void
 }
 
-interface BodyPart {
-  id: string
-  name: string
-}
+/** One day of the week: its workouts (tap to change), steps, and adding a workout to that day */
+const DayRow = memo(function DayRow({ day, today, activities, steps, onOpen, onSaveSteps, onCopySteps }: DayRowProps) {
+  const [editingSteps, setEditingSteps] = useState(false)
+  const [value, setValue] = useState("")
+  const date = dateOfKey(day)
+  const future = day > today
 
-interface SportActivity {
-  id: string
-  date: string
-  duration?: number | null
-  notes?: string | null
-  fromSteps: boolean
-  isPublic: boolean
-  type: SportActivityType
-  bodyParts: BodyPart[]
-}
-
-interface StepsEntry {
-  id: string
-  date: string
-  count: number
-  notes?: string | null
-  copiedToActivity: boolean
-}
-
-const BODY_PARTS = [
-  "klata", "plecy", "barki", "biceps", "triceps", "pośladki", "nogi", "brzuch"
-]
-
-const DEFAULT_TYPES = [
-  { name: "Siłownia", color: "#ef4444", hasBodyParts: true },
-  { name: "Padel", color: "#f59e0b", hasBodyParts: false },
-  { name: "Basen", color: "#3b82f6", hasBodyParts: false },
-  { name: "Rower", color: "#10b981", hasBodyParts: false },
-  { name: "Spacer", color: "#8b5cf6", hasBodyParts: false },
-]
-
-export default function SportPage() {
-  const [weekStart, setWeekStart] = useState(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 })
-  )
-
-  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
-
-  // Use SWR hooks for data fetching with cache
-  const { types: activityTypes, isLoading: typesLoading, mutate: mutateTypes } = useSportTypes()
-  const { activities, isLoading: activitiesLoading, mutate: mutateActivities } = useSportActivities({
-    from: weekStart,
-    to: weekEnd,
-  })
-  const { steps, isLoading: stepsLoading, mutate: mutateSteps } = useSteps({
-    from: weekStart,
-    to: weekEnd,
-  })
-
-  const isLoading = typesLoading || activitiesLoading || stepsLoading
-
-  // Add activity dialog
-  const [isAddingActivity, setIsAddingActivity] = useState(false)
-  const [newActivity, setNewActivity] = useState({
-    typeId: "",
-    date: format(new Date(), "yyyy-MM-dd"),
-    duration: "",
-    notes: "",
-    bodyParts: [] as string[],
-    isPublic: true,
-  })
-
-  // Add steps
-  const [editingStepsDate, setEditingStepsDate] = useState<string | null>(null)
-  const [stepsValue, setStepsValue] = useState("")
-
-  // Add custom type
-  const [isAddingType, setIsAddingType] = useState(false)
-  const [newTypeName, setNewTypeName] = useState("")
-
-  // Edit activity state
-  const [editingActivity, setEditingActivity] = useState<SportActivity | null>(null)
-  const [editForm, setEditForm] = useState({
-    typeId: "",
-    date: "",
-    duration: "",
-    notes: "",
-    bodyParts: [] as string[],
-    isPublic: true,
-  })
-
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-
-  const handlePrevWeek = () => setWeekStart((w) => subWeeks(w, 1))
-  const handleNextWeek = () => setWeekStart((w) => addWeeks(w, 1))
-  const handleThisWeek = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
-
-  const handleCreateActivity = async () => {
-    if (!newActivity.typeId || !newActivity.date) return
-
-    try {
-      const res = await fetch("/api/sport/activities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newActivity,
-          duration: newActivity.duration ? parseInt(newActivity.duration) : null,
-        }),
-      })
-      if (res.ok) {
-        mutateActivities()
-        setNewActivity({
-          typeId: "",
-          date: format(new Date(), "yyyy-MM-dd"),
-          duration: "",
-          notes: "",
-          bodyParts: [],
-          isPublic: true,
-        })
-        setIsAddingActivity(false)
-        toast.success("Aktywność dodana")
-      } else {
-        toast.error("Nie udało się dodać aktywności")
-      }
-    } catch (error) {
-      console.error("Error creating activity:", error)
-      toast.error("Błąd podczas dodawania aktywności")
-    }
-  }
-
-  const handleDeleteActivity = async (id: string) => {
-    try {
-      const res = await fetch(`/api/sport/activities/${id}`, { method: "DELETE" })
-      if (res.ok) {
-        mutateActivities()
-        toast.success("Aktywność usunięta")
-      } else {
-        toast.error("Nie udało się usunąć aktywności")
-      }
-    } catch (error) {
-      console.error("Error deleting activity:", error)
-      toast.error("Błąd podczas usuwania aktywności")
-    }
-  }
-
-  const handleStartEditActivity = (activity: SportActivity) => {
-    setEditingActivity(activity)
-    setEditForm({
-      typeId: activity.type.id,
-      date: format(new Date(activity.date), "yyyy-MM-dd"),
-      duration: activity.duration?.toString() || "",
-      notes: activity.notes || "",
-      bodyParts: activity.bodyParts.map((bp) => bp.name),
-      isPublic: activity.isPublic ?? true,
-    })
-  }
-
-  const handleUpdateActivity = async () => {
-    if (!editingActivity) return
-    try {
-      const res = await fetch(`/api/sport/activities/${editingActivity.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          typeId: editForm.typeId,
-          date: editForm.date,
-          duration: editForm.duration ? parseInt(editForm.duration) : null,
-          notes: editForm.notes || null,
-          bodyParts: editForm.bodyParts,
-          isPublic: editForm.isPublic,
-        }),
-      })
-      if (res.ok) {
-        mutateActivities()
-        setEditingActivity(null)
-        toast.success("Aktywność zaktualizowana")
-      } else {
-        toast.error("Nie udało się zaktualizować aktywności")
-      }
-    } catch (error) {
-      console.error("Error updating activity:", error)
-      toast.error("Błąd podczas aktualizacji aktywności")
-    }
-  }
-
-  const handleEditBodyPartToggle = (part: string) => {
-    setEditForm((prev) => ({
-      ...prev,
-      bodyParts: prev.bodyParts.includes(part)
-        ? prev.bodyParts.filter((p) => p !== part)
-        : [...prev.bodyParts, part],
-    }))
-  }
-
-  const handleSaveSteps = async (date: string) => {
-    if (!stepsValue) {
-      setEditingStepsDate(null)
-      return
-    }
-
-    try {
-      const res = await fetch("/api/sport/steps", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date,
-          count: parseInt(stepsValue),
-        }),
-      })
-      if (res.ok) {
-        mutateSteps()
-        setEditingStepsDate(null)
-        setStepsValue("")
-        toast.success("Kroki zapisane")
-      } else {
-        toast.error("Nie udało się zapisać kroków")
-      }
-    } catch (error) {
-      console.error("Error saving steps:", error)
-      toast.error("Błąd podczas zapisywania kroków")
-    }
-  }
-
-  const handleCopyStepsToActivity = async (stepsEntry: StepsEntry) => {
-    try {
-      const res = await fetch(`/api/sport/steps/${stepsEntry.id}/copy-to-activity`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-      if (res.ok) {
-        mutateActivities()
-        mutateSteps()
-        toast.success("Kroki skopiowane jako aktywność")
-      } else {
-        toast.error("Nie udało się skopiować kroków")
-      }
-    } catch (error) {
-      console.error("Error copying steps:", error)
-      toast.error("Błąd podczas kopiowania kroków")
-    }
-  }
-
-  const handleCreateType = async () => {
-    if (!newTypeName.trim()) return
-
-    try {
-      const res = await fetch("/api/sport/types", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newTypeName }),
-      })
-      if (res.ok) {
-        mutateTypes()
-        setNewTypeName("")
-        setIsAddingType(false)
-        toast.success("Typ aktywności dodany")
-      } else {
-        toast.error("Nie udało się dodać typu aktywności")
-      }
-    } catch (error) {
-      console.error("Error creating type:", error)
-      toast.error("Błąd podczas dodawania typu aktywności")
-    }
-  }
-
-  const handleBodyPartToggle = (part: string) => {
-    setNewActivity((prev) => ({
-      ...prev,
-      bodyParts: prev.bodyParts.includes(part)
-        ? prev.bodyParts.filter((p) => p !== part)
-        : [...prev.bodyParts, part],
-    }))
-  }
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      action()
-    }
-    if (e.key === "Escape") {
-      setEditingStepsDate(null)
-      setStepsValue("")
-    }
-  }
-
-  const getStepsForDate = (date: Date): StepsEntry | undefined => {
-    const dateStr = format(date, "yyyy-MM-dd")
-    return steps.find((s) => format(new Date(s.date), "yyyy-MM-dd") === dateStr)
-  }
-
-  const getActivitiesForDate = (date: Date): SportActivity[] => {
-    const dateStr = format(date, "yyyy-MM-dd")
-    return activities.filter((a) => format(new Date(a.date), "yyyy-MM-dd") === dateStr)
-  }
-
-  const selectedType = activityTypes.find((t) => t.id === newActivity.typeId)
-
-  // Stats
-  const totalActivities = activities.length
-  const totalSteps = steps.reduce((sum, s) => sum + s.count, 0)
-  const activeDays = new Set([
-    ...activities.map((a) => format(new Date(a.date), "yyyy-MM-dd")),
-  ]).size
-
-  // Body parts stats for this week
-  const bodyPartsStats = activities
-    .filter((a) => a.type.hasBodyParts)
-    .flatMap((a) => a.bodyParts)
-    .reduce((acc, bp) => {
-      acc[bp.name] = (acc[bp.name] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4 md:space-y-6 animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
-          <div>
-            <div className="h-8 w-24 bg-muted rounded animate-pulse mb-2" />
-            <div className="h-4 w-48 bg-muted rounded animate-pulse" />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 bg-muted rounded animate-pulse" />
-            <div className="h-9 w-24 bg-muted rounded animate-pulse" />
-            <div className="h-9 w-9 bg-muted rounded animate-pulse" />
-          </div>
-        </div>
-        <div className="h-12 bg-muted rounded animate-pulse" />
-        <div className="h-64 bg-muted rounded animate-pulse" />
-      </div>
-    )
+  const commit = () => {
+    setEditingSteps(false)
+    const count = parseInt(value.replace(/\s/g, ""))
+    if (!Number.isFinite(count) || count < 0 || count === steps?.count) return
+    onSaveSteps(day, count)
   }
 
   return (
-    <div className="space-y-4 md:space-y-6 pb-20 md:pb-0 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Sport</h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Śledź aktywność sportową i kroki
-          </p>
+    <div className={cn("flex gap-3 p-3", day === today && "bg-private/5")}>
+      <div className="w-10 flex-shrink-0 pt-1 text-center">
+        <div className={cn("text-[11px] uppercase text-muted-foreground", day === today && "font-semibold text-private")}>
+          {format(date, "EEEEEE", { locale: pl })}
         </div>
+        <div className={cn("text-lg font-bold leading-tight tabular-nums", day === today && "text-private")}>{format(date, "d")}</div>
+      </div>
 
-        <div className="flex items-center gap-2 justify-between md:justify-end">
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={handlePrevWeek}>
-            <ChevronLeft className="h-4 w-4" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        {activities.map((activity) => (
+          <button
+            key={activity.id}
+            type="button"
+            onClick={() => onOpen({ mode: "edit", activity })}
+            // Being saved - it opens once it has its id
+            disabled={activity.id.startsWith("temp-")}
+            className="flex min-h-[2.75rem] w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-white transition-opacity active:opacity-80 disabled:opacity-70"
+            style={{ backgroundColor: activity.type.color }}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <span className="truncate">{activity.type.name}</span>
+                {activity.isPublic && <Users className="h-3 w-3 flex-shrink-0 opacity-80" aria-label="Widoczny dla znajomych" />}
+              </span>
+              {(activity.bodyParts.length > 0 || activity.notes) && (
+                <span className="block truncate text-xs opacity-90">
+                  {activity.fromSteps && activity.notes
+                    ? `${parseInt(activity.notes).toLocaleString("pl-PL")} kroków`
+                    : [activity.bodyParts.map((p) => p.name).join(", "), activity.notes].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </span>
+            {activity.duration ? (
+              <span className="flex flex-shrink-0 items-center gap-1 text-xs opacity-90">
+                <Clock className="h-3 w-3" />
+                {formatMinutes(activity.duration)}
+              </span>
+            ) : null}
+          </button>
+        ))}
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          {editingSteps ? (
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit()
+                if (e.key === "Escape") setEditingSteps(false)
+              }}
+              placeholder="liczba kroków"
+              className="h-10 w-36 text-base"
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              disabled={future}
+              onClick={() => {
+                setValue(steps ? steps.count.toString() : "")
+                setEditingSteps(true)
+              }}
+              className="flex h-10 items-center gap-1.5 rounded-md pr-2 text-muted-foreground transition-colors active:bg-accent disabled:opacity-40 md:hover:text-foreground"
+            >
+              <Footprints className="h-4 w-4" />
+              {steps ? (
+                <span className="font-medium tabular-nums text-foreground">{steps.count.toLocaleString("pl-PL")}</span>
+              ) : (
+                "kroki"
+              )}
+            </button>
+          )}
+          {steps && !steps.copiedToActivity && !steps.id.startsWith("temp-") && !editingSteps && (
+            <button
+              type="button"
+              onClick={() => onCopySteps(steps)}
+              className="h-10 text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              dodaj jako aktywność
+            </button>
+          )}
+        </div>
+      </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-11 w-11 flex-shrink-0 text-muted-foreground"
+        disabled={future}
+        onClick={() => onOpen({ mode: "new", day })}
+        aria-label={`Dodaj trening: ${format(date, "EEEE d MMMM", { locale: pl })}`}
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
+    </div>
+  )
+})
+
+export default function SportPage() {
+  const today = todayKey()
+  const [weekStart, setWeekStart] = useState(() => weekStartKey(today))
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i)), [weekStart])
+  const isThisWeek = weekStart === weekStartKey(today)
+  const range = useMemo(() => ({ from: weekStart, to: days[6] }), [weekStart, days])
+
+  const { types, isLoading: typesLoading, createType } = useSportTypes()
+  const { activities, isLoading: activitiesLoading, addActivity, updateActivity, removeActivity } = useSportActivities(range)
+  const { steps, saveSteps } = useSteps(range)
+  const [dialog, setDialog] = useState<ActivityDialogTarget | null>(null)
+
+  const isLoading = (typesLoading && types.length === 0) || (activitiesLoading && activities.length === 0)
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, SportActivity[]>()
+    for (const activity of activities) {
+      const day = dayKeyOf(activity.date)
+      const list = map.get(day)
+      if (list) list.push(activity)
+      else map.set(day, [activity])
+    }
+    return map
+  }, [activities])
+  const stepsByDay = useMemo(() => new Map(steps.map((s) => [dayKeyOf(s.date), s])), [steps])
+
+  // Week summary - workouts without the walks copied from the steps
+  const summary = useMemo(() => {
+    const workouts = activities.filter((a) => !a.fromSteps)
+    const bodyParts: Record<string, number> = {}
+    for (const activity of workouts) {
+      for (const part of activity.bodyParts) bodyParts[part.name] = (bodyParts[part.name] || 0) + 1
+    }
+    return {
+      count: workouts.length,
+      minutes: workouts.reduce((sum, a) => sum + (a.duration ?? 0), 0),
+      activeDays: new Set(workouts.map((a) => dayKeyOf(a.date))).size,
+      steps: steps.reduce((sum, s) => sum + s.count, 0),
+      bodyParts,
+    }
+  }, [activities, steps])
+
+  const handleSave = useCallback(
+    (values: ActivityFormValues, activityId?: string) => {
+      if (activityId) updateActivity(activityId, values)
+      else addActivity(values)
+    },
+    [addActivity, updateActivity]
+  )
+  const handleSaveSteps = useCallback((day: string, count: number) => saveSteps(day, count), [saveSteps])
+  const handleCopySteps = useCallback(async (entry: StepsEntry) => {
+    try {
+      await jsonRequest(`/api/sport/steps/${entry.id}/copy-to-activity`, "POST", {})
+      refreshPrivate("sport", "steps")
+      toast.success("Kroki dodane jako aktywność")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nie udało się skopiować kroków")
+    }
+  }, [])
+
+  // Quick logging goes to today (or, in another week, to the form with a day to pick)
+  const quickDay = isThisWeek ? today : days[6]
+  const hasBodyParts = Object.keys(summary.bodyParts).length > 0
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-4 animate-fade-in">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">Sport</h1>
+          <p className="text-sm text-muted-foreground">Treningi i kroki tydzień po tygodniu</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => setWeekStart((w) => addDaysKey(w, -7))} aria-label="Poprzedni tydzień">
+            <ChevronLeft className="h-5 w-5" />
           </Button>
-          <Button variant="outline" onClick={handleThisWeek} className="hidden sm:flex px-3 h-9 text-sm">
-            Ten tydzień
-          </Button>
-          <div className="px-2 md:px-4 py-2 font-medium text-xs md:text-sm text-center min-w-[140px] md:min-w-[200px]">
-            {format(weekStart, "d MMM", { locale: pl })} -{" "}
-            {format(addDays(weekStart, 6), "d MMM yyyy", { locale: pl })}
+          <div className="min-w-0 flex-1 px-2 text-center text-sm font-medium sm:min-w-[11rem]">
+            {format(dateOfKey(weekStart), "d MMM", { locale: pl })} – {format(dateOfKey(days[6]), "d MMM yyyy", { locale: pl })}
           </div>
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleNextWeek}>
-            <ChevronRight className="h-4 w-4" />
+          {!isThisWeek && (
+            <Button variant="outline" className="h-11 px-3" onClick={() => setWeekStart(weekStartKey(today))}>
+              Ten tydzień
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11"
+            disabled={isThisWeek}
+            onClick={() => setWeekStart((w) => addDaysKey(w, 7))}
+            aria-label="Następny tydzień"
+          >
+            <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
       </div>
 
-      {/* Stats */}
       <Card>
-        <CardContent className="py-3 md:py-4">
-          <div className="grid grid-cols-3 md:flex md:items-center gap-4 md:gap-8 mb-3 md:mb-4">
-            <div className="flex items-center gap-2">
-              <Dumbbell className="h-5 w-5 text-primary" />
-              <div>
-                <div className="text-sm text-muted-foreground">Treningi</div>
-                <div className="text-2xl font-bold">{totalActivities}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Footprints className="h-5 w-5 text-green-500" />
-              <div>
-                <div className="text-sm text-muted-foreground">Kroki</div>
-                <div className="text-2xl font-bold">{totalSteps.toLocaleString()}</div>
-              </div>
+        <CardContent className="space-y-3 p-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <div className="text-xs text-muted-foreground">Treningi</div>
+              <div className="text-xl font-bold tabular-nums">{summary.count}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Aktywne dni</div>
-              <div className="text-2xl font-bold text-orange-500">{activeDays}/7</div>
+              <div className="text-xs text-muted-foreground">Aktywne dni</div>
+              <div className="text-xl font-bold tabular-nums">{summary.activeDays}/7</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Czas</div>
+              <div className="text-xl font-bold tabular-nums">{summary.minutes ? formatMinutes(summary.minutes) : "–"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Kroki</div>
+              <div className="text-xl font-bold tabular-nums">{summary.steps ? summary.steps.toLocaleString("pl-PL") : "–"}</div>
             </div>
           </div>
-
-          {/* Body parts stats */}
-          {Object.keys(bodyPartsStats).length > 0 && (
+          {hasBodyParts && (
             <div>
-              <div className="text-sm text-muted-foreground mb-2">Partie mięśniowe w tym tygodniu:</div>
-              <div className="flex flex-wrap gap-2">
+              <div className="mb-1.5 text-xs text-muted-foreground">Partie w tym tygodniu</div>
+              <div className="flex flex-wrap gap-1.5">
                 {BODY_PARTS.map((part) => {
-                  const count = bodyPartsStats[part] || 0
+                  const count = summary.bodyParts[part] || 0
                   return (
-                    <div
+                    <span
                       key={part}
-                      className={`px-3 py-1 rounded-full text-sm ${
-                        count > 0
-                          ? "bg-primary/10 text-primary border border-primary/20"
-                          : "bg-muted text-muted-foreground"
-                      }`}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-xs",
+                        count > 0 ? "bg-private/10 font-medium text-private" : "bg-muted text-muted-foreground"
+                      )}
                     >
                       {part}
-                      {count > 0 && <span className="ml-1 font-bold">×{count}</span>}
-                    </div>
+                      {count > 0 && ` ×${count}`}
+                    </span>
                   )
                 })}
               </div>
@@ -472,609 +291,58 @@ export default function SportPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="activities">
-        <TabsList>
-          <TabsTrigger value="activities" className="flex items-center gap-2">
-            <Dumbbell className="h-4 w-4" />
-            Aktywność sportowa
-          </TabsTrigger>
-          <TabsTrigger value="steps" className="flex items-center gap-2">
-            <Footprints className="h-4 w-4" />
-            Kroki
-          </TabsTrigger>
-        </TabsList>
+      {isThisWeek && (
+        <Card>
+          <CardHeader className="px-4 pb-2 pt-4">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Dumbbell className="h-4 w-4 text-private" />
+              Dodaj dzisiejszy trening
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <SportQuickLog
+              day={quickDay}
+              types={types}
+              activities={[]}
+              onAdd={addActivity}
+              onOpen={setDialog}
+              onCreateType={createType}
+            />
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Activities Tab */}
-        <TabsContent value="activities" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3 space-y-3 md:space-y-0 md:flex md:flex-row md:items-center md:justify-between">
-              <CardTitle className="text-base md:text-lg">Aktywności w tym tygodniu</CardTitle>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsAddingType(true)} className="text-xs md:text-sm">
-                  <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1" />
-                  <span className="hidden sm:inline">Nowy typ</span>
-                  <span className="sm:hidden">Typ</span>
-                </Button>
-                <Button size="sm" onClick={() => setIsAddingActivity(true)} className="text-xs md:text-sm">
-                  <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1" />
-                  <span className="hidden sm:inline">Dodaj aktywność</span>
-                  <span className="sm:hidden">Dodaj</span>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Mobile view - list of days */}
-              <div className="space-y-3 md:hidden">
-                {weekDays.map((day) => {
-                  const dayActivities = getActivitiesForDate(day)
-                  return (
-                    <Card key={day.toISOString()} className={isToday(day) ? "border-primary" : ""}>
-                      <CardHeader className="p-3 pb-2">
-                        <div className={`text-sm font-medium ${isToday(day) ? "text-primary" : ""}`}>
-                          {format(day, "EEEE, d MMM", { locale: pl })}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-3 pt-0">
-                        {dayActivities.length === 0 ? (
-                          <div className="text-xs text-muted-foreground py-2">Brak aktywności</div>
-                        ) : (
-                          <div className="space-y-2">
-                            {dayActivities.map((activity) => (
-                              <div
-                                key={activity.id}
-                                className="p-2 rounded text-xs text-white relative"
-                                style={{ backgroundColor: activity.type.color }}
-                              >
-                                <div className="font-medium flex items-center gap-1">
-                                  {activity.type.name}
-                                  {activity.isPublic && <Users className="h-3 w-3 opacity-80" />}
-                                </div>
-                                {activity.duration && (
-                                  <div className="flex items-center gap-1 opacity-80">
-                                    <Clock className="h-3 w-3" />
-                                    {activity.duration} min
-                                  </div>
-                                )}
-                                {activity.bodyParts.length > 0 && (
-                                  <div className="mt-1 flex flex-wrap gap-1">
-                                    {activity.bodyParts.map((bp) => (
-                                      <span key={bp.id} className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
-                                        {bp.name}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <button className="absolute top-1 right-1">
-                                      <MoreHorizontal className="h-3.5 w-3.5" />
-                                    </button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleStartEditActivity(activity)}>
-                                      <Edit2 className="h-3.5 w-3.5 mr-2" />
-                                      Edytuj
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="text-destructive"
-                                      onClick={() => handleDeleteActivity(activity.id)}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                      Usuń
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-
-              {/* Desktop view - week grid */}
-              <div className="border rounded-lg overflow-hidden hidden md:block">
-                {/* Week header */}
-                <div className="grid grid-cols-7 gap-1 p-3 bg-muted/50 border-b">
-                  {weekDays.map((day) => (
-                    <div
-                      key={day.toISOString()}
-                      className={`text-center text-sm ${isToday(day) ? "font-bold text-primary" : "text-muted-foreground"}`}
-                    >
-                      <div>{format(day, "EEE", { locale: pl })}</div>
-                      <div className="text-xs">{format(day, "d")}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Activities grid */}
-                <div className="grid grid-cols-7 gap-1 p-2 min-h-[200px]">
-                  {weekDays.map((day) => {
-                    const dayActivities = getActivitiesForDate(day)
-                    return (
-                      <div
-                        key={day.toISOString()}
-                        className={`p-2 rounded-lg border min-h-[150px] ${
-                          isToday(day) ? "bg-primary/5 border-primary" : "border-transparent"
-                        }`}
-                      >
-                        {dayActivities.map((activity) => (
-                          <div
-                            key={activity.id}
-                            className="mb-2 p-2 rounded text-xs text-white relative group"
-                            style={{ backgroundColor: activity.type.color }}
-                          >
-                            <div className="font-medium flex items-center gap-1">
-                              {activity.type.name}
-                              {activity.isPublic && <Users className="h-3 w-3 opacity-80" />}
-                            </div>
-                            {activity.duration && (
-                              <div className="flex items-center gap-1 opacity-80">
-                                <Clock className="h-3 w-3" />
-                                {activity.duration} min
-                              </div>
-                            )}
-                            {activity.bodyParts.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {activity.bodyParts.map((bp) => (
-                                  <span key={bp.id} className="bg-white/20 px-1 rounded text-[10px]">
-                                    {bp.name}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {activity.fromSteps && activity.notes && (
-                              <div className="mt-1 text-[10px] opacity-80">
-                                {parseInt(activity.notes).toLocaleString()} kroków
-                              </div>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleStartEditActivity(activity)}>
-                                  <Edit2 className="h-3.5 w-3.5 mr-2" />
-                                  Edytuj
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => handleDeleteActivity(activity.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                  Usuń
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Steps Tab */}
-        <TabsContent value="steps" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Kroki w tym tygodniu</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* Mobile view - Cards */}
-              <div className="space-y-2 md:hidden">
-                {weekDays.map((day) => {
-                  const stepsEntry = getStepsForDate(day)
-                  const progress = stepsEntry ? Math.min(100, (stepsEntry.count / 10000) * 100) : 0
-                  const isFuture = day > new Date()
-                  const dateStr = format(day, "yyyy-MM-dd")
-
-                  return (
-                    <Card key={day.toISOString()} className={isToday(day) ? "border-primary" : ""}>
-                      <CardContent className="p-3">
-                        <div className="space-y-2">
-                          {/* Date */}
-                          <div className={`text-sm font-medium ${isToday(day) ? "text-primary" : ""}`}>
-                            {format(day, "EEEE, d MMM", { locale: pl })}
-                          </div>
-
-                          {/* Steps */}
-                          <div className="flex items-center gap-2">
-                            <Footprints className="h-4 w-4 text-muted-foreground" />
-                            {editingStepsDate === dateStr ? (
-                              <Input
-                                type="number"
-                                value={stepsValue}
-                                onChange={(e) => setStepsValue(e.target.value)}
-                                onKeyDown={(e) => handleKeyDown(e, () => handleSaveSteps(dateStr))}
-                                onBlur={() => handleSaveSteps(dateStr)}
-                                className="h-8 w-24 text-sm"
-                                autoFocus
-                              />
-                            ) : (
-                              <div
-                                className="cursor-pointer text-sm font-medium"
-                                onClick={() => {
-                                  if (!isFuture) {
-                                    setEditingStepsDate(dateStr)
-                                    setStepsValue(stepsEntry?.count.toString() || "")
-                                  }
-                                }}
-                              >
-                                {stepsEntry ? stepsEntry.count.toLocaleString() : 0} kroków
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Progress */}
-                          {stepsEntry && (
-                            <div className="space-y-1">
-                              <div className="w-full bg-muted rounded-full h-2">
-                                <div
-                                  className="bg-primary h-2 rounded-full transition-all"
-                                  style={{ width: `${progress}%` }}
-                                />
-                              </div>
-                              <div className="text-xs text-muted-foreground text-right">
-                                {Math.round(progress)}% celu
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Actions */}
-                          {stepsEntry && !stepsEntry.copiedToActivity && stepsEntry.count >= 5000 && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleCopyStepsToActivity(stepsEntry)}
-                              className="w-full h-7 text-xs"
-                            >
-                              <Copy className="h-3 w-3 mr-1" />
-                              Skopiuj jako aktywność
-                            </Button>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-
-              {/* Desktop view - Table */}
-              <div className="border rounded-lg overflow-hidden hidden md:block">
-                {/* Table header */}
-                <div className="grid grid-cols-[1fr_120px_120px_100px] gap-2 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
-                  <div>Dzień</div>
-                  <div className="text-center">Kroki</div>
-                  <div className="text-center">Cel (10,000)</div>
-                  <div>Akcje</div>
-                </div>
-
-                {/* Days */}
-                {weekDays.map((day) => {
-                  const stepsEntry = getStepsForDate(day)
-                  const progress = stepsEntry ? Math.min(100, (stepsEntry.count / 10000) * 100) : 0
-                  const isFuture = day > new Date()
-                  const dateStr = format(day, "yyyy-MM-dd")
-
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={`grid grid-cols-[1fr_120px_120px_100px] gap-2 p-3 border-b last:border-b-0 items-center ${
-                        isToday(day) ? "bg-primary/5" : ""
-                      }`}
-                    >
-                      {/* Day */}
-                      <div className={isToday(day) ? "font-bold text-primary" : ""}>
-                        {format(day, "EEEE, d MMM", { locale: pl })}
-                      </div>
-
-                      {/* Steps input/display */}
-                      <div className="text-center">
-                        {editingStepsDate === dateStr ? (
-                          <Input
-                            type="number"
-                            value={stepsValue}
-                            onChange={(e) => setStepsValue(e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, () => handleSaveSteps(dateStr))}
-                            onBlur={() => handleSaveSteps(dateStr)}
-                            className="h-8 text-center"
-                            autoFocus
-                          />
-                        ) : (
-                          <button
-                            onClick={() => {
-                              if (!isFuture) {
-                                setEditingStepsDate(dateStr)
-                                setStepsValue(stepsEntry?.count.toString() || "")
-                              }
-                            }}
-                            disabled={isFuture}
-                            className={`px-3 py-1 rounded ${
-                              isFuture
-                                ? "opacity-30"
-                                : "hover:bg-muted cursor-pointer"
-                            }`}
-                          >
-                            {stepsEntry ? stepsEntry.count.toLocaleString() : "-"}
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Progress */}
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all ${
-                              progress >= 100 ? "bg-green-500" : "bg-primary"
-                            }`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground w-10">
-                          {Math.round(progress)}%
-                        </span>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex gap-1">
-                        {stepsEntry && !stepsEntry.copiedToActivity && stepsEntry.count >= 5000 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => handleCopyStepsToActivity(stepsEntry)}
-                          >
-                            <Copy className="h-3.5 w-3.5 mr-1" />
-                            Kopiuj
-                          </Button>
-                        )}
-                        {stepsEntry?.copiedToActivity && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            <Check className="h-3 w-3 mr-1" />
-                            skopiowane
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Add Activity Dialog */}
-      <Dialog open={isAddingActivity} onOpenChange={setIsAddingActivity}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Dodaj aktywność sportową</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div>
-              <Label>Typ aktywności</Label>
-              <Select
-                value={newActivity.typeId}
-                onValueChange={(v) => setNewActivity({ ...newActivity, typeId: v, bodyParts: [] })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Wybierz typ..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {activityTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: type.color }}
-                        />
-                        {type.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="space-y-3 p-3">
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
             </div>
-
-            <div>
-              <Label>Data</Label>
-              <Input
-                type="date"
-                value={newActivity.date}
-                onChange={(e) => setNewActivity({ ...newActivity, date: e.target.value })}
-              />
+          ) : (
+            <div className="divide-y">
+              {days.map((day) => (
+                <DayRow
+                  key={day}
+                  day={day}
+                  today={today}
+                  activities={byDay.get(day) ?? EMPTY}
+                  steps={stepsByDay.get(day)}
+                  onOpen={setDialog}
+                  onSaveSteps={handleSaveSteps}
+                  onCopySteps={handleCopySteps}
+                />
+              ))}
             </div>
+          )}
+        </CardContent>
+      </Card>
 
-            <div>
-              <Label>Czas trwania (minuty)</Label>
-              <Input
-                type="number"
-                value={newActivity.duration}
-                onChange={(e) => setNewActivity({ ...newActivity, duration: e.target.value })}
-                placeholder="np. 60"
-              />
-            </div>
-
-            {selectedType?.hasBodyParts && (
-              <div>
-                <Label>Partie mięśniowe</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {BODY_PARTS.map((part) => (
-                    <button
-                      key={part}
-                      type="button"
-                      onClick={() => handleBodyPartToggle(part)}
-                      className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                        newActivity.bodyParts.includes(part)
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-muted-foreground/30 hover:border-primary"
-                      }`}
-                    >
-                      {part}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <Label>Notatki (opcjonalnie)</Label>
-              <Input
-                value={newActivity.notes}
-                onChange={(e) => setNewActivity({ ...newActivity, notes: e.target.value })}
-                placeholder="Dodatkowe informacje..."
-              />
-            </div>
-
-            {/* Public toggle */}
-            <div className="flex items-center justify-between pt-2 border-t">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span>Udostępnij znajomym</span>
-              </div>
-              <Switch
-                checked={newActivity.isPublic}
-                onCheckedChange={(checked) => setNewActivity({ ...newActivity, isPublic: checked })}
-              />
-            </div>
-
-            <Button onClick={handleCreateActivity} className="w-full">
-              Dodaj aktywność
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Type Dialog */}
-      <Dialog open={isAddingType} onOpenChange={setIsAddingType}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nowy typ aktywności</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div>
-              <Label>Nazwa</Label>
-              <Input
-                value={newTypeName}
-                onChange={(e) => setNewTypeName(e.target.value)}
-                placeholder="np. Joga, Boks..."
-              />
-            </div>
-            <Button onClick={handleCreateType} className="w-full">
-              Dodaj typ
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Activity Dialog */}
-      <Dialog open={!!editingActivity} onOpenChange={(open) => !open && setEditingActivity(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edytuj aktywność</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div>
-              <Label>Typ aktywności</Label>
-              <Select
-                value={editForm.typeId}
-                onValueChange={(v) => setEditForm({ ...editForm, typeId: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Wybierz typ..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {activityTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: type.color }}
-                        />
-                        {type.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Data</Label>
-              <Input
-                type="date"
-                value={editForm.date}
-                onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <Label>Czas trwania (minuty)</Label>
-              <Input
-                type="number"
-                value={editForm.duration}
-                onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })}
-                placeholder="np. 60"
-              />
-            </div>
-
-            {activityTypes.find((t) => t.id === editForm.typeId)?.hasBodyParts && (
-              <div>
-                <Label>Partie mięśniowe</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {BODY_PARTS.map((part) => (
-                    <button
-                      key={part}
-                      type="button"
-                      onClick={() => handleEditBodyPartToggle(part)}
-                      className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                        editForm.bodyParts.includes(part)
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-muted-foreground/30 hover:border-primary"
-                      }`}
-                    >
-                      {part}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <Label>Notatki (opcjonalnie)</Label>
-              <Input
-                value={editForm.notes}
-                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                placeholder="Dodatkowe informacje..."
-              />
-            </div>
-
-            {/* Public toggle */}
-            <div className="flex items-center justify-between pt-2 border-t">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span>Udostępnij znajomym</span>
-              </div>
-              <Switch
-                checked={editForm.isPublic}
-                onCheckedChange={(checked) => setEditForm({ ...editForm, isPublic: checked })}
-              />
-            </div>
-
-            <Button onClick={handleUpdateActivity} className="w-full">
-              Zapisz zmiany
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ActivityDialog target={dialog} types={types} onClose={() => setDialog(null)} onSave={handleSave} onDelete={removeActivity} />
     </div>
   )
 }
+
+// One list for every day without workouts - the rows of those days are not rendered again
+const EMPTY: SportActivity[] = []

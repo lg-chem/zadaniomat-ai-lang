@@ -66,6 +66,17 @@ export async function POST(
       return NextResponse.json({ error: "Challenge not found" }, { status: 404 })
     }
 
+    if (challenge.linkedType !== "NONE") {
+      return NextResponse.json(
+        { error: "To wyzwanie liczy się samo - wpis dodaj w nawyku lub w sporcie" },
+        { status: 400 }
+      )
+    }
+
+    if (!Number.isFinite(parseFloat(value))) {
+      return NextResponse.json({ error: "Podaj liczbę" }, { status: 400 })
+    }
+
     const entryDate = date ? new Date(date) : new Date()
     entryDate.setHours(0, 0, 0, 0)
     const entryDateStr = entryDate.toISOString().split("T")[0]
