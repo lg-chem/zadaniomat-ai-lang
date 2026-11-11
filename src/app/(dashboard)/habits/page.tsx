@@ -1,958 +1,325 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, KeyboardEvent } from "react"
-import {
-  format,
-  startOfWeek,
-  addDays,
-  subWeeks,
-  addWeeks,
-  isToday,
-  isSameDay,
-} from "date-fns"
+import { memo, useCallback, useMemo, useState } from "react"
+import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { toast } from "sonner"
-import {
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  Flame,
-  Trash2,
-  X,
-  Clock,
-  Users,
-  Edit2,
-  MoreHorizontal,
-} from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Clock, Flame, Plus, Settings2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
+import { useHabits, completionOn, type DayChange, type Habit, type HabitInput } from "@/hooks/use-habits"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Label } from "@/components/ui/label"
-import { useHabits } from "@/hooks/use-habits"
+  addDaysKey,
+  dateOfKey,
+  dayKeyOf,
+  formatMinutes,
+  habitRhythmLabel,
+  STREAK_UNIT,
+  formatStreak,
+  todayKey,
+  weekStartKey,
+} from "@/lib/tracking"
+import { HabitDayDialog } from "@/components/private/habit-day-dialog"
+import { HabitFormDialog, HABIT_IDEAS } from "@/components/private/habit-form-dialog"
 
-type HabitFrequency = "DAILY" | "WEEKLY" | "MONTHLY"
-
-interface HabitCompletion {
-  id: string
-  date: string
-  count: number
-  minutes?: number | null
+interface HabitWeekRowProps {
+  habit: Habit
+  days: string[]
+  today: string
+  onTick: (habit: Habit, day: string) => void
+  onDetails: (habit: Habit, day: string) => void
+  onSettings: (habit: Habit) => void
 }
 
-interface Habit {
-  id: string
-  name: string
-  description?: string | null
-  frequency: HabitFrequency
-  targetCount: number
-  defaultMinutes?: number | null
-  color: string
-  currentStreak: number
-  longestStreak: number
-  isPublic?: boolean
-  completions?: HabitCompletion[]
-}
-
-const COLORS = [
-  "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#ef4444",
-  "#f59e0b", "#06b6d4", "#84cc16",
-]
-
-const FREQUENCY_LABELS: Record<HabitFrequency, string> = {
-  DAILY: "Codziennie",
-  WEEKLY: "Co tydzień",
-  MONTHLY: "Co miesiąc",
-}
-
-export default function HabitsPage() {
-  const [weekStart, setWeekStart] = useState(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 })
-  )
-
-  // Use SWR hook for habits with cache
-  const { habits, isLoading, mutate: mutateHabits } = useHabits()
-
-  // New habit form
-  const [isAddingHabit, setIsAddingHabit] = useState(false)
-  const [newHabit, setNewHabit] = useState({
-    name: "",
-    color: COLORS[0],
-    frequency: "DAILY" as HabitFrequency,
-    defaultMinutes: "",
-    isPublic: true,
-  })
-  const newHabitRef = useRef<HTMLInputElement>(null)
-
-  // Time editing state
-  const [editingTime, setEditingTime] = useState<{ habitId: string; date: string } | null>(null)
-  const [timeValue, setTimeValue] = useState("")
-
-  // Edit habit state
-  const [editingHabit, setEditingHabit] = useState<Habit | null>(null)
-  const [editForm, setEditForm] = useState({
-    name: "",
-    color: COLORS[0],
-    frequency: "DAILY" as HabitFrequency,
-    defaultMinutes: "",
-    isPublic: true,
-  })
-
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-
-  const handlePrevWeek = () => setWeekStart((w) => subWeeks(w, 1))
-  const handleNextWeek = () => setWeekStart((w) => addWeeks(w, 1))
-  const handleThisWeek = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
-
-  const handleCreateHabit = async () => {
-    if (!newHabit.name.trim()) return
-
-    try {
-      const res = await fetch("/api/habits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newHabit),
-      })
-      if (res.ok) {
-        mutateHabits()
-        setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
-        setIsAddingHabit(false)
-        toast.success("Nawyk dodany")
-      } else {
-        toast.error("Nie udało się dodać nawyku")
-      }
-    } catch (error) {
-      console.error("Error creating habit:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  const handleToggleCompletion = async (habitId: string, date: Date, minutes?: string) => {
-    try {
-      await fetch(`/api/habits/${habitId}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: format(date, "yyyy-MM-dd"),
-          ...(minutes !== undefined && { minutes }),
-        }),
-      })
-      mutateHabits()
-    } catch (error) {
-      console.error("Error toggling habit:", error)
-    }
-  }
-
-  const handleUpdateTime = async (habitId: string, date: string) => {
-    if (!timeValue) {
-      setEditingTime(null)
-      return
-    }
-    try {
-      await fetch(`/api/habits/${habitId}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, minutes: timeValue }),
-      })
-      mutateHabits()
-      setEditingTime(null)
-      setTimeValue("")
-    } catch (error) {
-      console.error("Error updating time:", error)
-    }
-  }
-
-  const handleDeleteHabit = async (habitId: string) => {
-    if (!confirm("Czy na pewno chcesz usunąć ten nawyk?")) return
-    try {
-      const res = await fetch(`/api/habits/${habitId}`, { method: "DELETE" })
-      if (res.ok) {
-        mutateHabits()
-        toast.success("Nawyk usunięty")
-      } else {
-        toast.error("Nie udało się usunąć nawyku")
-      }
-    } catch (error) {
-      console.error("Error deleting habit:", error)
-      toast.error("Wystąpił błąd podczas usuwania")
-    }
-  }
-
-  const handleStartEdit = (habit: Habit) => {
-    setEditingHabit(habit)
-    setEditForm({
-      name: habit.name,
-      color: habit.color,
-      frequency: habit.frequency,
-      defaultMinutes: habit.defaultMinutes?.toString() || "",
-      isPublic: habit.isPublic ?? true,
-    })
-  }
-
-  const handleUpdateHabit = async () => {
-    if (!editingHabit) return
-    try {
-      const res = await fetch(`/api/habits/${editingHabit.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editForm.name,
-          color: editForm.color,
-          frequency: editForm.frequency,
-          defaultMinutes: editForm.defaultMinutes ? parseInt(editForm.defaultMinutes) : null,
-          isPublic: editForm.isPublic,
-        }),
-      })
-      if (res.ok) {
-        mutateHabits()
-        setEditingHabit(null)
-        toast.success("Nawyk zaktualizowany")
-      } else {
-        toast.error("Nie udało się zaktualizować nawyku")
-      }
-    } catch (error) {
-      console.error("Error updating habit:", error)
-      toast.error("Wystąpił błąd")
-    }
-  }
-
-  const getCompletionOnDate = (habit: Habit, date: Date): HabitCompletion | undefined => {
-    const dateStr = format(date, "yyyy-MM-dd")
-    return habit.completions?.find((c) => {
-      const completionDate = format(new Date(c.date), "yyyy-MM-dd")
-      return completionDate === dateStr
-    })
-  }
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      action()
-    }
-    if (e.key === "Escape") {
-      setIsAddingHabit(false)
-      setEditingTime(null)
-      setTimeValue("")
-      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
-    }
-  }
-
-  const handleAddRowClick = () => {
-    setIsAddingHabit(true)
-    setTimeout(() => newHabitRef.current?.focus(), 0)
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4 md:space-y-6 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <div className="h-8 w-32 bg-muted rounded animate-pulse mb-2" />
-            <div className="h-4 w-48 bg-muted rounded animate-pulse" />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-10 w-10 bg-muted rounded animate-pulse" />
-            <div className="h-10 w-24 bg-muted rounded animate-pulse" />
-            <div className="h-10 w-10 bg-muted rounded animate-pulse" />
-          </div>
-        </div>
-        <div className="h-24 bg-muted rounded animate-pulse" />
-        <div className="h-64 bg-muted rounded animate-pulse" />
-      </div>
-    )
-  }
-
-  // Stats (after loading check to ensure habits is defined)
-  const totalCompletionsThisWeek = habits.reduce(
-    (sum, h) => sum + (h.completions?.length || 0),
-    0
-  )
-  const maxStreak = habits.reduce((max, h) => Math.max(max, h.currentStreak || 0), 0)
-  const totalMinutesThisWeek = habits.reduce((sum, h) => {
-    return sum + (h.completions || []).reduce((cSum, c) => cSum + (c.minutes || h.defaultMinutes || 0), 0)
-  }, 0)
+/**
+ * A habit over a week: seven thumb-sized days. An empty day is ticked with one tap;
+ * a done day opens its details (minutes, count, note, untick) - a stray tap on a
+ * small square can't wipe a day.
+ */
+const HabitWeekRow = memo(function HabitWeekRow({ habit, days, today, onTick, onDetails, onSettings }: HabitWeekRowProps) {
+  const weekMinutes = days.reduce((sum, day) => sum + (completionOn(habit, day)?.minutes ?? 0), 0)
+  const weekDone = days.filter((day) => completionOn(habit, day)).length
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Nawyki</h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Śledź codzienne nawyki i buduj streak
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handlePrevWeek}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={handleThisWeek}>
-            Ten tydzień
-          </Button>
-          <div className="px-4 py-2 font-medium min-w-[200px] text-center">
-            {format(weekStart, "d MMM", { locale: pl })} -{" "}
-            {format(addDays(weekStart, 6), "d MMM yyyy", { locale: pl })}
+    <div className="grid gap-2 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-4">
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: habit.color }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-medium">{habit.name}</span>
+            {habit.isPublic && <Users className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-label="Widoczny dla znajomych" />}
           </div>
-          <Button variant="outline" size="icon" onClick={handleNextWeek}>
-            <ChevronRight className="h-4 w-4" />
+          <div className="flex flex-wrap items-center gap-x-2.5 text-xs text-muted-foreground">
+            <span>{habitRhythmLabel(habit.frequency, habit.targetCount)}</span>
+            {habit.frequency !== "DAILY" && (
+              <span className={cn("tabular-nums", weekDone >= habit.targetCount && habit.frequency === "WEEKLY" && "text-green-600 dark:text-green-400")}>
+                {habit.frequency === "WEEKLY" ? `${weekDone}/${habit.targetCount}` : `${habit.periodDone}/${habit.periodTarget} w mies.`}
+              </span>
+            )}
+            {habit.currentStreak > 0 && (
+              <span className="flex items-center gap-0.5 text-orange-600 dark:text-orange-400">
+                <Flame className="h-3.5 w-3.5" />
+                {formatStreak(habit.currentStreak, habit.frequency)}
+              </span>
+            )}
+            {habit.longestStreak > habit.currentStreak && (
+              <span>
+                rekord {formatStreak(habit.longestStreak, habit.frequency)}
+              </span>
+            )}
+            {weekMinutes > 0 && (
+              <span className="flex items-center gap-0.5">
+                <Clock className="h-3 w-3" />
+                {formatMinutes(weekMinutes)}
+              </span>
+            )}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 flex-shrink-0 text-muted-foreground md:order-last"
+          onClick={() => onSettings(habit)}
+          aria-label={`Ustawienia: ${habit.name}`}
+        >
+          <Settings2 className="h-5 w-5" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 md:gap-1.5">
+        {days.map((day) => {
+          const completion = completionOn(habit, day)
+          const done = !!completion
+          const future = day > today
+          const date = dateOfKey(day)
+          return (
+            <button
+              key={day}
+              type="button"
+              disabled={future}
+              onClick={() => (done || habit.unit ? onDetails(habit, day) : onTick(habit, day))}
+              aria-pressed={done}
+              aria-label={`${habit.name}, ${format(date, "EEEE d MMMM", { locale: pl })}`}
+              className={cn(
+                "flex h-12 flex-col items-center justify-center rounded-lg text-[11px] leading-tight transition-transform md:w-12",
+                done ? "text-white" : "border border-dashed border-muted-foreground/30 text-muted-foreground",
+                day === today && !done && "border-solid border-foreground/60 text-foreground",
+                future ? "opacity-40" : "active:scale-95"
+              )}
+              style={done ? { backgroundColor: habit.color } : undefined}
+            >
+              {done ? (
+                habit.unit ? (
+                  <span className="text-sm font-semibold tabular-nums">{completion.count}</span>
+                ) : (
+                  <Check className="h-5 w-5" strokeWidth={3} />
+                )
+              ) : (
+                <>
+                  <span className="uppercase">{format(date, "EEEEEE", { locale: pl })}</span>
+                  <span className="text-sm font-semibold tabular-nums">{format(date, "d")}</span>
+                </>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+})
+
+export default function HabitsPage() {
+  const today = todayKey()
+  const [weekStart, setWeekStart] = useState(() => weekStartKey(today))
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i)), [weekStart])
+  const isThisWeek = weekStart === weekStartKey(today)
+
+  const { habits, isLoading, setDay, createHabit, updateHabit, removeHabit } = useHabits({
+    from: weekStart,
+    to: days[6],
+  })
+
+  const [details, setDetails] = useState<{ habit: Habit; day: string } | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<Habit | null>(null)
+  const [idea, setIdea] = useState<(typeof HABIT_IDEAS)[number] | null>(null)
+
+  const handleTick = useCallback((habit: Habit, day: string) => setDay(habit.id, day, { done: true }), [setDay])
+  const handleDetails = useCallback((habit: Habit, day: string) => setDetails({ habit, day }), [])
+  const handleSaveDay = useCallback((habitId: string, day: string, change: DayChange) => setDay(habitId, day, change), [setDay])
+  const handleSettings = useCallback((habit: Habit) => {
+    setDetails(null)
+    setEditing(habit)
+    setIdea(null)
+    setFormOpen(true)
+  }, [])
+
+  const openNew = (start: (typeof HABIT_IDEAS)[number] | null = null) => {
+    setEditing(null)
+    setIdea(start)
+    setFormOpen(true)
+  }
+
+  const handleSubmit = async (input: HabitInput) => {
+    try {
+      if (editing) await updateHabit(editing.id, input)
+      else await createHabit(input)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nie udało się zapisać nawyku")
+      throw error
+    }
+  }
+
+  // Week summary - only the days of the week being viewed
+  const summary = useMemo(() => {
+    const inWeek = (date: string) => {
+      const day = dayKeyOf(date)
+      return day >= weekStart && day <= days[6]
+    }
+    let done = 0
+    let minutes = 0
+    for (const habit of habits) {
+      for (const completion of habit.completions) {
+        if (!inWeek(completion.date)) continue
+        done++
+        minutes += completion.minutes ?? 0
+      }
+    }
+    const best = habits.reduce<Habit | null>((top, h) => (h.currentStreak > (top?.currentStreak ?? 0) ? h : top), null)
+    return { done, minutes, best }
+  }, [habits, weekStart, days])
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-4 animate-fade-in">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">Nawyki</h1>
+          <p className="text-sm text-muted-foreground">Tydzień po tygodniu - odhaczaj i pilnuj serii</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => setWeekStart((w) => addDaysKey(w, -7))} aria-label="Poprzedni tydzień">
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div className="min-w-0 flex-1 px-2 text-center text-sm font-medium sm:min-w-[11rem]">
+            {format(dateOfKey(weekStart), "d MMM", { locale: pl })} – {format(dateOfKey(days[6]), "d MMM yyyy", { locale: pl })}
+          </div>
+          {!isThisWeek && (
+            <Button variant="outline" className="h-11 px-3" onClick={() => setWeekStart(weekStartKey(today))}>
+              Ten tydzień
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11"
+            disabled={isThisWeek}
+            onClick={() => setWeekStart((w) => addDaysKey(w, 7))}
+            aria-label="Następny tydzień"
+          >
+            <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
       </div>
 
-      {/* Stats */}
-      <Card>
-        <CardContent className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-8 py-4">
-          <div>
-            <div className="text-xs md:text-sm text-muted-foreground">Nawyki</div>
-            <div className="text-xl md:text-2xl font-bold">{habits.length}</div>
-          </div>
-          <div>
-            <div className="text-xs md:text-sm text-muted-foreground">Wykonane w tygodniu</div>
-            <div className="text-xl md:text-2xl font-bold text-green-600">{totalCompletionsThisWeek}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Flame className="h-4 w-4 md:h-5 md:w-5 text-orange-500 flex-shrink-0" />
+      {habits.length > 0 && (
+        <Card>
+          <CardContent className="grid grid-cols-3 gap-3 p-4">
             <div>
-              <div className="text-xs md:text-sm text-muted-foreground">Najdłuższy streak</div>
-              <div className="text-xl md:text-2xl font-bold">{maxStreak} dni</div>
+              <div className="text-xs text-muted-foreground">Wykonane w tygodniu</div>
+              <div className="text-xl font-bold tabular-nums">{summary.done}</div>
             </div>
-          </div>
-          {totalMinutesThisWeek > 0 && (
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 md:h-5 md:w-5 text-blue-500 flex-shrink-0" />
-              <div>
-                <div className="text-xs md:text-sm text-muted-foreground">Czas w tygodniu</div>
-                <div className="text-xl md:text-2xl font-bold">
-                  {totalMinutesThisWeek >= 60
-                    ? `${Math.floor(totalMinutesThisWeek / 60)}h ${totalMinutesThisWeek % 60}m`
-                    : `${totalMinutesThisWeek}m`}
-                </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Czas w tygodniu</div>
+              <div className="text-xl font-bold tabular-nums">{summary.minutes ? formatMinutes(summary.minutes) : "–"}</div>
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs text-muted-foreground">Najdłuższa seria</div>
+              <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums">
+                {summary.best && summary.best.currentStreak > 0 ? (
+                  <>
+                    {summary.best.currentStreak}
+                    <span className="truncate text-xs font-normal text-muted-foreground">
+                      {STREAK_UNIT[summary.best.frequency]} · {summary.best.name}
+                    </span>
+                  </>
+                ) : (
+                  "–"
+                )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading && habits.length === 0 ? (
+            <div className="space-y-3 p-3">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-20 w-full" />
+              ))}
+            </div>
+          ) : habits.length === 0 ? (
+            <div className="space-y-3 p-4">
+              <p className="text-sm text-muted-foreground">
+                Nie masz jeszcze nawyków. Zacznij od jednego z gotowych albo dodaj własny - potem odhaczasz je
+                jednym dotknięciem na ekranie Dziś.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {HABIT_IDEAS.map((start) => (
+                  <button
+                    key={start.name}
+                    type="button"
+                    onClick={() => openNew(start)}
+                    className="flex h-11 items-center gap-1.5 rounded-full border border-dashed px-4 text-sm transition-colors active:bg-accent md:hover:bg-accent/60"
+                  >
+                    <Plus className="h-4 w-4 text-muted-foreground" />
+                    {start.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {habits.map((habit) => (
+                <HabitWeekRow
+                  key={habit.id}
+                  habit={habit}
+                  days={days}
+                  today={today}
+                  onTick={handleTick}
+                  onDetails={handleDetails}
+                  onSettings={handleSettings}
+                />
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Habits Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base md:text-lg">Tracker nawyków</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Mobile View - Cards */}
-          <div className="space-y-3 md:hidden">
-            {habits.map((habit) => (
-              <Card key={habit.id}>
-                <CardContent className="p-3">
-                  <div className="space-y-3">
-                    {/* Habit Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1">
-                        <div
-                          className="h-3 w-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: habit.color }}
-                        />
-                        <span className="font-medium text-sm">{habit.name}</span>
-                        {habit.isPublic && (
-                          <Users className="h-3 w-3 text-primary" />
-                        )}
-                        <Badge variant="secondary" className="text-[10px]">
-                          {FREQUENCY_LABELS[habit.frequency]}
-                        </Badge>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-6 w-6">
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleStartEdit(habit)}>
-                            <Edit2 className="h-3.5 w-3.5 mr-2" />
-                            Edytuj
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDeleteHabit(habit.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Usuń
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+      <Button className="h-11 w-full sm:w-auto" onClick={() => openNew()}>
+        <Plus className="mr-2 h-4 w-4" />
+        Nowy nawyk
+      </Button>
 
-                    {/* Streak Info */}
-                    {habit.currentStreak > 0 && (
-                      <div className="flex items-center gap-1.5 text-xs text-orange-500">
-                        <Flame className="h-3.5 w-3.5" />
-                        <span className="font-medium">{habit.currentStreak} dni streak</span>
-                      </div>
-                    )}
-
-                    {/* Week Grid - Horizontal Scroll */}
-                    <div className="overflow-x-auto -mx-3 px-3">
-                      <div className="flex gap-2 min-w-max">
-                        {weekDays.map((day) => {
-                          const completion = getCompletionOnDate(habit, day)
-                          const completed = !!completion
-                          const isFuture = day > new Date()
-                          const dateStr = format(day, "yyyy-MM-dd")
-                          const isEditing = editingTime?.habitId === habit.id && editingTime?.date === dateStr
-
-                          return (
-                            <div key={day.toISOString()} className="flex flex-col items-center gap-1">
-                              {/* Day label */}
-                              <div className={`text-[10px] ${isToday(day) ? "text-primary font-bold" : "text-muted-foreground"}`}>
-                                <div>{format(day, "EEE", { locale: pl })}</div>
-                                <div className="text-center">{format(day, "d")}</div>
-                              </div>
-
-                              {/* Checkbox */}
-                              <button
-                                onClick={() => !isFuture && handleToggleCompletion(habit.id, day)}
-                                disabled={isFuture}
-                                className={`
-                                  h-10 w-10 rounded-lg flex items-center justify-center transition-all
-                                  ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer active:scale-95"}
-                                  ${completed
-                                    ? "text-white shadow-sm"
-                                    : "border-2 border-dashed border-muted-foreground/30"
-                                  }
-                                `}
-                                style={{
-                                  backgroundColor: completed ? habit.color : "transparent",
-                                }}
-                              >
-                                {completed && <Check className="h-4 w-4" />}
-                              </button>
-
-                              {/* Time display/edit */}
-                              {completed && (habit.defaultMinutes || completion.minutes) && (
-                                isEditing ? (
-                                  <Input
-                                    type="number"
-                                    value={timeValue}
-                                    onChange={(e) => setTimeValue(e.target.value)}
-                                    onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTime(habit.id, dateStr))}
-                                    onBlur={() => handleUpdateTime(habit.id, dateStr)}
-                                    className="h-6 w-14 text-[10px] text-center p-0"
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      setEditingTime({ habitId: habit.id, date: dateStr })
-                                      setTimeValue(completion.minutes?.toString() || habit.defaultMinutes?.toString() || "")
-                                    }}
-                                    className="text-[10px] text-muted-foreground flex items-center gap-0.5"
-                                  >
-                                    <Clock className="h-2.5 w-2.5" />
-                                    {completion.minutes || habit.defaultMinutes}m
-                                  </button>
-                                )
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-
-            {/* Mobile Add Habit Button */}
-            {!isAddingHabit && (
-              <Button
-                onClick={handleAddRowClick}
-                variant="outline"
-                className="w-full"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Dodaj nawyk
-              </Button>
-            )}
-
-            {/* Mobile Add Habit Form */}
-            {isAddingHabit && (
-              <Card className="border-primary/50 bg-primary/5">
-                <CardContent className="p-3">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      {/* Color picker */}
-                      <div className="relative group">
-                        <div
-                          className="h-8 w-8 rounded-full cursor-pointer border-2 border-border"
-                          style={{ backgroundColor: newHabit.color }}
-                        />
-                        <div className="absolute left-0 top-10 z-10 hidden group-hover:flex flex-wrap gap-1.5 p-2 bg-popover border rounded-lg shadow-lg w-[140px]">
-                          {COLORS.map((color) => (
-                            <button
-                              key={color}
-                              type="button"
-                              className={`h-6 w-6 rounded-full border-2 transition-all ${
-                                newHabit.color === color
-                                  ? "border-foreground scale-110"
-                                  : "border-transparent"
-                              }`}
-                              style={{ backgroundColor: color }}
-                              onClick={() => setNewHabit({ ...newHabit, color })}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <Input
-                        ref={newHabitRef}
-                        placeholder="Nazwa nawyku..."
-                        value={newHabit.name}
-                        onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
-                        onKeyDown={(e) => handleKeyDown(e, handleCreateHabit)}
-                        className="h-9 flex-1"
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Select
-                        value={newHabit.frequency}
-                        onValueChange={(v: HabitFrequency) =>
-                          setNewHabit({ ...newHabit, frequency: v })
-                        }
-                      >
-                        <SelectTrigger className="h-9 flex-1 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DAILY">Codziennie</SelectItem>
-                          <SelectItem value="WEEKLY">Co tydzień</SelectItem>
-                          <SelectItem value="MONTHLY">Co miesiąc</SelectItem>
-                        </SelectContent>
-                      </Select>
-
-                      <div className="flex items-center gap-1 flex-1">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <Input
-                          type="number"
-                          placeholder="min"
-                          value={newHabit.defaultMinutes}
-                          onChange={(e) => setNewHabit({ ...newHabit, defaultMinutes: e.target.value })}
-                          className="h-9 flex-1 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleCreateHabit}
-                        disabled={!newHabit.name.trim()}
-                        className="flex-1"
-                      >
-                        <Check className="h-3.5 w-3.5 mr-1" />
-                        Dodaj
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setIsAddingHabit(false)
-                          setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
-                        }}
-                        className="flex-1"
-                      >
-                        <X className="h-3.5 w-3.5 mr-1" />
-                        Anuluj
-                      </Button>
-                    </div>
-
-                    {/* Public toggle */}
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>Udostępnij znajomym</span>
-                      </div>
-                      <Switch
-                        checked={newHabit.isPublic}
-                        onCheckedChange={(checked) => setNewHabit({ ...newHabit, isPublic: checked })}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Empty state */}
-            {habits.length === 0 && !isAddingHabit && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Flame className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Brak nawyków</p>
-                <p className="text-sm">Kliknij "Dodaj nawyk" aby zacząć śledzić</p>
-              </div>
-            )}
-          </div>
-
-          {/* Desktop View - Table */}
-          <div className="border rounded-lg overflow-hidden hidden md:block">
-            {/* Table Header */}
-            <div className="grid grid-cols-[1fr_repeat(7,60px)_80px_50px] gap-1 p-3 bg-muted/50 border-b font-medium text-sm text-muted-foreground">
-              <div>Nawyk</div>
-              {weekDays.map((day) => (
-                <div
-                  key={day.toISOString()}
-                  className={`text-center ${isToday(day) ? "text-primary font-bold" : ""}`}
-                >
-                  <div>{format(day, "EEE", { locale: pl })}</div>
-                  <div className="text-xs">{format(day, "d")}</div>
-                </div>
-              ))}
-              <div className="text-center">
-                <Flame className="h-4 w-4 mx-auto" />
-              </div>
-              <div></div>
-            </div>
-
-            {/* Habit Rows */}
-            {habits.map((habit) => (
-              <div
-                key={habit.id}
-                className="grid grid-cols-[1fr_repeat(7,60px)_80px_50px] gap-1 p-3 border-b last:border-b-0 items-center hover:bg-muted/20"
-              >
-                {/* Habit Name */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: habit.color }}
-                  />
-                  <span className="font-medium">{habit.name}</span>
-                  {habit.isPublic && (
-                    <Users className="h-3.5 w-3.5 text-primary" />
-                  )}
-                  <Badge variant="secondary" className="text-[10px]">
-                    {FREQUENCY_LABELS[habit.frequency]}
-                  </Badge>
-                  {habit.defaultMinutes && (
-                    <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                      <Clock className="h-3 w-3" />
-                      {habit.defaultMinutes}m
-                    </span>
-                  )}
-                </div>
-
-                {/* Day checkboxes */}
-                {weekDays.map((day) => {
-                  const completion = getCompletionOnDate(habit, day)
-                  const completed = !!completion
-                  const isFuture = day > new Date()
-                  const dateStr = format(day, "yyyy-MM-dd")
-                  const isEditing = editingTime?.habitId === habit.id && editingTime?.date === dateStr
-
-                  return (
-                    <div key={day.toISOString()} className="flex flex-col items-center gap-0.5">
-                      <button
-                        onClick={() => !isFuture && handleToggleCompletion(habit.id, day)}
-                        disabled={isFuture}
-                        className={`
-                          h-8 w-8 rounded-lg flex items-center justify-center transition-all
-                          ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer hover:scale-110"}
-                          ${completed
-                            ? "text-white"
-                            : "border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50"
-                          }
-                        `}
-                        style={{
-                          backgroundColor: completed ? habit.color : "transparent",
-                        }}
-                      >
-                        {completed && <Check className="h-4 w-4" />}
-                      </button>
-                      {/* Time display/edit */}
-                      {completed && (habit.defaultMinutes || completion.minutes) && (
-                        isEditing ? (
-                          <Input
-                            type="number"
-                            value={timeValue}
-                            onChange={(e) => setTimeValue(e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, () => handleUpdateTime(habit.id, dateStr))}
-                            onBlur={() => handleUpdateTime(habit.id, dateStr)}
-                            className="h-5 w-12 text-[10px] text-center p-0"
-                            autoFocus
-                          />
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setEditingTime({ habitId: habit.id, date: dateStr })
-                              setTimeValue(completion.minutes?.toString() || habit.defaultMinutes?.toString() || "")
-                            }}
-                            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
-                          >
-                            <Clock className="h-2.5 w-2.5" />
-                            {completion.minutes || habit.defaultMinutes}m
-                          </button>
-                        )
-                      )}
-                    </div>
-                  )
-                })}
-
-                {/* Streak */}
-                <div className="text-center font-medium">
-                  {habit.currentStreak > 0 && (
-                    <span className="text-orange-500">{habit.currentStreak} 🔥</span>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex justify-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <MoreHorizontal className="h-3.5 w-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleStartEdit(habit)}>
-                        <Edit2 className="h-3.5 w-3.5 mr-2" />
-                        Edytuj
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => handleDeleteHabit(habit.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-2" />
-                        Usuń
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            ))}
-
-            {/* Add New Habit Row */}
-            {isAddingHabit ? (
-              <div className="grid grid-cols-[1fr_repeat(7,60px)_80px_50px] gap-1 p-3 items-center bg-primary/5">
-                <div className="flex items-center gap-2">
-                  {/* Color picker */}
-                  <div className="relative group">
-                    <div
-                      className="h-6 w-6 rounded-full cursor-pointer"
-                      style={{ backgroundColor: newHabit.color }}
-                    />
-                    <div className="absolute left-0 top-8 z-10 hidden group-hover:flex flex-wrap gap-1 p-2 bg-popover border rounded-lg shadow-lg w-[120px]">
-                      {COLORS.map((color) => (
-                        <button
-                          key={color}
-                          type="button"
-                          className={`h-5 w-5 rounded-full border transition-all ${
-                            newHabit.color === color
-                              ? "border-foreground scale-110"
-                              : "border-transparent"
-                          }`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => setNewHabit({ ...newHabit, color })}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <Input
-                    ref={newHabitRef}
-                    placeholder="Nazwa nawyku..."
-                    value={newHabit.name}
-                    onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
-                    onKeyDown={(e) => handleKeyDown(e, handleCreateHabit)}
-                    className="h-8 flex-1"
-                  />
-
-                  <Select
-                    value={newHabit.frequency}
-                    onValueChange={(v: HabitFrequency) =>
-                      setNewHabit({ ...newHabit, frequency: v })
-                    }
-                  >
-                    <SelectTrigger className="h-8 w-[120px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DAILY">Codziennie</SelectItem>
-                      <SelectItem value="WEEKLY">Co tydzień</SelectItem>
-                      <SelectItem value="MONTHLY">Co miesiąc</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="number"
-                      placeholder="min"
-                      value={newHabit.defaultMinutes}
-                      onChange={(e) => setNewHabit({ ...newHabit, defaultMinutes: e.target.value })}
-                      className="h-8 w-16 text-xs"
-                    />
-                  </div>
-
-                  {/* Public toggle */}
-                  <div className="flex items-center gap-1.5 ml-2" title="Udostępnij znajomym">
-                    <Users className={`h-4 w-4 ${newHabit.isPublic ? "text-primary" : "text-muted-foreground"}`} />
-                    <Switch
-                      checked={newHabit.isPublic}
-                      onCheckedChange={(checked) => setNewHabit({ ...newHabit, isPublic: checked })}
-                    />
-                  </div>
-                </div>
-
-                {/* Empty cells for days */}
-                {weekDays.map((day) => (
-                  <div key={day.toISOString()} />
-                ))}
-
-                <div />
-
-                {/* Save/Cancel */}
-                <div className="flex justify-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={handleCreateHabit}
-                    disabled={!newHabit.name.trim()}
-                  >
-                    <Check className="h-3.5 w-3.5 text-green-500" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={() => {
-                      setIsAddingHabit(false)
-                      setNewHabit({ name: "", color: COLORS[0], frequency: "DAILY", defaultMinutes: "", isPublic: true })
-                    }}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={handleAddRowClick}
-                className="w-full p-3 text-left text-muted-foreground hover:bg-muted/30 transition-colors flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Dodaj nawyk...
-              </button>
-            )}
-
-            {/* Desktop Empty state */}
-            {habits.length === 0 && !isAddingHabit && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Flame className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Brak nawyków</p>
-                <p className="text-sm">Kliknij "Dodaj nawyk" aby zacząć śledzić</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Edit Habit Dialog */}
-      <Dialog open={!!editingHabit} onOpenChange={(open) => !open && setEditingHabit(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edytuj nawyk</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div>
-              <Label>Nazwa</Label>
-              <Input
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <Label>Częstotliwość</Label>
-              <Select
-                value={editForm.frequency}
-                onValueChange={(v: HabitFrequency) => setEditForm({ ...editForm, frequency: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DAILY">Codziennie</SelectItem>
-                  <SelectItem value="WEEKLY">Co tydzień</SelectItem>
-                  <SelectItem value="MONTHLY">Co miesiąc</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Domyślny czas (minuty)</Label>
-              <Input
-                type="number"
-                value={editForm.defaultMinutes}
-                onChange={(e) => setEditForm({ ...editForm, defaultMinutes: e.target.value })}
-                placeholder="np. 15"
-              />
-            </div>
-
-            <div>
-              <Label>Kolor</Label>
-              <div className="flex gap-2 mt-2">
-                {COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`h-8 w-8 rounded-full border-2 transition-all ${
-                      editForm.color === color ? "border-foreground scale-110" : "border-transparent"
-                    }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setEditForm({ ...editForm, color })}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Public toggle */}
-            <div className="flex items-center justify-between pt-2 border-t">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span>Udostępnij znajomym</span>
-              </div>
-              <Switch
-                checked={editForm.isPublic}
-                onCheckedChange={(checked) => setEditForm({ ...editForm, isPublic: checked })}
-              />
-            </div>
-
-            <Button onClick={handleUpdateHabit} className="w-full">
-              Zapisz zmiany
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <HabitDayDialog target={details} onClose={() => setDetails(null)} onSave={handleSaveDay} onSettings={handleSettings} />
+      <HabitFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        habit={editing}
+        idea={idea}
+        onSubmit={handleSubmit}
+        onArchive={editing ? () => updateHabit(editing.id, { isActive: false }) : undefined}
+        onDelete={
+          editing
+            ? () => {
+                if (confirm(`Usunąć nawyk "${editing.name}" razem z całą historią?`)) removeHabit(editing.id)
+              }
+            : undefined
+        }
+      />
     </div>
   )
 }

@@ -71,6 +71,8 @@ import { TaskEditDialog } from "@/components/tasks/task-edit-dialog"
 import { SubtaskList, SubtaskProgress, type Subtask } from "@/components/tasks/subtask-list"
 import { EditableDescription } from "@/components/tasks/editable-description"
 import { DayEventsCard } from "@/components/calendar/day-events-card"
+import { DayHabitsCard } from "@/components/private/day-habits-card"
+import { OtherWorkspaceDay } from "@/components/schedule/other-workspace-day"
 import { LiveTaskTime, LiveTotalMinutes } from "@/components/timer/live-time"
 import { ChevronDown, ChevronUp } from "lucide-react"
 
@@ -1218,6 +1220,12 @@ export default function SchedulePage() {
 
       {/* Calendar events of the day */}
       <DayEventsCard date={dateString} />
+
+      {/* Private: the day's habits, ticked right in the plan */}
+      {workspace === "PRIVATE" && <DayHabitsCard date={dateString} />}
+
+      {/* The same day in the other workspace (work / private), on request */}
+      <OtherWorkspaceDay date={dateString} />
 
       {/* Daily Schedule Blocks */}
       {dayBlocks.length > 0 && (

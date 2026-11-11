@@ -25,7 +25,6 @@ import {
   BookOpen,
   ShieldCheck,
   Users,
-  UsersRound,
   ChevronRight,
   Building2,
   Layers,
@@ -33,6 +32,7 @@ import {
   Flag,
   StickyNote,
   ArrowUpDown,
+  Sun,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -55,11 +55,6 @@ interface FriendUser {
     sportActivities: number
     stepsEntries: number
   }
-}
-
-interface GroupChallengeInvitation {
-  id: string
-  status: string
 }
 
 interface SidebarConfigItem {
@@ -110,18 +105,19 @@ const workNavItems = [
   { href: "/stats", label: "Statystyki", icon: BarChart3, id: "stats" },
 ]
 
+// Private: "Dziś" first - habits, sport, challenges and the plan of the day on one screen.
+// "Znajomi" and "Wyzwania grupowe" are not listed (the pages still open by their address).
 const privateNavItems = [
-  { href: "/backlog", label: "Backlog", icon: Inbox },
+  { href: "/today", label: "Dziś", icon: Sun },
+  { href: "/habits", label: "Nawyki", icon: Repeat },
+  { href: "/sport", label: "Sport", icon: Dumbbell },
+  { href: "/challenges", label: "Wyzwania", icon: Flame },
   { href: "/schedule", label: "Harmonogram", icon: CalendarDays },
   { href: "/calendar", label: "Kalendarz", icon: Calendar },
   { href: "/notes", label: "Notatki", icon: StickyNote },
-  { href: "/knowledge", label: "Wiedza", icon: BookOpen },
-  { href: "/habits", label: "Nawyki", icon: Repeat },
-  { href: "/challenges", label: "Wyzwania", icon: Flame },
-  { href: "/group-challenges", label: "Wyzwania grupowe", icon: UsersRound },
-  { href: "/sport", label: "Sport", icon: Dumbbell },
-  { href: "/friends", label: "Znajomi", icon: Users },
   { href: "/stats", label: "Statystyki", icon: BarChart3 },
+  { href: "/backlog", label: "Backlog", icon: Inbox },
+  { href: "/knowledge", label: "Wiedza", icon: BookOpen },
 ]
 
 const bottomNavItems = [
@@ -152,13 +148,6 @@ export function SidebarContent() {
     workspace === "FRIENDS" ? "/api/friends" : null,
     fetcher
   )
-
-  // Fetch pending invitations for group challenges (only in PRIVATE workspace)
-  const { data: groupChallengeInvitations = [] } = useSWR<GroupChallengeInvitation[]>(
-    workspace === "PRIVATE" ? "/api/group-challenges/invitations" : null,
-    fetcher
-  )
-  const pendingInvitationsCount = groupChallengeInvitations.length
 
   // Fetch task stack count (only in WORK workspace)
   const { data: taskStackTasks = [] } = useSWR<Array<{ id: string }>>(
@@ -230,7 +219,12 @@ export function SidebarContent() {
   // For WORK workspace, wait for org data to load before showing nav items
   // This prevents flash of all items before filtering
   const isWorkspaceLoading = workspace === "WORK" && isLoadingOrgs
-  const navItems = applyNavOrder(workspace === "WORK" ? getFilteredWorkNavItems() : privateNavItems, savedOrder)
+  // An order saved before "Dziś" existed doesn't have it - it starts the list rather than ends it
+  const tabOrder =
+    workspace === "PRIVATE" && savedOrder?.length && !savedOrder.includes("/today")
+      ? ["/today", ...savedOrder]
+      : savedOrder
+  const navItems = applyNavOrder(workspace === "WORK" ? getFilteredWorkNavItems() : privateNavItems, tabOrder)
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard"
@@ -345,16 +339,14 @@ export function SidebarContent() {
         /* Regular Navigation */
         <nav key="links" className="flex-1 overflow-y-auto space-y-1 p-4">
           {navItems.map((item) => {
-            const showGroupChallengeBadge = item.href === "/group-challenges" && pendingInvitationsCount > 0
             const showTaskStackBadge = item.href === "/task-stack" && taskStackCount > 0
-            const badgeCount = showTaskStackBadge ? taskStackCount : showGroupChallengeBadge ? pendingInvitationsCount : 0
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onMouseEnter={() => prefetchPage(item.href.slice(1), workspace)}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "flex min-h-[2.75rem] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0",
                   isActive(item.href)
                     ? workspace === "WORK"
                       ? "bg-work/10 text-work"
@@ -364,9 +356,9 @@ export function SidebarContent() {
               >
                 <item.icon className="h-5 w-5" />
                 <span className="flex-1">{item.label}</span>
-                {(showGroupChallengeBadge || showTaskStackBadge) && (
+                {showTaskStackBadge && (
                   <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                    {badgeCount}
+                    {taskStackCount}
                   </span>
                 )}
               </Link>

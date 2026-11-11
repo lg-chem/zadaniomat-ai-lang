@@ -2,7 +2,14 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { loadHabits } from "@/lib/habit-data"
+import { dayKeyOf, isDayKey } from "@/lib/tracking"
 
+export const dynamic = "force-dynamic"
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
+
+// GET - active habits with the completions of ?from=&to= (yyyy-MM-dd) and streaks counted to ?today=
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -11,32 +18,16 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const includeCompletions = searchParams.get("includeCompletions") === "true"
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
+    // startDate / endDate - the names used before
+    const from = searchParams.get("from") ?? searchParams.get("startDate")
+    const to = searchParams.get("to") ?? searchParams.get("endDate")
+    const todayParam = searchParams.get("today")
+    const today = isDayKey(todayParam) ? todayParam : dayKeyOf(new Date())
 
-    const habits = await prisma.habit.findMany({
-      where: {
-        userId: session.user.id,
-        isActive: true,
-      },
-      include: {
-        category: true,
-        completions: includeCompletions
-          ? {
-              where: startDate && endDate
-                ? {
-                    date: {
-                      gte: new Date(startDate),
-                      lte: new Date(endDate),
-                    },
-                  }
-                : undefined,
-              orderBy: { date: "desc" },
-            }
-          : false,
-      },
-      orderBy: { createdAt: "asc" },
+    const habits = await loadHabits(session.user.id, {
+      from: isDayKey(from) ? from : null,
+      to: isDayKey(to) ? to : null,
+      today,
     })
 
     return NextResponse.json(habits)
@@ -54,23 +45,29 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, frequency, targetCount, defaultMinutes, color, icon, categoryId, isPublic } = body
+    const {
+      name, description, frequency, targetCount, defaultMinutes, color, icon, categoryId, isPublic,
+      unit, scheduledTime,
+    } = body
 
-    if (!name) {
+    if (!name || !String(name).trim()) {
       return NextResponse.json({ error: "Nazwa jest wymagana" }, { status: 400 })
     }
 
     const habit = await prisma.habit.create({
       data: {
-        name,
+        name: String(name).trim(),
         description,
         frequency: frequency || "DAILY",
-        targetCount: targetCount || 1,
+        targetCount: Math.max(1, parseInt(targetCount) || 1),
         defaultMinutes: defaultMinutes ? parseInt(defaultMinutes) : null,
+        unit: unit ? String(unit).trim().slice(0, 20) : null,
+        scheduledTime: typeof scheduledTime === "string" && TIME.test(scheduledTime) ? scheduledTime : null,
         color: color || "#10b981",
         icon,
-        categoryId,
-        isPublic: isPublic || false,
+        categoryId: categoryId || null,
+        // Private unless shared on purpose
+        isPublic: isPublic === true,
         userId: session.user.id,
       },
       include: {

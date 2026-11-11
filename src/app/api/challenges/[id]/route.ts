@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { readLinkFields } from "@/lib/challenge-data"
+import { challengeProgress, type ChallengeType } from "@/lib/tracking"
 
 export async function PATCH(
   req: Request,
@@ -39,6 +41,15 @@ export async function PATCH(
     if (unit !== undefined) updateData.unit = unit
     if (isPublic !== undefined) updateData.isPublic = isPublic
 
+    // What the challenge is counted from (own entries / a habit / sport / steps)
+    if (body.linkedType !== undefined) {
+      const link = await readLinkFields(session.user.id, body)
+      if ("error" in link) {
+        return NextResponse.json({ error: link.error }, { status: 400 })
+      }
+      Object.assign(updateData, link.data)
+    }
+
     const challenge = await prisma.challenge.update({
       where: { id },
       data: updateData,
@@ -47,6 +58,24 @@ export async function PATCH(
         entries: true,
       },
     })
+
+    // Counted from own entries: the start day, the weekly target or going back from a link
+    // change what the entries add up to
+    if (
+      challenge.linkedType === "NONE" &&
+      (body.linkedType !== undefined || startDate !== undefined || weeklyTarget !== undefined)
+    ) {
+      const recounted = challengeProgress(
+        challenge.challengeType as ChallengeType,
+        challenge.entries,
+        challenge.startDate,
+        challenge.weeklyTarget
+      )
+      if (recounted !== challenge.currentValue) {
+        await prisma.challenge.update({ where: { id }, data: { currentValue: recounted } })
+        challenge.currentValue = recounted
+      }
+    }
 
     return NextResponse.json(challenge)
   } catch (error) {

@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -11,8 +13,9 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
+    // from / to - what the pages send; startDate / endDate - the older names
+    const startDate = searchParams.get("from") ?? searchParams.get("startDate")
+    const endDate = searchParams.get("to") ?? searchParams.get("endDate")
 
     const where: Record<string, unknown> = {
       userId: session.user.id,
@@ -65,13 +68,15 @@ export async function POST(req: Request) {
       update: {
         count,
         notes,
-        isPublic: isPublic !== undefined ? isPublic : true,
+        // Changing the number keeps who can see the day
+        ...(isPublic !== undefined && { isPublic: isPublic === true }),
       },
       create: {
         date: entryDate,
         count,
         notes,
-        isPublic: isPublic !== undefined ? isPublic : true,
+        // Private unless shared on purpose
+        isPublic: isPublic === true,
         userId: session.user.id,
       },
     })

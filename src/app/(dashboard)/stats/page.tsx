@@ -12,13 +12,12 @@ import {
   TrendingUp,
   Clock,
   BarChart3,
-  Flame,
-  Dumbbell,
 } from "lucide-react"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { format, startOfWeek, startOfMonth, subDays } from "date-fns"
 import { pl } from "date-fns/locale"
 import useSWR from "swr"
+import { PrivateStats } from "@/components/private/private-stats"
 
 interface Stats {
   tasks: {
@@ -35,15 +34,6 @@ interface Stats {
   time: {
     totalMinutes: number
     averagePerDay: number
-  }
-  habits?: {
-    total: number
-    completed: number
-    streak: number
-  }
-  sport?: {
-    activitiesCount: number
-    totalSteps: number
   }
 }
 
@@ -71,17 +61,6 @@ export default function StatsPage() {
   // Fetch goals with SWR
   const { data: goals = [], isLoading: goalsLoading } = useSWR<any[]>(
     `/api/goals?workspace=${workspace}`
-  )
-
-  // Fetch private workspace data
-  const { data: habits = [] } = useSWR<any[]>(
-    workspace === "PRIVATE" ? "/api/habits" : null
-  )
-  const { data: sportActivities = [] } = useSWR<any[]>(
-    workspace === "PRIVATE" ? `/api/sport/activities?from=${dateRange.from}&to=${dateRange.to}` : null
-  )
-  const { data: steps = [] } = useSWR<any[]>(
-    workspace === "PRIVATE" ? `/api/sport/steps?from=${dateRange.from}&to=${dateRange.to}` : null
   )
 
   const isLoading = tasksLoading || goalsLoading
@@ -113,23 +92,8 @@ export default function StatsPage() {
       },
     }
 
-    if (workspace === "PRIVATE") {
-      const totalSteps = steps.reduce((sum, s) => sum + s.count, 0)
-
-      statsData.habits = {
-        total: habits.length,
-        completed: 0,
-        streak: 0,
-      }
-
-      statsData.sport = {
-        activitiesCount: sportActivities.length,
-        totalSteps,
-      }
-    }
-
     return statsData
-  }, [tasks, goals, habits, sportActivities, steps, period, workspace, isLoading])
+  }, [tasks, goals, period, isLoading])
 
   const formatMinutes = (minutes: number) => {
     if (minutes < 60) return `${Math.round(minutes)}m`
@@ -201,6 +165,16 @@ export default function StatsPage() {
         </div>
       </div>
 
+      {/* Private: a year of habits and sport first, the tasks of the period below */}
+      {workspace === "PRIVATE" && (
+        <>
+          <PrivateStats />
+          <h2 className="pt-2 text-lg font-semibold">
+            Zadania - {period === "week" ? "ten tydzień" : "ten miesiąc"}
+          </h2>
+        </>
+      )}
+
       {/* Tasks Stats */}
       <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4">
         <Card>
@@ -265,66 +239,6 @@ export default function StatsPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* PRIVATE workspace stats */}
-      {workspace === "PRIVATE" && stats.habits && stats.sport && (
-        <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
-          {/* Habits */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base md:text-lg flex items-center gap-2">
-                <Flame className="h-5 w-5 text-orange-500" />
-                Nawyki
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Wpisy</span>
-                <span className="text-2xl font-bold">{stats.habits.total}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Ukończone</span>
-                <span className="text-xl font-semibold text-green-500">
-                  {stats.habits.completed}
-                </span>
-              </div>
-              <Progress
-                value={
-                  stats.habits.total > 0
-                    ? (stats.habits.completed / stats.habits.total) * 100
-                    : 0
-                }
-                className="h-2"
-              />
-            </CardContent>
-          </Card>
-
-          {/* Sport */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base md:text-lg flex items-center gap-2">
-                <Dumbbell className="h-5 w-5 text-blue-500" />
-                Sport
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Aktywności</span>
-                <span className="text-2xl font-bold">{stats.sport.activitiesCount}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Kroki</span>
-                <span className="text-xl font-semibold text-purple-500">
-                  {stats.sport.totalSteps.toLocaleString()}
-                </span>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Cel: {(10000 * (period === "week" ? 7 : 30)).toLocaleString()} kroków
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   )
 }
